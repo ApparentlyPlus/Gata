@@ -1,0 +1,129 @@
+{
+  "name": "Gata Gold",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#14151a",
+    "editor.foreground": "#cfcbc1",
+    "editorCursor.foreground": "#e8dcb8",
+    "editor.selectionBackground": "#3a3d4a",
+    "editor.lineHighlightBackground": "#1c1d24",
+    "editorLineNumber.foreground": "#4a4d59",
+    "editorLineNumber.activeForeground": "#9aa0ad"
+  },
+  "tokenColors": [
+    {
+      "comment": "Comments — quiet, italic, never competes with gold.",
+      "scope": ["comment.line.double-slash.gata", "comment.block.gata"],
+      "settings": { "foreground": "#6b7280", "fontStyle": "italic" }
+    },
+    {
+      "comment": "Pure C inside native{} / fields{} content — scoped as comment.block so it stays grey/uncolored under any theme, marking 'you have left Gata syntax.' Deliberately fully flat with NO sub-highlighting at all, not even for parens/brackets — unlike unsafe{}, this isn't real Gata code. The delimiting braces of native{} itself are NOT this scope — see keyword.control.risk.gata below.",
+      "scope": "comment.block.native.gata",
+      "settings": { "foreground": "#6f7178" }
+    },
+    {
+      "comment": "Risk surface — unsafe, defer, throw/throws, panic, native/native type, and ONLY the outermost delimiting braces of native{}/unsafe{} (not nested if/while/etc. braces inside, and not parens/brackets — those follow #brackets like everywhere else). The one keyword family that's a warning, not a category: deep maroon, the single non-gold accent.",
+      "scope": "keyword.control.risk.gata",
+      "settings": { "foreground": "#9c2b2b" }
+    },
+    {
+      "comment": "Structural/compiler-contract layer — kernel, user, process, thread, entry, fields, annotations. Muted violet so it sits quietly behind gold types without competing.",
+      "scope": ["keyword.other.meta.native.gata", "keyword.other.meta.annotation.gata"],
+      "settings": { "foreground": "#8f87b0" }
+    },
+    {
+      "scope": "variable.parameter.annotation.gata",
+      "settings": { "foreground": "#b6aed4" }
+    },
+    {
+      "comment": "Declaration keywords — let, class, func, as, static, ... Cobalt blue, distinct from teal (functions), violet (structural), gold (types), and the branching-keyword green below.",
+      "scope": "keyword.control.gata",
+      "settings": { "foreground": "#5b84c4" }
+    },
+    {
+      "comment": "Branching/looping/control-transfer — if, else, while, for, switch, case, try, catch, match, break, continue, ... 'return' lives here too (a control-transfer statement, like break/continue, not a declaration), as does 'default' (overwhelmingly a switch/match case label, pairing visually with 'case'). Sage green, deliberately a different hue from the declaration keywords above.",
+      "scope": "keyword.control.flow.gata",
+      "settings": { "foreground": "#8caa6e" }
+    },
+    {
+      "comment": "'self' isn't a real lexer keyword, but reads as one — same family as the storage/control keywords.",
+      "scope": "variable.language.self.gata",
+      "settings": { "foreground": "#5b84c4", "fontStyle": "italic" }
+    },
+    {
+      "comment": "Method/function names — both declarations and call sites. Soft teal, distinct from both the blue keywords and the gold types.",
+      "scope": "entity.name.function.gata",
+      "settings": { "foreground": "#7fc4b8" }
+    },
+    {
+      "comment": "Variables and parameters.",
+      "scope": "variable.other.gata",
+      "settings": { "foreground": "#cfcbc1" }
+    },
+    {
+      "comment": "true/false/null — pale champagne, part of the gold family since they're literal values of a type.",
+      "scope": ["constant.language.boolean.gata", "constant.language.null.gata"],
+      "settings": { "foreground": "#e6cf94", "fontStyle": "bold" }
+    },
+    {
+      "comment": "Primitive value types — bool, int, double, ... Gold, the language's signature color for data types.",
+      "scope": "storage.type.primitive.gata",
+      "settings": { "foreground": "#c9a227" }
+    },
+    {
+      "comment": "Class/module reference types — multi-letter PascalCase. Brighter gold than primitives, still the same family.",
+      "scope": "entity.name.type.class.gata",
+      "settings": { "foreground": "#e0b34d" }
+    },
+    {
+      "comment": "Generic parameters — bare T/K/V/U-style single letters. Dim bronze, the muted end of the gold family.",
+      "scope": "entity.name.type.parameter.gata",
+      "settings": { "foreground": "#a9854f", "fontStyle": "italic" }
+    },
+    {
+      "scope": "string.quoted.double.gata",
+      "settings": { "foreground": "#d98a4f" }
+    },
+    {
+      "scope": "string.interpolated.gata",
+      "settings": { "foreground": "#e0a468" }
+    },
+    {
+      "scope": "constant.character.escape.gata",
+      "settings": { "foreground": "#f0c08a" }
+    },
+    {
+      "scope": "constant.character.gata",
+      "settings": { "foreground": "#d98a4f" }
+    },
+    {
+      "scope": ["constant.numeric.integer.gata", "constant.numeric.integer.hex.gata", "constant.numeric.float.gata"],
+      "settings": { "foreground": "#cf8c4a" }
+    },
+    {
+      "comment": "Operators — barely distinguishable from plain variables/identifiers (a hair cooler/lighter), just enough to tell them apart on close reading without competing with the palette.",
+      "scope": "keyword.operator.gata",
+      "settings": { "foreground": "#c5cad1" }
+    },
+    {
+      "comment": "Semicolons — same neutral family as operators.",
+      "scope": "punctuation.terminator.gata",
+      "settings": { "foreground": "#cfcbc1" }
+    },
+    {
+      "comment": "Parens and brackets — citrine/lime-yellow, deliberately a cooler, more green-leaning yellow than the warm golds used for types (#c9a227 primitives, #e0b34d classes) — close enough to still read as 'yellow' but far enough in hue that 'List[String]()' doesn't blur into one indistinguishable smear of gold. Applies everywhere (including inside unsafe{}/native{} — only the block's own outer { } go risk red, not these). Also why this extension disables VS Code's bracket-pair-colorization for .g files: so these don't get overridden by unrelated cycling colors.",
+      "scope": "punctuation.brackets.gata",
+      "settings": { "foreground": "#c9c34f" }
+    },
+    {
+      "comment": "A literal empty pair '()' — a no-arg call/ctor with nothing to draw attention to — renders grey instead of the yellow #brackets normally use.",
+      "scope": "punctuation.brackets.empty.gata",
+      "settings": { "foreground": "#8a8f98" }
+    },
+    {
+      "comment": "Comma, dot, braces — one neutral scope, one color, everywhere outside a native block.",
+      "scope": "punctuation.gata",
+      "settings": { "foreground": "#8a8f98" }
+    }
+  ]
+}

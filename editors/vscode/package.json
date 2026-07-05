@@ -1,0 +1,40 @@
+{
+  "name": "gata-highlighting",
+  "displayName": "Gata-Highlighting",
+  "description": "Syntax highlighting for the Gata systems language (.g) — kernel/user realms, capabilities, ARC, and the native{} C escape hatch, all distinguished at a glance.",
+  "version": "0.1.0",
+  "publisher": "gata-lang",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:gata"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "gata",
+        "aliases": ["Gata", "gata"],
+        "extensions": [".g"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gata",
+        "scopeName": "source.gata",
+        "path": "./syntaxes/gata.tmLanguage.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "Gata Gold",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gata-gold-color-theme.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[gata]": {
+        "editor.bracketPairColorization.enabled": false
+      }
+    }
+  }
+}
