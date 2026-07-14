@@ -352,6 +352,16 @@ class String {
         }
         return r;
     }
+
+    // Explicit-cast spellings for the two single-argument factories above: `c as String` and
+    // `raw as String` instead of `String.FromChar(c)` / `String.FromRaw(raw)`. These are static
+    // 'as' operators (one parameter, no self - the value doesn't exist yet) rather than the
+    // usual instance form, since char/char* have no class body of their own to declare a
+    // conversion on. They delegate rather than duplicate: the @intrinsic(stringify_char) binding
+    // stays on FromChar itself, since that's what `+`/interpolation call directly, and FromChar
+    // is still there to call by name if you don't want cast syntax.
+    operator func as(char c) -> String { return String.FromChar(c); }
+    operator func as(char* raw) -> String { return String.FromRaw(raw); }
 }
 
 // Growable text buffer for hot-loop string building — a chain of `+` is O(n^2)
