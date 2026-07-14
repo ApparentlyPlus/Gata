@@ -126,7 +126,7 @@
     static inline void  _env_sleep(int ms)     { syscall_sleep((uint64_t)(ms < 0 ? 0 : ms)); }
     static inline void  _env_exit(void)        { syscall_exit(); }
     static inline void  _env_dbg(const char* m) {
-        u_debug_write("[USER DEBUG] ", 8);
+        u_debug_write("[USER DEBUG] ", sizeof("[USER DEBUG] ") - 1);
         u_debug_write(m, strlen(m));
         u_debug_write("\n", 1);
     }
