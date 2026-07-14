@@ -66,8 +66,11 @@
     // same Gata program would see a taller screen in the kernel realm than in the
     // user realm it's actually meant to run in.
     static inline long  _env_tty_dims(void) {
+        size_t header_rows = 0;
+        #ifdef GATA_CAP_THREADS
         extern tty_t* volatile active_tty;
-        size_t header_rows = (active_tty && active_tty->console) ? active_tty->console->header_rows : 0;
+        if (active_tty && active_tty->console) header_rows = active_tty->console->header_rows;
+        #endif
         return ((long)(console_get_height() - header_rows) << 32) | (long)console_get_width();
     }
     static inline void  _env_tty_color(int fg, int bg) { console_set_color((uint8_t)fg, (uint8_t)bg); }
