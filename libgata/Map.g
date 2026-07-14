@@ -19,26 +19,31 @@ import Runtime;
 import String;
 import List;
 
-usize func Mix(usize x) {
-    x = (x ^ (x >> 30)) * (0xbf58476d1ce4e5b9 as usize);
-    x = (x ^ (x >> 27)) * (0x94d049bb133111eb as usize);
-    return x ^ (x >> 31);
-}
-
-// FNV-1a over the string's bytes. A free function (not a method on StringMap) so
-// StringSet can share it too — a static method nested in a generic class gets
-// re-mangled per instantiation, so there's no single callable "StringMap.Hash"
-// independent of a concrete V.
-usize func HashString(String key) {
-    let h = 0xcbf29ce484222325 as usize;
-    let n = key.Length();
-    let i = 0;
-    while (i < n) {
-        h = h ^ ((key.CharAt(i) as usize) & (255 as usize));
-        h = h * (0x100000001b3 as usize);
-        i = i + 1;
+// Shared hashing primitives for Map/StringMap (and, via import, Set/StringSet) — kept
+// in one module rather than as loose free functions so every hash table in libgata
+// calls Hash.Mix/Hash.HashString instead of an unqualified global.
+module Hash {
+    public usize func Mix(usize x) {
+        x = (x ^ (x >> 30)) * (0xbf58476d1ce4e5b9 as usize);
+        x = (x ^ (x >> 27)) * (0x94d049bb133111eb as usize);
+        return x ^ (x >> 31);
     }
-    return h;
+
+    // FNV-1a over the string's bytes. Lives here (not as a StringMap method) so
+    // StringSet can share it too — a static method nested in a generic class gets
+    // re-mangled per instantiation, so there's no single callable "StringMap.Hash"
+    // independent of a concrete V.
+    public usize func HashString(String key) {
+        let h = 0xcbf29ce484222325 as usize;
+        let n = key.Length();
+        let i = 0;
+        while (i < n) {
+            h = h ^ ((key.CharAt(i) as usize) & (255 as usize));
+            h = h * (0x100000001b3 as usize);
+            i = i + 1;
+        }
+        return h;
+    }
 }
 
 class Map[K, V] {
@@ -80,44 +85,11 @@ class Map[K, V] {
         if (target > self.cap) { self.Grow(target); }
     }
 
-    // Doubles (from 16) until at least `minCap`, then re-hashes every live pair.
-    void func Grow(int minCap) {
-        let nc = self.cap * 2;
-        if (nc == 0) { nc = 16; }
-        while (nc < minCap) { nc = nc * 2; }
-        unsafe {
-            let nk = alloc((nc as usize) * sizeof(K)) as K*;
-            let nv = alloc((nc as usize) * sizeof(V)) as V*;
-            let nu = alloc(nc as usize) as char*;
-            let mask = (nc - 1) as usize;
-            let i = 0;
-            while (i < nc) { nu[i] = 0; i = i + 1; }
-            i = 0;
-            while (i < self.cap) {
-                if (self.used[i] != 0) {
-                    let h = Mix(self.keys[i] as usize) & mask;
-                    while (nu[h] != 0) { h = (h + (1 as usize)) & mask; }
-                    nk[h] = self.keys[i];
-                    nv[h] = self.vals[i];
-                    nu[h] = 1;
-                }
-                i = i + 1;
-            }
-            if (self.keys != null) { free(self.keys); }
-            if (self.vals != null) { free(self.vals); }
-            if (self.used != null) { free(self.used); }
-            self.keys = nk;
-            self.vals = nv;
-            self.used = nu;
-        }
-        self.cap = nc;
-    }
-
     public void func Put(K key, V value) {
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = Mix(key as usize) & mask;
+            let h = Hash.Mix(key as usize) & mask;
             while (self.used[h] != 0) {
                 if (self.keys[h] == key) {
                     release(self.vals[h]);
@@ -138,7 +110,7 @@ class Map[K, V] {
         if (self.cap == 0) { return default(V); }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = Mix(key as usize) & mask;
+            let h = Hash.Mix(key as usize) & mask;
             let start = h;
             while (self.used[h] != 0) {
                 if (self.keys[h] == key) { return retain(self.vals[h]); }
@@ -153,7 +125,7 @@ class Map[K, V] {
         if (self.cap > 0) {
             unsafe {
                 let mask = (self.cap - 1) as usize;
-                let h = Mix(key as usize) & mask;
+                let h = Hash.Mix(key as usize) & mask;
                 let start = h;
                 while (self.used[h] != 0) {
                     if (self.keys[h] == key) { return retain(self.vals[h]); }
@@ -172,7 +144,7 @@ class Map[K, V] {
         if (self.cap == 0) { return false; }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = Mix(key as usize) & mask;
+            let h = Hash.Mix(key as usize) & mask;
             let start = h;
             while (self.used[h] != 0) {
                 if (self.keys[h] == key) { return true; }
@@ -188,7 +160,7 @@ class Map[K, V] {
         if (self.cap == 0) { return; }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = Mix(key as usize) & mask;
+            let h = Hash.Mix(key as usize) & mask;
             let start = h;
             while (self.used[h] != 0) {
                 if (self.keys[h] == key) {
@@ -202,7 +174,7 @@ class Map[K, V] {
                         let v2 = self.vals[j];
                         self.used[j] = 0;
                         self.count = self.count - 1;
-                        let hh = Mix(k2 as usize) & mask;
+                        let hh = Hash.Mix(k2 as usize) & mask;
                         while (self.used[hh] != 0) { hh = (hh + (1 as usize)) & mask; }
                         self.keys[hh] = k2;
                         self.vals[hh] = v2;
@@ -256,6 +228,39 @@ class Map[K, V] {
         }
         return result;
     }
+
+    // Doubles (from 16) until at least `minCap`, then re-hashes every live pair.
+    void func Grow(int minCap) {
+        let nc = self.cap * 2;
+        if (nc == 0) { nc = 16; }
+        while (nc < minCap) { nc = nc * 2; }
+        unsafe {
+            let nk = alloc((nc as usize) * sizeof(K)) as K*;
+            let nv = alloc((nc as usize) * sizeof(V)) as V*;
+            let nu = alloc(nc as usize) as char*;
+            let mask = (nc - 1) as usize;
+            let i = 0;
+            while (i < nc) { nu[i] = 0; i = i + 1; }
+            i = 0;
+            while (i < self.cap) {
+                if (self.used[i] != 0) {
+                    let h = Hash.Mix(self.keys[i] as usize) & mask;
+                    while (nu[h] != 0) { h = (h + (1 as usize)) & mask; }
+                    nk[h] = self.keys[i];
+                    nv[h] = self.vals[i];
+                    nu[h] = 1;
+                }
+                i = i + 1;
+            }
+            if (self.keys != null) { free(self.keys); }
+            if (self.vals != null) { free(self.vals); }
+            if (self.used != null) { free(self.used); }
+            self.keys = nk;
+            self.vals = nv;
+            self.used = nu;
+        }
+        self.cap = nc;
+    }
 }
 
 class StringMap[V] {
@@ -297,46 +302,13 @@ class StringMap[V] {
         if (target > self.cap) { self.Grow(target); }
     }
 
-
-    void func Grow(int minCap) {
-        let nc = self.cap * 2;
-        if (nc == 0) { nc = 16; }
-        while (nc < minCap) { nc = nc * 2; }
-        unsafe {
-            let nk = alloc((nc as usize) * sizeof(String)) as String*;
-            let nv = alloc((nc as usize) * sizeof(V)) as V*;
-            let nu = alloc(nc as usize) as char*;
-            let mask = (nc - 1) as usize;
-            let i = 0;
-            while (i < nc) { nu[i] = 0; i = i + 1; }
-            i = 0;
-            while (i < self.cap) {
-                if (self.used[i] != 0) {
-                    let h = HashString(self.keys[i]) & mask;
-                    while (nu[h] != 0) { h = (h + (1 as usize)) & mask; }
-                    nk[h] = self.keys[i];
-                    nv[h] = self.vals[i];
-                    nu[h] = 1;
-                }
-                i = i + 1;
-            }
-            if (self.keys != null) { free(self.keys); }
-            if (self.vals != null) { free(self.vals); }
-            if (self.used != null) { free(self.used); }
-            self.keys = nk;
-            self.vals = nv;
-            self.used = nu;
-        }
-        self.cap = nc;
-    }
-
     // A null key is ignored.
     public void func Put(String key, V value) {
         if (key == null) { return; }
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = HashString(key) & mask;
+            let h = Hash.HashString(key) & mask;
             while (self.used[h] != 0) {
                 if (self.keys[h].Equals(key)) {
                     release(self.vals[h]);
@@ -357,7 +329,7 @@ class StringMap[V] {
         if (self.cap == 0 || key == null) { return default(V); }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = HashString(key) & mask;
+            let h = Hash.HashString(key) & mask;
             let start = h;
             while (self.used[h] != 0) {
                 if (self.keys[h].Equals(key)) { return retain(self.vals[h]); }
@@ -372,7 +344,7 @@ class StringMap[V] {
         if (self.cap > 0 && key != null) {
             unsafe {
                 let mask = (self.cap - 1) as usize;
-                let h = HashString(key) & mask;
+                let h = Hash.HashString(key) & mask;
                 let start = h;
                 while (self.used[h] != 0) {
                     if (self.keys[h].Equals(key)) { return retain(self.vals[h]); }
@@ -391,7 +363,7 @@ class StringMap[V] {
         if (self.cap == 0 || key == null) { return false; }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = HashString(key) & mask;
+            let h = Hash.HashString(key) & mask;
             let start = h;
             while (self.used[h] != 0) {
                 if (self.keys[h].Equals(key)) { return true; }
@@ -406,7 +378,7 @@ class StringMap[V] {
         if (self.cap == 0 || key == null) { return; }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = HashString(key) & mask;
+            let h = Hash.HashString(key) & mask;
             let start = h;
             while (self.used[h] != 0) {
                 if (self.keys[h].Equals(key)) {
@@ -420,7 +392,7 @@ class StringMap[V] {
                         let v2 = self.vals[j];
                         self.used[j] = 0;
                         self.count = self.count - 1;
-                        let hh = HashString(k2) & mask;
+                        let hh = Hash.HashString(k2) & mask;
                         while (self.used[hh] != 0) { hh = (hh + (1 as usize)) & mask; }
                         self.keys[hh] = k2;
                         self.vals[hh] = v2;
@@ -473,5 +445,37 @@ class StringMap[V] {
             }
         }
         return result;
+    }
+
+    void func Grow(int minCap) {
+        let nc = self.cap * 2;
+        if (nc == 0) { nc = 16; }
+        while (nc < minCap) { nc = nc * 2; }
+        unsafe {
+            let nk = alloc((nc as usize) * sizeof(String)) as String*;
+            let nv = alloc((nc as usize) * sizeof(V)) as V*;
+            let nu = alloc(nc as usize) as char*;
+            let mask = (nc - 1) as usize;
+            let i = 0;
+            while (i < nc) { nu[i] = 0; i = i + 1; }
+            i = 0;
+            while (i < self.cap) {
+                if (self.used[i] != 0) {
+                    let h = Hash.HashString(self.keys[i]) & mask;
+                    while (nu[h] != 0) { h = (h + (1 as usize)) & mask; }
+                    nk[h] = self.keys[i];
+                    nv[h] = self.vals[i];
+                    nu[h] = 1;
+                }
+                i = i + 1;
+            }
+            if (self.keys != null) { free(self.keys); }
+            if (self.vals != null) { free(self.vals); }
+            if (self.used != null) { free(self.used); }
+            self.keys = nk;
+            self.vals = nv;
+            self.used = nu;
+        }
+        self.cap = nc;
     }
 }

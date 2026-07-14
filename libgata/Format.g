@@ -17,31 +17,6 @@ import String;
 @extern func _env_format(char* buf, usize n, char* fmt, int kind, uint64 bits) -> int;
 
 module Format {
-    // Reinterpret a double as its IEEE-754 bit pattern (the payload for kind 2).
-    uint64 func dbits(double v) {
-        unsafe { let p = (&v) as uint64*; return *p; }
-    }
-
-    // snprintf `bits` (interpreted per `kind`) through `spec` into a fresh buffer.
-    String func run(String spec, int kind, uint64 bits) {
-        unsafe {
-            let buf = alloc(64 as usize) as char*;
-            _env_format(buf, 64 as usize, spec.CStr(), kind, bits);
-            let r = String.FromRaw(buf);
-            free(buf);
-            return r;
-        }
-    }
-
-    // Insert the `ll` length modifier before a spec's conversion character so a
-    // promoted 64-bit integer prints correctly: "%x" → "%llx", "%05d" → "%05lld".
-    // (Integer specs are passed WITHOUT a length modifier; Format supplies it.)
-    String func widen(String spec) {
-        let n = spec.Length();
-        if (n == 0) { return spec; }
-        return spec.Substring(0, n - 1) + "ll" + spec.Substring(n - 1, 1);
-    }
-
     // Default decimal text for `v` (the "%g" general form). Bound to stringify_float,
     // so interpolating a float/double routes here.
     @intrinsic(stringify_float)
@@ -77,5 +52,30 @@ module Format {
         let data = v;
         if (data == null) { data = ""; }
         unsafe { return run(s, 3, (data.CStr()) as uint64); }
+    }
+
+    // Reinterpret a double as its IEEE-754 bit pattern (the payload for kind 2).
+    uint64 func dbits(double v) {
+        unsafe { let p = (&v) as uint64*; return *p; }
+    }
+
+    // snprintf `bits` (interpreted per `kind`) through `spec` into a fresh buffer.
+    String func run(String spec, int kind, uint64 bits) {
+        unsafe {
+            let buf = alloc(64 as usize) as char*;
+            _env_format(buf, 64 as usize, spec.CStr(), kind, bits);
+            let r = String.FromRaw(buf);
+            free(buf);
+            return r;
+        }
+    }
+
+    // Insert the `ll` length modifier before a spec's conversion character so a
+    // promoted 64-bit integer prints correctly: "%x" → "%llx", "%05d" → "%05lld".
+    // (Integer specs are passed WITHOUT a length modifier; Format supplies it.)
+    String func widen(String spec) {
+        let n = spec.Length();
+        if (n == 0) { return spec; }
+        return spec.Substring(0, n - 1) + "ll" + spec.Substring(n - 1, 1);
     }
 }

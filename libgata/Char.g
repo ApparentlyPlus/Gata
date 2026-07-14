@@ -1,8 +1,8 @@
 // Char.g — classification and conversion for the `char` type.
 //
 // Pure Gata: every function is a small total function of its argument. ASCII only.
-
-import String;
+// char-to-String conversion lives on String itself (String.FromChar) rather than
+// here, since it needs String's private fields — see String.g.
 
 module Char {
     // '0'..'9'
@@ -60,9 +60,5 @@ module Char {
     public int func DigitValue(char c) {
         if (Char.IsDigit(c)) { return (c - '0') as int; }
         return -1;
-    }
-
-    public String func ToString(char c) {
-        return String.FromChar(c);
     }
 }

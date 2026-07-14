@@ -20,7 +20,9 @@ module Int {
 
     // ── Formatting ────────────────────────────────────────────────────────────
     // Decimal text for `n`, with a leading '-' for negatives. Bound to the
-    // stringify_int role (used when interpolating int/char/bool into strings).
+    // stringify_int role (used when interpolating an int, or any other integer-
+    // family type without its own stringify role, into a string). char has its
+    // own stringify_char role (String.FromChar) so it doesn't land here.
     @intrinsic(stringify_int)
     public String func ToString(int n) {
         if (n == 0) { return "0"; }

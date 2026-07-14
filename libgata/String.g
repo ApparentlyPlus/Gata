@@ -11,6 +11,10 @@ import Char;
 import Mem;
 import List;
 
+// @builtin(String) lets the compiler resolve String as a first-class type from
+// this declaration instead of hardcoding the name "String" throughout the semantic
+// layer - see SymbolTable.BuiltinTypes / ResolveBuiltinType.
+@builtin(String)
 class String {
     char* data;
     usize length;
@@ -36,6 +40,15 @@ class String {
         if (i < 0 || i >= self.Length()) { return '\0'; }
         unsafe { return self.data[i]; }
     }
+
+    // `str[i]` sugar for CharAt — read-only, same as List/Map's operator[]. There is
+    // deliberately no operator[]=: a "..." literal is a single STATIC String instance
+    // (see GATA_STRLIT at the bottom of this file), so every variable holding that
+    // literal aliases the same buffer — in-place mutation would corrupt it for every
+    // other alias, not just the one you meant to change. Build text with
+    // StringBuilder and call ToString() when you're done, the same split as C#'s
+    // String/StringBuilder.
+    operator func [](int i) -> char { return self.CharAt(i); }
 
     public bool func Equals(String other) {
         if (other == null) { return false; }
@@ -300,6 +313,11 @@ class String {
     public String func Concat(String other) { return self + other; }
     public String func ToString() { return self; }
 
+    // Bound to the stringify_char role: interpolating/concatenating a char routes
+    // here instead of stringify_int, so it prints the character, not its codepoint.
+    // Lives here rather than as a Char.g wrapper because it pokes data/length
+    // directly, which are private to String.
+    @intrinsic(stringify_char)
     public static String func FromChar(char c) {
         let r = new String();
         unsafe {
@@ -346,18 +364,6 @@ class StringBuilder {
     func _init() { self.data = null; self.length = 0; self.cap = 0; }
     func _deinit() { if (self.data != null) { free(self.data); } }
 
-    void func Grow(int need) {
-        let nc = self.cap * 2;
-        if (nc == 0) { nc = 16; }
-        while (nc < need) { nc = nc * 2; }
-        unsafe {
-            let nd = alloc(nc as usize) as char*;
-            if (self.data != null) { Mem.Copy(nd, self.data, self.length as usize); free(self.data); }
-            self.data = nd;
-        }
-        self.cap = nc;
-    }
-
     public int func Length() { return self.length; }
     public int func Capacity() { return self.cap; }
     public void func Reserve(int n) { if (n > self.cap) { self.Grow(n); } }
@@ -383,6 +389,18 @@ class StringBuilder {
 
     public String func ToString() {
         unsafe { return String.FromBuffer(self.data, self.length); }
+    }
+
+    void func Grow(int need) {
+        let nc = self.cap * 2;
+        if (nc == 0) { nc = 16; }
+        while (nc < need) { nc = nc * 2; }
+        unsafe {
+            let nd = alloc(nc as usize) as char*;
+            if (self.data != null) { Mem.Copy(nd, self.data, self.length as usize); free(self.data); }
+            self.data = nd;
+        }
+        self.cap = nc;
     }
 }
 

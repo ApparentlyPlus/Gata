@@ -27,55 +27,10 @@ class PriorityQueue[T] {
         }
     }
 
-    void func Grow(int need) {
-        let nc = self.cap * 2;
-        if (nc == 0) { nc = 8; }
-        while (nc < need) { nc = nc * 2; }
-        unsafe {
-            let nd = alloc((nc as usize) * sizeof(T)) as T*;
-            let i = 0;
-            while (i < self.length) { nd[i] = self.data[i]; i = i + 1; }
-            if (self.data != null) { free(self.data); }
-            self.data = nd;
-        }
-        self.cap = nc;
-    }
-
     public int func Length() { return self.length; }
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
     public void func Reserve(int n) { if (n > self.cap) { self.Grow(n); } }
-
-    void func SiftUp(int i) {
-        unsafe {
-            while (i > 0) {
-                let parent = (i - 1) / 2;
-                if (self.data[i] < self.data[parent]) {
-                    let tmp = self.data[i];
-                    self.data[i] = self.data[parent];
-                    self.data[parent] = tmp;
-                    i = parent;
-                } else { return; }
-            }
-        }
-    }
-
-    void func SiftDown(int i) {
-        unsafe {
-            while (true) {
-                let l = i * 2 + 1;
-                let r = i * 2 + 2;
-                let smallest = i;
-                if (l < self.length && self.data[l] < self.data[smallest]) { smallest = l; }
-                if (r < self.length && self.data[r] < self.data[smallest]) { smallest = r; }
-                if (smallest == i) { return; }
-                let tmp = self.data[i];
-                self.data[i] = self.data[smallest];
-                self.data[smallest] = tmp;
-                i = smallest;
-            }
-        }
-    }
 
     public void func Push(T v) {
         if (self.length >= self.cap) { self.Grow(self.length + 1); }
@@ -125,5 +80,50 @@ class PriorityQueue[T] {
             while (i < self.length) { release(self.data[i]); i = i + 1; }
         }
         self.length = 0;
+    }
+
+    void func Grow(int need) {
+        let nc = self.cap * 2;
+        if (nc == 0) { nc = 8; }
+        while (nc < need) { nc = nc * 2; }
+        unsafe {
+            let nd = alloc((nc as usize) * sizeof(T)) as T*;
+            let i = 0;
+            while (i < self.length) { nd[i] = self.data[i]; i = i + 1; }
+            if (self.data != null) { free(self.data); }
+            self.data = nd;
+        }
+        self.cap = nc;
+    }
+
+    void func SiftUp(int i) {
+        unsafe {
+            while (i > 0) {
+                let parent = (i - 1) / 2;
+                if (self.data[i] < self.data[parent]) {
+                    let tmp = self.data[i];
+                    self.data[i] = self.data[parent];
+                    self.data[parent] = tmp;
+                    i = parent;
+                } else { return; }
+            }
+        }
+    }
+
+    void func SiftDown(int i) {
+        unsafe {
+            while (true) {
+                let l = i * 2 + 1;
+                let r = i * 2 + 2;
+                let smallest = i;
+                if (l < self.length && self.data[l] < self.data[smallest]) { smallest = l; }
+                if (r < self.length && self.data[r] < self.data[smallest]) { smallest = r; }
+                if (smallest == i) { return; }
+                let tmp = self.data[i];
+                self.data[i] = self.data[smallest];
+                self.data[smallest] = tmp;
+                i = smallest;
+            }
+        }
     }
 }

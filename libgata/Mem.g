@@ -7,6 +7,7 @@
 // builds on instead of a C memcpy/strlen, so they are visible to the type checker,
 // ARC, and DCE rather than being a native blind spot.
 
+@intrinsic(env_alloc)
 @extern func _env_alloc(usize n) -> void*;
 @extern func _env_free(void* p) -> void;
 

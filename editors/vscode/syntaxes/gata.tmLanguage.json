@@ -241,7 +241,7 @@
     "storageKeywords": {
       "comment": "Declaration/storage keywords — the same bucket real C# colors for class/struct/static/var (Dark+'s 'storage'/'storage.type' scope): they declare shape, they don't transfer control. Includes the realm/topology and native/fields keywords too — Dark+ has no equivalent category for those.",
       "name": "keyword.control.gata",
-      "match": "\\b(class|enum|union|module|func|static|public|private|operator|as|ref|sizeof|let|kernel|user|process|Process|thread|Thread|foreground|background|entry)\\b"
+      "match": "\\b(class|enum|union|module|func|static|public|private|operator|as|ref|sizeof|let|kernel|user|process|thread|foreground|background|entry)\\b"
     },
 
     "controlFlowKeywords": {

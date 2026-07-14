@@ -30,22 +30,6 @@ class List[T] {
         }
     }
 
-    // Doubles capacity (from 8) until at least `need`; raw move, no retains (the
-    // pointer relocates, ownership doesn't change).
-    void func Grow(int need) {
-        let nc = self.cap * 2;
-        if (nc == 0) { nc = 8; }
-        while (nc < need) { nc = nc * 2; }
-        unsafe {
-            let nd = alloc((nc as usize) * sizeof(T)) as T*;
-            let i = 0;
-            while (i < self.length) { nd[i] = self.data[i]; i = i + 1; }
-            if (self.data != null) { free(self.data); }
-            self.data = nd;
-        }
-        self.cap = nc;
-    }
-
     public int func Length() { return self.length; }
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
@@ -148,4 +132,20 @@ class List[T] {
     }
 
     public bool func Contains(T v) { return self.IndexOf(v) >= 0; }
+
+    // Doubles capacity (from 8) until at least `need`; raw move, no retains (the
+    // pointer relocates, ownership doesn't change).
+    void func Grow(int need) {
+        let nc = self.cap * 2;
+        if (nc == 0) { nc = 8; }
+        while (nc < need) { nc = nc * 2; }
+        unsafe {
+            let nd = alloc((nc as usize) * sizeof(T)) as T*;
+            let i = 0;
+            while (i < self.length) { nd[i] = self.data[i]; i = i + 1; }
+            if (self.data != null) { free(self.data); }
+            self.data = nd;
+        }
+        self.cap = nc;
+    }
 }

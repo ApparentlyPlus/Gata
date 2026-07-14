@@ -53,5 +53,5 @@
     static inline void  _env_exit(void)        { exit(0); }
     static inline void  _env_dbg(const char* m) { printf("[DEBUG] %s\n", m); }
 
-    #include "gata_shared.h"
+    #include "shared.h"
 }

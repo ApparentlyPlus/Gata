@@ -28,21 +28,6 @@ class Queue[T] {
         }
     }
 
-    void func Grow(int need) {
-        let nc = self.cap * 2;
-        if (nc == 0) { nc = 8; }
-        while (nc < need) { nc = nc * 2; }
-        unsafe {
-            let nd = alloc((nc as usize) * sizeof(T)) as T*;
-            let i = 0;
-            while (i < self.count) { nd[i] = self.data[(self.head + i) % self.cap]; i = i + 1; }
-            if (self.data != null) { free(self.data); }
-            self.data = nd;
-        }
-        self.cap = nc;
-        self.head = 0;
-    }
-
     public int func Length() { return self.count; }
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
@@ -90,5 +75,20 @@ class Queue[T] {
         }
         self.head = 0;
         self.count = 0;
+    }
+
+    void func Grow(int need) {
+        let nc = self.cap * 2;
+        if (nc == 0) { nc = 8; }
+        while (nc < need) { nc = nc * 2; }
+        unsafe {
+            let nd = alloc((nc as usize) * sizeof(T)) as T*;
+            let i = 0;
+            while (i < self.count) { nd[i] = self.data[(self.head + i) % self.cap]; i = i + 1; }
+            if (self.data != null) { free(self.data); }
+            self.data = nd;
+        }
+        self.cap = nc;
+        self.head = 0;
     }
 }

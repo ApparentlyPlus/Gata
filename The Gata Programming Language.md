@@ -1042,12 +1042,13 @@ The environment declares which realms a build has by wrapping each `native { }` 
 @preamble(boot)   native { /* raw C, after every Gata function, kernel_main lives here */ }
 ```
 
-These annotation blocks dictate what raw C code to emit at the boundaries of each realm in a Gata project. If a `@preamble` target for a realm is omitted in the environment file, then that realm is not transpiled at all. However, this does not relax the structural syntax rules of Gata: **every** Gata build (including Hosted target builds which have no kernel realm) still requires exactly one `kernel { }` block with exactly one `entry func` to define the primary boot entry point. 
+These annotation blocks dictate what raw C code to emit at the boundaries of each realm in a Gata project. If a `@preamble` target for a realm is omitted in the environment file, then that realm is not transpiled at all, and the build's structural syntax rules follow suit:
 
-Reminder that while only one `kernel { }` block is allowed per program, multiple non-contiguous `user { }` blocks are permitted.
+- A **GatOS** build requires exactly one `kernel { }` block with exactly one `entry func` to define the primary boot entry point. Multiple non-contiguous `user { }` blocks are permitted.
+- A **Hosted** build must not contain any `kernel { }` block at all (it's a hard error), and requires exactly one `user { }` block with exactly one `entry func` - this becomes the program's `int main()`.
 
 During compilation, the compiler structures the translation units as follows:
-- `@preamble(kernel)` is emitted at the very top of the kernel translation unit (`kmain.c`). The environment file must manually include `#include "gata_shared.h"` at the end of this block to expose Gata's generated class and type structures to the rest of the preamble.
+- `@preamble(kernel)` is emitted at the very top of the kernel translation unit (`kmain.c`). The environment file must manually include `#include "shared.h"` at the end of this block to expose Gata's generated class and type structures to the rest of the preamble.
 - `@preamble(user)` is emitted the same way at the top of the user translation unit (`uproc.c` or `program.c`).
 - `@preamble(boot)` is emitted at the very end of the kernel translation unit (`kmain.c`), following all Gata-generated types and function definitions. This is where boot sequencing (`kernel_main()`) and final assembly live, and is GatOS-only.
 
@@ -1151,7 +1152,7 @@ native {
 
 @extern Process func make_handle();
 ```
-*(Note: `Process` and `Thread` are special opaque handle type names that compile to `void*` under the hood).*
+*(Note: `Process` and `Thread` are ordinary type names, not reserved words - they resolve to opaque handle types that compile to `void*` under the hood because `libgata`'s `Sys.g` declares them with `@builtin(Process)`/`@builtin(Thread)`, the same mechanism `@intrinsic` uses for compiler roles, just for types instead of functions).*
 
 ### Binding Compiler Intrinsic Roles (`@intrinsic`)
 The compiler generates code that relies on standard operations (such as reference counting or string interpolation formatting) but does not hardcode their names. The `@intrinsic(role)` attribute allows the standard library (`libgata`) to bind standard functions to compiler-internal roles:
@@ -1165,6 +1166,17 @@ void* func retain(void* p) native {
 
 >[!CAUTION]
 > None of the above utilities should be used without very good reason. For 99% of cases, you don't even need to know what each one does.
+
+### Binding Compiler Builtin Types (`@builtin`)
+The same problem exists for a handful of *types* the compiler treats specially (`String`, `Process`, `Thread`): rather than hardcoding their names, the compiler resolves them from whichever class or `native type` declaration in `libgata` carries `@builtin(name)`:
+
+```go
+@builtin(String)
+class String { /* ... */ }
+
+@builtin(Process)
+native type Process { void* _opaque; }
+```
 
 ### Preventing Optimization Loss (`@keep`)
 Gata runs optimizations like **dead-code elimination (DCE)** and **symbol renaming** before emitting code. Because these passes cannot parse the contents of raw C blocks, they won't realize if a Gata function or class is only referenced by name inside a `native { }` block or externally.
@@ -1317,7 +1329,7 @@ Every error and warning `appa` produces carries a stable code, so you can search
 Reserved words. These cannot be used as identifiers:
 
 ```
-import kernel user Process process Thread thread foreground background
+import kernel user process thread foreground background
 class enum union module func static public private entry throws operator
 as fields ref return if else while for in switch case break continue
 debug panic try catch new let null unsafe throw sizeof default match defer
@@ -1325,10 +1337,10 @@ bool int char float double short void int64 uint uint64 ushort byte sbyte
 usize uintptr true false
 ```
 
-Annotation keywords, lexed as one `@word` token, are the only five recognized spellings. Any other `@word` is a lex error:
+Annotation keywords, lexed as one `@word` token, are the only six recognized spellings. Any other `@word` is a lex error:
 
 ```
-@intrinsic @preamble @extern @environment @keep
+@intrinsic @preamble @extern @environment @keep @builtin
 ```
 
 And the operator precedence table, from lowest to highest precedence:

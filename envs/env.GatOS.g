@@ -4,8 +4,8 @@
 // Please DO NOT MODIFY THIS FILE unless you really know what you are doing.
 //
 // The realms a build emits are inferred from the @preamble targets present here:
-//   @preamble(kernel) — kernel translation unit, before #include "gata_shared.h"
-//   @preamble(user)   — user translation unit, before #include "gata_shared.h"
+//   @preamble(kernel) — kernel translation unit, before #include "shared.h"
+//   @preamble(user)   — user translation unit, before #include "shared.h"
 //   @preamble(boot)   — kernel translation unit, after all functions (kernel_main)
 @environment
 
@@ -59,7 +59,17 @@
     }
     static inline void  _env_tty_clear(void)   { console_clear(CONSOLE_COLOR_BLACK); }
     static inline void  _env_tty_cursor(int v) { console_enable_cursor(v); }
-    static inline long  _env_tty_dims(void)    { return ((long)console_get_height() << 32) | (long)console_get_width(); }
+    // Match the user-realm TTY_CTRL_GET_DIMS syscall (kernel/sys/syscall.c), which
+    // reports content height (total rows minus the sticky header) rather than raw
+    // console_get_height() — a foreground user process's tty gets a non-zero
+    // header_rows (see process_create's tty_header_init call), so without this the
+    // same Gata program would see a taller screen in the kernel realm than in the
+    // user realm it's actually meant to run in.
+    static inline long  _env_tty_dims(void) {
+        extern tty_t* volatile active_tty;
+        size_t header_rows = (active_tty && active_tty->console) ? active_tty->console->header_rows : 0;
+        return ((long)(console_get_height() - header_rows) << 32) | (long)console_get_width();
+    }
     static inline void  _env_tty_color(int fg, int bg) { console_set_color((uint8_t)fg, (uint8_t)bg); }
     static inline void  _env_yield(void)       { sched_yield(); }
     static inline void  _env_sleep(int ms)     { sched_sleep((uint64_t)(ms < 0 ? 0 : ms)); }
@@ -76,7 +86,7 @@
     }
     #endif
 
-    #include "gata_shared.h"
+    #include "shared.h"
 
     static uint8_t multiboot_buffer[8 * 1024];
 }
@@ -121,7 +131,7 @@
         u_debug_write("\n", 1);
     }
 
-    #include "gata_shared.h"
+    #include "shared.h"
 }
 
 @preamble(boot) native {

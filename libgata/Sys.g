@@ -8,6 +8,34 @@
 @extern func _env_sleep(int ms) -> void;
 @extern func _env_exit() -> void;
 
+// debug/panic statements and the process/thread launcher have no Gata-level call
+// site of their own - the compiler emits calls to these directly. Declaring them
+// here just so their C name is a role binding (@intrinsic), not a literal the
+// compiler hardcodes; nothing in libgata calls them.
+@intrinsic(env_debug)
+@extern func _env_dbg(char* msg) -> void;
+@intrinsic(env_panic)
+@extern func _env_panic(char* msg) -> void;
+@intrinsic(env_proc_create)
+@extern func _env_proc_create(char* name) -> void*;
+@intrinsic(env_proc_hide)
+@extern func _env_proc_hide(void* proc) -> void;
+@intrinsic(env_thread_spawn)
+@extern func _env_thread_spawn(void* proc, char* name, func(void*) -> void entryFn, int is_user) -> void;
+
+// Process/Thread are opaque handle types with no Gata-visible fields - the compiler
+// resolves them to a bare pointer (see SymbolTable.ResolveBuiltinType), same as
+// before, but now driven by this declaration instead of two hardcoded type names.
+@builtin(Process)
+native type Process {
+    void* _opaque;
+}
+
+@builtin(Thread)
+native type Thread {
+    void* _opaque;
+}
+
 module Sys {
     // Voluntarily give up the CPU to other threads.
     public void func Yield() {
