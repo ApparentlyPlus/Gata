@@ -137,8 +137,8 @@ class Map[K, V] {
         throw;
     }
 
-    operator func [](K key) -> V { return self.Get(key); }
-    operator func []=(K key, V value) { self.Put(key, value); }
+    public operator V func [](K key) { return self.Get(key); }
+    public operator func []=(K key, V value) { self.Put(key, value); }
 
     public bool func Has(K key) {
         if (self.cap == 0) { return false; }
@@ -356,8 +356,8 @@ class StringMap[V] {
         throw;
     }
 
-    operator func [](String key) -> V { return self.Get(key); }
-    operator func []=(String key, V value) { self.Put(key, value); }
+    public operator V func [](String key) { return self.Get(key); }
+    public operator func []=(String key, V value) { self.Put(key, value); }
 
     public bool func Has(String key) {
         if (self.cap == 0 || key == null) { return false; }

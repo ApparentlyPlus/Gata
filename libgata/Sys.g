@@ -4,24 +4,24 @@
 // per-realm behaviour (scheduler vs. syscalls; exit is a no-op in the kernel) lives
 // in the wrappers, so this file is target-agnostic.
 
-@extern func _env_yield() -> void;
-@extern func _env_sleep(int ms) -> void;
-@extern func _env_exit() -> void;
+@extern void func _env_yield();
+@extern void func _env_sleep(int ms);
+@extern void func _env_exit();
 
 // debug/panic statements and the process/thread launcher have no Gata-level call
 // site of their own - the compiler emits calls to these directly. Declaring them
 // here just so their C name is a role binding (@intrinsic), not a literal the
 // compiler hardcodes; nothing in libgata calls them.
 @intrinsic(env_debug)
-@extern func _env_dbg(char* msg) -> void;
+@extern void func _env_dbg(char* msg);
 @intrinsic(env_panic)
-@extern func _env_panic(char* msg) -> void;
+@extern void func _env_panic(char* msg);
 @intrinsic(env_proc_create)
-@extern func _env_proc_create(char* name) -> void*;
+@extern void* func _env_proc_create(char* name);
 @intrinsic(env_proc_hide)
-@extern func _env_proc_hide(void* proc) -> void;
+@extern void func _env_proc_hide(void* proc);
 @intrinsic(env_thread_spawn)
-@extern func _env_thread_spawn(void* proc, char* name, func(void*) -> void entryFn, int is_user) -> void;
+@extern void func _env_thread_spawn(void* proc, char* name, func(void*) -> void entryFn, int is_user);
 
 // Process/Thread are opaque handle types with no Gata-visible fields - the compiler
 // resolves them to a bare pointer (see SymbolTable.ResolveBuiltinType), same as

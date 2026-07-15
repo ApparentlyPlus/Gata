@@ -48,7 +48,7 @@ class String {
     // other alias, not just the one you meant to change. Build text with
     // StringBuilder and call ToString() when you're done, the same split as C#'s
     // String/StringBuilder.
-    operator func [](int i) -> char { return self.CharAt(i); }
+    public operator char func [](int i) { return self.CharAt(i); }
 
     public bool func Equals(String other) {
         if (other == null) { return false; }
@@ -75,10 +75,10 @@ class String {
         return n - m;
     }
 
-    operator func <  (String other) -> bool { return self.CompareTo(other) < 0; }
-    operator func >  (String other) -> bool { return self.CompareTo(other) > 0; }
-    operator func <= (String other) -> bool { return self.CompareTo(other) <= 0; }
-    operator func >= (String other) -> bool { return self.CompareTo(other) >= 0; }
+    public operator bool func <  (String other) { return self.CompareTo(other) < 0; }
+    public operator bool func >  (String other) { return self.CompareTo(other) > 0; }
+    public operator bool func <= (String other) { return self.CompareTo(other) <= 0; }
+    public operator bool func >= (String other) { return self.CompareTo(other) >= 0; }
 
     public bool func StartsWith(String prefix) {
         if (prefix == null) { return false; }
@@ -293,7 +293,7 @@ class String {
 
     // Backs `+` and string interpolation (the non-String side is stringified first
     // by the front-end, so this always receives two Strings).
-    operator func +(String other) -> String {
+    public operator String func +(String other) {
         let r = new String();
         unsafe {
             let la = 0;
@@ -360,8 +360,8 @@ class String {
     // conversion on. They delegate rather than duplicate: the @intrinsic(stringify_char) binding
     // stays on FromChar itself, since that's what `+`/interpolation call directly, and FromChar
     // is still there to call by name if you don't want cast syntax.
-    operator func as(char c) -> String { return String.FromChar(c); }
-    operator func as(char* raw) -> String { return String.FromRaw(raw); }
+    public operator String func as(char c) { return String.FromChar(c); }
+    public operator String func as(char* raw) { return String.FromRaw(raw); }
 }
 
 // Growable text buffer for hot-loop string building — a chain of `+` is O(n^2)

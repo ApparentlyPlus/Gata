@@ -14,7 +14,7 @@ import String;
 // The one general formatter. `kind` selects how `bits` is reinterpreted before it
 // reaches snprintf: 0 signed (long long), 1 unsigned (unsigned long long), 2 double,
 // 3 C string (char*).
-@extern func _env_format(char* buf, usize n, char* fmt, int kind, uint64 bits) -> int;
+@extern int func _env_format(char* buf, usize n, char* fmt, int kind, uint64 bits);
 
 module Format {
     // Default decimal text for `v` (the "%g" general form). Bound to stringify_float,

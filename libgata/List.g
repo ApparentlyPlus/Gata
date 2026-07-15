@@ -53,8 +53,8 @@ class List[T] {
         }
     }
 
-    operator func [](int i) -> T { return self.Get(i); }
-    operator func []=(int i, T v) { self.Set(i, v); }
+    public operator T func [](int i) { return self.Get(i); }
+    public operator func []=(int i, T v) { self.Set(i, v); }
 
     public T func First() { return self.Get(0); }
     public T func Last() { return self.Get(self.Length() - 1); }

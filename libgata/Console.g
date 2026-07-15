@@ -7,13 +7,13 @@
 import String;
 import Int;
 
-@extern func _env_write(char* data, int len) -> void;
+@extern void func _env_write(char* data, int len);
 @intrinsic(env_read)
-@extern func _env_read(char* buf, int max) -> int;
-@extern func _env_tty_clear() -> void;
-@extern func _env_tty_cursor(int visible) -> void;
-@extern func _env_tty_dims() -> int64;
-@extern func _env_tty_color(int fg, int bg) -> void;
+@extern int func _env_read(char* buf, int max);
+@extern void func _env_tty_clear();
+@extern void func _env_tty_cursor(int visible);
+@extern int64 func _env_tty_dims();
+@extern void func _env_tty_color(int fg, int bg);
 
 module Console {
     // No trailing newline.

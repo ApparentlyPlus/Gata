@@ -8,8 +8,8 @@
 // ARC, and DCE rather than being a native blind spot.
 
 @intrinsic(env_alloc)
-@extern func _env_alloc(usize n) -> void*;
-@extern func _env_free(void* p) -> void;
+@extern void* func _env_alloc(usize n);
+@extern void func _env_free(void* p);
 
 // Allocate `n` bytes of raw, uninitialised memory. Bound to the alloc role: the
 // compiler emits a call to this for every managed-object allocation.

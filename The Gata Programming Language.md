@@ -628,9 +628,12 @@ There's no dedicated `new`/`init` keyword distinct from a regular method — a c
 class Point {
     int x;
     int y = 0;          // with initializer
+    w = 0;              // type inferred from the literal initializer, like 'let'
     public int z;       // public field — visible from outside the class (Chapter 11)
 }
 ```
+
+Field-type inference is limited to literal initializers (`5`, `-1.5`, `true`, `'x'`, `"..."`) — a field's type has to be known before any expression is resolved, so a computed initializer needs an explicit type.
 
 `self` refers to the receiver inside an instance method; `static` methods have no `self` and are called as `ClassName.Method(...)` rather than through an instance:
 
@@ -680,7 +683,7 @@ a.Balance();      // OK — public
 a.balance;        // error: balance is private to Account
 ```
 
-Two things are exempt from this check entirely: constructors (`new C(...)`, which never resolve via member access) and operators (`a + b`, which dispatch structurally by operand types rather than by name lookup — see Chapter 12).
+One thing is exempt from this check entirely: constructors (`new C(...)`, which never resolve via member access). Operators follow the same private-by-default rule as every other member — see Chapter 12.
 
 Free functions, introduced back in Chapter 6, work under a different, unrelated mechanism worth restating here since it's easy to assume the same rules apply: `public` on a free function is a no-op (already maximally visible), `private` is file-scoped name mangling rather than class-boundary control, and `static` on a free function is a hard error — a free function is never an instance member, so "static" is a category error there, not a redundant spelling.
 
@@ -696,16 +699,18 @@ class Box {
     func _init(int x) { self.v = x; }
     public int func Val() { return self.v; }
 
-    operator func +(Box o)  -> Box  { return new Box(self.v + o.v); }
-    operator func -(Box o)  -> Box  { return new Box(self.v - o.v); }
-    operator func ==(Box o) -> bool { return self.v == o.v; }
-    operator func !=(Box o) -> bool { return self.v != o.v; }
-    operator func &(Box o)  -> Box  { return new Box(self.v & o.v); }
-    operator func <<(int n) -> Box  { return new Box(self.v << n); }
+    public operator Box  func +(Box o)  { return new Box(self.v + o.v); }
+    public operator Box  func -(Box o)  { return new Box(self.v - o.v); }
+    public operator bool func ==(Box o) { return self.v == o.v; }
+    public operator Box  func &(Box o)  { return new Box(self.v & o.v); }
+    public operator Box  func <<(int n) { return new Box(self.v << n); }
+    public operator Box  func -()       { return new Box(-self.v); }   // unary minus
+    public operator func ++()           { self.v = self.v + 1; }       // postfix ++, mutates self
 }
 
 let Box a = new Box(12);
 let bool eq = (a == new Box(12));   // dispatches to operator ==, NOT pointer identity
+let bool ne = (a != new Box(12));   // derived automatically as !(a == ...) when != isn't declared
 ```
 
 Operators are declared as class members only — never on modules, and never as free functions. The `[]`/`[]=` pair overloads `obj[index]` for reading and `obj[index] = value` for writing, separately, and a get-only indexer (declaring `[]` without `[]=`) is legal and common:
@@ -713,8 +718,8 @@ Operators are declared as class members only — never on modules, and never as 
 ```go
 class List[T] {
     // ...
-    operator func [](int i) -> T { return self.Get(i); }
-    operator func []=(int i, T v) { self.Set(i, v); }
+    public operator T func [](int i) { return self.Get(i); }
+    public operator func []=(int i, T v) { self.Set(i, v); }
 }
 
 let List[int] xs = new List[int]();
@@ -724,7 +729,14 @@ let int v = xs[0];  // operator []
 
 There's no separate way to *declare* `+=`/`&=`/etc.: defining the matching binary operator (`+`, `&`, ...) is what makes the corresponding compound-assignment form work, since `x += y` always desugars to `x = x + y` (Chapter 7). 
 
-A few restrictions apply across the board: the return type on an operator declaration may be omitted, in which case it defaults to the declaring class itself (or `void` for `[]=`), and `%`, unary operators, and any symbol outside the fixed operator list are not overloadable. The full list is in the Chapter 30 appendix.
+The return type goes between `operator` and `func`, mirroring how every other function leads with its type (`->` is reserved for function-pointer *types*, like `func(int) -> int`). It may be omitted, in which case it defaults to the declaring class itself, except: comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`) and `!` default to (and must return) `bool`, and `[]=`, `++`, and `--` default to (and must return) `void`.
+
+A few more rules apply across the board:
+
+- **Operators are members**, and follow the same visibility rule as every other member: private by default, `public` to be usable from outside the declaring class.
+- **`==` and `!=` stay consistent**: declaring either one derives the other as its negation. A class can declare both, but one spelling can never silently fall back to pointer identity while the other compares values.
+- **Unary and postfix forms** take no parameter — `self` is the operand. `!`, `~`, and unary `-` return a value; `++`/`--` mutate `self` in place and are statements, never expressions. Unary `-` (zero parameters) and binary `-` (one parameter) may coexist on one class.
+- `%` and any symbol outside the fixed operator list are not overloadable. The full list is in the Chapter 30 appendix.
 
 With classes, modules, visibility, and operators covered, the next part tackles writing code once and reusing it across types: generics.
 
