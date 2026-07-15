@@ -59,12 +59,6 @@
     }
     static inline void  _env_tty_clear(void)   { console_clear(CONSOLE_COLOR_BLACK); }
     static inline void  _env_tty_cursor(int v) { console_enable_cursor(v); }
-    // Match the user-realm TTY_CTRL_GET_DIMS syscall (kernel/sys/syscall.c), which
-    // reports content height (total rows minus the sticky header) rather than raw
-    // console_get_height() — a foreground user process's tty gets a non-zero
-    // header_rows (see process_create's tty_header_init call), so without this the
-    // same Gata program would see a taller screen in the kernel realm than in the
-    // user realm it's actually meant to run in.
     static inline long  _env_tty_dims(void) {
         size_t header_rows = 0;
         #ifdef GATA_CAP_THREADS
