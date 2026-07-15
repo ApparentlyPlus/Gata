@@ -51,6 +51,13 @@
     static inline void* _env_alloc(size_t n) { (void)n; return ((void*)0); }
     static inline void  _env_free(void* p)   { (void)p; }
     #endif
+    static inline int _env_format(char* buf, size_t n, char* fmt, int kind, uint64_t bits) {
+        union { uint64_t u; double d; } x; x.u = bits;
+        if (kind == 2) return ksnprintf(buf, n, fmt, x.d);
+        if (kind == 1) return ksnprintf(buf, n, fmt, (unsigned long long)bits);
+        if (kind == 3) return ksnprintf(buf, n, fmt, (const char*)(uintptr_t)bits);
+        return ksnprintf(buf, n, fmt, (long long)(int64_t)bits);
+    }
     static inline void  _env_write(const char* d, int n) { kprintf("%.*s", n, d); }
     static inline int   _env_read(char* buf, int max) {
         int i = 0, ch = -1;
