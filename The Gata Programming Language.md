@@ -186,7 +186,7 @@ By the end of this book, you will understand not only how to write Gata code, bu
 
 **Part IX: Reference**
 
-29. [Diagnostics Reference (G000–G043)](#29-diagnostics-reference-g000g043)
+29. [Diagnostics Reference (G000–G068)](#29-diagnostics-reference-g000g068)
 30. [Appendix: Keyword List & Operator Precedence](#30-appendix-keyword-list--operator-precedence)
 
 
@@ -267,6 +267,7 @@ import Collections;
 
 kernel {
     entry func Main() {
+        Misc.PrintBanner();
         Console.PrintLine("Hello from myos!");
     }
 }
@@ -281,6 +282,8 @@ user {
     }
 }
 ```
+
+(`Misc.PrintBanner()` draws the GatOS startup banner — a `libgata` nicety, not a requirement; delete the line and the banner is gone.)
 
 `appa build --run` takes this file, produces a bootable image, and boots it in QEMU. Try it! When QEMU boots, use `ALT+TAB` to cycle through consoles (one for each user process and one for each kernel process). In our example, we only have the kernel console and a userspace program console.
 
@@ -575,6 +578,8 @@ let int narrow = wide as int;        // narrowing, `as` required
 
 So `-x as int` parses as `(-x) as int`. The unary `-` grabs `x` first, since unary binds tighter than `as`, and `x.Field as int` parses as `(x.Field) as int`, since postfix `.Field` is resolved before `as` ever sees the expression. 
 
+`as` also isn't limited to the built-in numeric and pointer casts: a class can declare its own conversion *into* itself, which is how `42 as String` works. That's a conversion operator, covered with the rest of operator overloading in Chapter 12.
+
 >[!TIP]
 > The full precedence table for every operator is in the Chapter 30 appendix. You don't need to memorize it, just know it's there when something parses surprisingly.
 
@@ -594,7 +599,7 @@ xs[0] = 1             // operator []= (if declared) or array index assignment
 fn(args)              // call through any callable expression
 ```
 
-Gata also has one literal form you won't have seen in a plain C-family language: interpolated strings, `$"x = {x}"`. Each `{expr}` inside is evaluated, converted to `String`, and the whole literal becomes a chain of concatenations — there's no format-specifier syntax inside the braces (the `Format` module from Chapter 26 covers that case).
+Gata also has one literal form you won't have seen in a plain C-family language: interpolated strings, `$"x = {x}"`. Each `{expr}` inside is evaluated and converted to `String`; there's no format-specifier syntax inside the braces (the `Format` module from Chapter 26 covers that case). The compiler picks the cheapest lowering for the shape it sees: a literal with one piece is just that piece, two pieces become a single `+` concatenation, and three or more build the result through one `StringBuilder` — so a long interpolation costs one growable buffer rather than a fresh intermediate `String` per piece.
 
 ```go
 let int x = 5;
@@ -660,7 +665,7 @@ module Console {
 }
 ```
 
-A module is a namespace-like, implicitly-static container. It can't be instantiated (there's no `new Module()`) and every member is implicitly static; there's no `self`, since modules have no per-instance storage. Members are called as `Module.Func(args)`:
+A module is a namespace-like, implicitly-static container. It can't be instantiated (there's no `new Module()`) and every member is implicitly static; there's no `self`, since modules have no storage at all — declaring a field in a module is a compile error (G063), not just a convention. State belongs in a class. Members are called as `Module.Func(args)`:
 
 ```go
 Console.PrintLine("hello");   // module call: no receiver object
@@ -735,8 +740,28 @@ A few more rules apply across the board:
 
 - **Operators are members**, and follow the same visibility rule as every other member: private by default, `public` to be usable from outside the declaring class.
 - **`==` and `!=` stay consistent**: declaring either one derives the other as its negation. A class can declare both, but one spelling can never silently fall back to pointer identity while the other compares values.
+- **Comparing against the `null` literal never dispatches to an operator.** `x == null` and `null != x` always compile to a raw pointer-identity check, even when the class declares `operator ==`. This is what makes value equality safe to write at all: an `operator ==` body can open with `if (other == null) { return false; }` without recursing into itself, and a null check stays a one-instruction test rather than a method call. `libgata`'s `String` is the canonical case — `a == b` compares *contents*, `a == null` compares the pointer.
 - **Unary and postfix forms** take no parameter — `self` is the operand. `!`, `~`, and unary `-` return a value; `++`/`--` mutate `self` in place and are statements, never expressions. Unary `-` (zero parameters) and binary `-` (one parameter) may coexist on one class.
 - `%` and any symbol outside the fixed operator list are not overloadable. The full list is in the Chapter 30 appendix.
+
+### Conversion operators (`as`)
+
+The last overloadable "operator" isn't a symbol at all: a class can declare how to convert *other* types into itself, and `value as ClassName` invokes it. The declaration lives on the **destination** class, takes the source value as its one parameter, and returns an instance of the declaring class — it's a static factory in operator clothing, so there's no `self` involved:
+
+```go
+class String {
+    // ...
+    public operator String func as(char c)   { return String.FromChar(c); }
+    public operator String func as(int n)    { return Int.ToString(n); }
+    public operator String func as(double v) { return Format.Double(v); }
+    public operator String func as(bool b)   { return Bool.ToString(b); }
+}
+
+let String a = 42 as String;      // dispatches to as(int)
+let String b = true as String;    // dispatches to as(bool)
+```
+
+Resolution is deliberately simple: an `as` cast whose target type declares a conversion operator matching the operand's type dispatches there; otherwise the built-in numeric/enum/pointer cast rules from Chapters 5 and 8 apply unchanged. Conversions only ever point *inward* (a class converting other things to itself) and are never chained through a second conversion — converting a class *outward* to a primitive is what an ordinary named method is for.
 
 With classes, modules, visibility, and operators covered, the next part tackles writing code once and reusing it across types: generics.
 
@@ -1040,6 +1065,73 @@ The entry function takes no parameters and returns `void`. Under the hood, Gata 
 
 Underneath, a `process` maps to a genuine GatOS userspace process: its own address space, its own TTY handle if foreground, and a thread group. A `thread` maps to a real kernel-scheduled thread on GatOS, or a host OS thread on Hosted; an entry function is the thread's start routine, handed to the kernel's thread-creation machinery underneath, or the Hosted platform's thread-spawn equivalent. A process can of course have many threads, all sharing the same TTY.
 
+### Sharing State Between Threads
+
+Threads in one process share an address space, and the scheduler preempts them on timer interrupts — which means two threads touching the same data is both possible and, done naively, a genuine data race. `x = x + 1` compiles to a load, an add, and a store; preempt between the load and the store and another thread's update is silently overwritten. The compiler and CPU are also free to reorder plain memory accesses, so even "I set a flag, then you read it" is broken without explicit ordering.
+
+`libgata`'s `Sync` module (Chapter 26) is the floor for both problems: `AtomicInt`, a 64-bit counter whose every operation is a single indivisible instruction, and `SpinLock`, a test-and-set lock that yields the CPU between failed attempts so a contended lock doesn't starve its holder on a single core.
+
+That leaves one structural question: threads' entry functions take no parameters, and Gata deliberately has no global variables — so how do two threads reach the *same* `AtomicInt`? The idiomatic answer is a small native-static bridge (Chapter 24's `native { }` at the realm's top level): one thread creates the objects and publishes their pointers into file-scope C statics, the others read them back.
+
+```go
+user {
+    // The bridge: file-scope statics in this realm's translation unit. The
+    // release/acquire pair on g_ready makes the publication itself race-free —
+    // a thread that sees g_ready == 1 is guaranteed to see the pointers too.
+    native {
+        static void* g_hits;
+        static void* g_lk;
+        static volatile int g_ready;
+    }
+
+    void func Publish(AtomicInt hits, SpinLock lk) native {
+        g_hits = hits;
+        g_lk = lk;
+        __atomic_store_n(&g_ready, 1, __ATOMIC_RELEASE);
+    }
+    bool func Ready() native {
+        return __atomic_load_n(&g_ready, __ATOMIC_ACQUIRE) != 0;
+    }
+    AtomicInt func SharedHits() native { return g_hits; }
+    SpinLock func SharedLock() native { return g_lk; }
+
+    foreground process Demo {
+        thread Boss {
+            entry func Run() {
+                let AtomicInt hits = new AtomicInt();
+                let SpinLock lk = new SpinLock();
+                Publish(hits, lk);
+
+                // Boss's half of the count, racing the worker's half.
+                for (let int i = 0; i < 100000; i = i + 1) { hits.Increment(); }
+                while (hits.Get() < (200000 as int64)) { Sys.Yield(); }
+                Console.PrintLong(hits.Get());   // exactly 200000 — no lost updates
+                Console.NewLine();
+            }
+        }
+        thread Worker {
+            entry func Run() {
+                while (!Ready()) { Sys.Yield(); }
+                // unsafe = borrow, not own: ARC stays out of this block, and the
+                // Boss's locals keep the shared objects alive for the whole run.
+                unsafe {
+                    let AtomicInt hits = SharedHits();
+                    for (let int i = 0; i < 100000; i = i + 1) { hits.Increment(); }
+                }
+            }
+        }
+    }
+}
+```
+
+Both threads hammer the counter 100,000 times concurrently, and the printed total is exactly `200000` — with a plain `int`, preemption would eat some of those updates and the count would come up short. Three idioms in this shape are worth internalizing, because every threaded Gata program ends up using them:
+
+- **The publish/`Ready()` handshake.** The `__ATOMIC_RELEASE` store and `__ATOMIC_ACQUIRE` load pair guarantees a thread that observes the flag also observes everything written before it. Publish once, then never write the statics again.
+- **`unsafe` as borrow semantics.** The consuming thread reads the shared pointers back inside `unsafe`, which keeps the ownership pass (Chapter 17) from inserting retain/release for references it doesn't own — the publishing thread's locals hold the objects alive. Without this, the worker's scope exit would release a reference it never took.
+- **Atomics coordinate phases; locks protect invariants.** An `AtomicInt` is right for counters and done-flags — single-word facts. A `SpinLock` is right when a *multi-step* mutation has to appear indivisible: appending to a shared `List[T]`, for instance, is a length check, a possible grow, a store, and a length bump, and no atomic can cover all four — wrap it in `lk.Lock()` / `lk.Unlock()` instead.
+
+The same `Sync` types work in kernel-realm processes and on Hosted unchanged; only the yield underneath them differs (scheduler call, syscall, or host yield — Chapter 23's `_env_yield`).
+
 ## 23. The Environment: Platform Glue and Floor Binds
 
 Gata's language and standard library are platform-agnostic, meaning the same `Console.PrintLine` call works whether you're booting bare metal or running under Linux. But *something* has to actually implement "write these bytes to the screen" differently in each case. Rather than hiding that difference inside the compiler, Gata makes it an explicit, inspectable file you can open and read: the **environment**, `env.g`, first mentioned back in Chapter 3.
@@ -1075,16 +1167,19 @@ Inside those `native { }` blocks, the environment is responsible for defining a 
 | `_env_free(void*) -> void` | Heap free | `Mem.free`, ARC release |
 | `_env_write(const char*, int) -> void` | Raw byte-buffer output | `Console` |
 | `_env_read(char*, int) -> int` | Raw line input | `Console.InputLine` |
-| `_env_tty_clear() / _env_tty_cursor(int) / _env_tty_dims() -> int64` | TTY control | `Console` |
-| `_env_yield() -> void` | Cooperative yield | `Sys.yield` |
+| `_env_tty_clear() / _env_tty_cursor(int) / _env_tty_color(int, int) / _env_tty_dims() -> int64` | TTY control | `Console` |
+| `_env_yield() -> void` | Cooperative yield | `Sys.yield`, `SpinLock` backoff |
 | `_env_sleep(int) -> void` | Sleep | `Sys.sleep` |
 | `_env_exit() -> void` | Process exit (Hosted; no-op on a GatOS kernel) | `Sys.exit` |
+| `_env_time_ns() -> int64` | Monotonic nanoseconds since boot/start | `Time.Nanos`/`Time.Millis`, `Random`'s clock seeding |
 | `_env_dbg(const char*) -> void` | `debug` statement sink (Chapter 25) | `debug` |
 | `_env_panic(const char*) -> void` | `panic` statement sink (Chapter 25) | `panic` |
 | `_env_format(...)` | Numeric→string formatting | `Format`, `Int.ToString`, etc. |
 | `_env_proc_create`, `_env_proc_hide`, `_env_thread_spawn` | Process/thread spawning (kernel-only) | `process`/`thread` topology (Chapter 22) |
 
 Not every floor bind is required of every environment: `_env_panic` and the three process/thread binds are kernel-only, so a Hosted environment (which has no kernel realm) simply doesn't define them, and that's expected rather than a missing-floor-bind error.
+
+The floor binds are also what capability discovery (below) watches: reaching `_env_alloc` marks the build as needing the memory subsystem, `_env_read` the input subsystem, the process/thread binds the threading subsystem, and `_env_time_ns` the timer subsystem. On GatOS the timer subsystem rides on the interrupt machinery, so a program that calls `Time.Nanos()` — or just constructs a `new Random()`, which seeds from the clock — pulls timers into the build; a program that touches none of it pays for none of it.
 
 The two shipped environments are `envs/env.GatOS.g` and `envs/env.hosted.g`. You normally never edit them (they're the contract every `libgata` module is written against) and would only touch one if you were porting Gata to a genuinely new platform.
 
@@ -1094,7 +1189,7 @@ The rest of the `.gconf` manifest, beyond the basics from Chapter 3, is GatOS ou
 |---|---|---|---|
 | `OutputType` | `Framebuffer` \| `Serial` | `Framebuffer` | GatOS output device. |
 | `KeyboardSupport` | `Default` \| `External` \| `Hotplug` | `Default` | `Default` = PS/2 only, `External` = PS/2 + USB, `Hotplug` = PS/2 + USB + dynamic (re)detection. |
-| `CapabilityDiscovery` | `On` \| `Off` | `On` | `On` infers which kernel subsystems (memory, input, threading) the program actually needs by scanning what it calls, and only links those in. `Off` is the escape valve: assume every capability is needed — useful if raw C you've spliced in (via `native`, Chapter 24) calls into a subsystem the inference can't see. |
+| `CapabilityDiscovery` | `On` \| `Off` | `On` | `On` infers which kernel subsystems (memory, input, threading, time) the program actually needs by scanning what it calls, and only links those in. `Off` is the escape valve: assume every capability is needed — useful if raw C you've spliced in (via `native`, Chapter 24) calls into a subsystem the inference can't see. |
 
 Every value is parsed case-insensitively; an unrecognized value is a manifest error listing the accepted spellings.
 
@@ -1114,16 +1209,17 @@ native {
 }
 ```
 
-### Realm-Specific Splitting (`#kernel:` / `#user:`)
-Gata programs can split native text blocks between the kernel and user realms using `#kernel:` and `#user:` markers. This is useful when a function's implementation differs depending on whether it runs under kernel or user privilege:
+### Realm-Specific C (`kernel { }` / `user { }`)
+A native body is spliced verbatim into whichever translation unit(s) its declaration belongs to, so most native code needs nothing special — the same C text lands in every realm the declaration is visible from. When a function's implementation must genuinely differ by privilege level (a kernel build calling `kmalloc` where a user build calls `malloc`, say), give it a single Gata declaration and put a same-named C helper in each realm's own `native { }` block, nested inside `kernel { }` and `user { }` respectively (Chapter 22) — each such block is emitted only into its own translation unit — then have the one native method body call the helper:
 
 ```go
+kernel { native { void* platform_alloc(usize n) { return kmalloc(n); } } }
+user   { native { void* platform_alloc(usize n) { return malloc(n); } } }
+
 public void* func Alloc(usize n) native {
-    #kernel: return kmalloc(n);
-    #user:   return malloc(n);
+    return platform_alloc(n);
 }
 ```
-* **Fallback Behavior:** If only one of the markers is present, the compiler will use that single implementation as the fallback for both realms. If neither is present, the entire block is emitted unconditionally in both realms.
 
 ### Custom C Types (`native type`)
 If you need to declare a raw C struct or union that Gata's type system can interact with, use `native type Name { ... }`. The compiler registers `Name` as a valid type in Gata, and generates `struct gata_Name` in the emitted C code:
@@ -1136,23 +1232,19 @@ native type Handle {
 ```
 
 ### Class Backing Fields in C (`fields { }`)
-Sometimes a class needs to store low-level data structures that Gata types cannot easily represent. The `fields { ... }` block lets you declare raw C variables directly inside a class body. These C fields are merged into the generated C class structure and can be read/written inside `native` methods of that class:
+Sometimes a class needs to store low-level data structures that Gata types cannot easily represent. The `fields { ... }` block lets you declare raw C variables directly inside a class body — including C-only qualifiers like `volatile` that no Gata type can spell. These C fields are merged into the generated C class structure and can be read/written inside `native` methods of that class (a single native body is spliced into every realm the class is visible from):
 
 ```go
 class Box {
-    public int tag;         // A regular Gata-typed field
-    fields { int raw; }     // A raw C field merged into the class struct
+    public int tag;                  // A regular Gata-typed field
+    fields { volatile int raw; }     // A raw C field merged into the class struct
 
-    public void func SetRaw(int v) native { 
-        #kernel: self->raw = v; 
-        #user:   self->raw = v; 
-    }
-    public int func GetRaw() native { 
-        #kernel: return self->raw; 
-        #user:   return self->raw; 
-    }
+    public void func SetRaw(int v) native { self->raw = v; }
+    public int  func GetRaw() native { return self->raw; }
 }
 ```
+
+`libgata`'s `Sync` module (Chapter 26) is the flagship use of this feature: `SpinLock` and `AtomicInt` are each a `fields { }`-declared `volatile` word plus native methods over the compiler's atomic builtins — state whose type and operations live entirely below what the Gata type system models, wrapped in an ordinary Gata class.
 
 ### Referencing External Functions (`@extern`)
 If a C function is already defined elsewhere (such as in a `native` block, a static library, or a platform header), you can expose it to Gata using the `@extern` attribute followed by the function signature (no body is defined in Gata):
@@ -1213,7 +1305,9 @@ debug "reached checkpoint A";
 panic "heap corruption detected";
 ```
 
-- `debug "...";` requires the string to be a plain literal, not an interpolated string or arbitrary expression. It calls the environment's `_env_dbg` floor bind (Chapter 23) with the raw string; on GatOS this typically logs to the QEMU debug console, and on Hosted, typically prints to stderr/stdout depending on the environment's wiring. 
+- `debug "...";` requires the string to be a plain literal, not an interpolated string or arbitrary expression. It calls the environment's `_env_dbg` floor bind (Chapter 23) with the raw string. On GatOS each realm has its own debug serial channel — kernel `debug` statements land on the kernel debug console, user-realm ones on a separate userspace channel — and `appa build --run` captures both as files in your project: `artifacts/debug.log` (kernel, plus GatOS's own boot logging) and `artifacts/user-debug.log`. On Hosted it typically prints to stderr/stdout, depending on the environment's wiring.
+
+  Because `debug` takes only a literal, the working idiom for "log a computed value" is to assert in Gata and emit a fixed marker: `if (hits.Get() == (200000 as int64)) { debug "count-ok"; }`. A missing marker in the log *is* the failure report — grep-able, deterministic, and free of formatting code in the hot path.
 
 - `panic "...";` has the same literal-only restriction, calls `_env_panic` (Chapter 23), and is **kernel-only**. Using it from the `user` realm (Chapter 22) is a compile error, since a panic is fundamentally a privileged, machine-halting operation, not something a sandboxed user process should be able to trigger directly. On GatOS, the environment's `_env_panic` typically halts or reboots the system.
 
@@ -1228,20 +1322,24 @@ Everything you've seen so far — `Console.PrintLine`, `Int.ToString`, `List[T]`
 
 ## 26. The Standard Library: `libgata`
 
-`import LibGata;` pulls in the entire standard library at once: `Runtime`, `Mem`, `String`, `Char`, `Int`, `Math`, `Format`, `Console`, `Sys`, `Collections` (`List`/`Stack`/`Queue`/`Map`/`Set`/`PriorityQueue`), and `Algorithms`, in that dependency order.
+The standard library ships as two imports, and you've been writing both since Chapter 2. `import LibGata;` pulls in the core: `Runtime`, `Mem`, `String`, `Char`, `Int`, `Math`, `Format`, `Console`, `Sys`, `Time`, `Sync`, `Random`, and `Misc`, in that dependency order. `import Collections;` adds the generic container family and its algorithms on top. A program that uses no containers can skip the second import entirely.
 
-`libgata` is itself ordinary Gata, so there's no hidden compiler magic in it beyond the handful of `@intrinsic` bindings from Chapter 24. Its exact method names and signatures are still actively changing, so rather than print a table here that would go stale within a few releases, the full, current surface of every module is kept in a separate `libgata` reference document.
+`libgata` is itself ordinary Gata, so there's no hidden compiler magic in it beyond the handful of `@intrinsic`/`@builtin` bindings from Chapter 24. Its exact method names and signatures are still actively changing, so rather than print a table here that would go stale within a few releases, the full, current surface of every module is kept in a separate `libgata` reference document.
 
 In broad terms, here's what each module is for:
 
 - `Runtime`: the reference-counting runtime itself (the object header, retain/release, Chapter 17 and Chapter 24).
-- `Mem`: raw heap allocation and low-level buffer operations.
-- `String` and `Char`: the managed string type and character classification/conversion helpers.
+- `Mem`: raw heap allocation and low-level buffer operations — `Copy`, `Fill`, `Compare`, and the overlap-safe `Move`, all of which work word-at-a-time rather than byte-at-a-time on aligned data.
+- `String` and `Char`: the managed string type and character classification/conversion helpers. `String` declares content-comparing `==`/`!=` (null comparisons stay pointer identity, Chapter 12), conversion operators so `42 as String`/`true as String`/`2.5 as String` just work, and a growable `StringBuilder` companion that interpolation lowers onto (Chapter 8).
 - `Int`, `Math`, `Format`: numeric parsing/formatting and the usual math functions.
-- `Console`: console/TTY input and output.
+- `Console`: console/TTY input and output. Output is batched — one `Print` is one write to the environment, whatever the string's length.
 - `Sys`: yielding, sleeping, and process exit.
-- `Collections`: the generic container family, `List[T]`, `Stack[T]`, `Queue[T]`, `Map[K,V]`, `Set[T]`, `PriorityQueue[T]`.
-- `Algorithms`: free generic functions (sorting, searching, and the like) that operate over anything satisfying `operator <`, kept separate from the collection classes for the reason explained in Chapter 13.
+- `Time`: the monotonic clock — `Time.Nanos()` and `Time.Millis()` over the `_env_time_ns` floor bind (Chapter 23). On GatOS this is nanoseconds since boot; using it is what pulls the timer subsystem into the build.
+- `Sync`: the thread-synchronization floor — `SpinLock` and `AtomicInt`, built on `fields { }` and the compiler's atomic builtins so the same types work in kernel, user, and Hosted code. Chapter 22 shows the sharing pattern they exist for.
+- `Random`: a fast, statistically solid PRNG (`xoshiro256**`). `new Random()` seeds from the clock; `Reseed(seed)` gives a deterministic, reproducible sequence. Explicitly *not* for keys or tokens.
+- `Misc`: boot/startup niceties, like the `Misc.PrintBanner()` you met in Chapter 2.
+- `Collections`: the generic container family — `List[T]`, `Stack[T]`, `Queue[T]`, `Map[K,V]`/`StringMap[V]`, `Set[T]`/`StringSet`, `PriorityQueue[T]`.
+- `Algorithms`: free generic functions over the containers, kept separate from the collection classes for the reason explained in Chapter 13. `Sort`/`IsSorted`/`BinarySearch`/`Min`/`Max` are duck-typed over `operator <`; alongside them sits a comparator family — `SortBy`, `MinBy`, `MaxBy` — that takes a `func(T, T) -> bool` "less" function (Chapter 16), for ordering types with no `<` or ordering them differently.
 
 ## 27. The `appa` CLI in Depth
 
@@ -1264,8 +1362,8 @@ appa build [project|.gconf]     Build the project described by its .gconf
 | `--env <env.g>` | Override the discovered environment file (Chapter 23). Required with `--pure-transpile`. |
 | `--entry <file.g>` | Override the discovered entry source (default: `src/main.g`). Required with `--pure-transpile`. |
 | `--emit-sourcemap` | Write `sourcemap.json`, mapping the compiler's renamed internal symbols back to your original names — useful when reading the emitted C (see Chapter 28). |
-| `--run` | (GatOS only) Boot the produced ISO in QEMU after a successful build. |
-| `--headless` | (GatOS only) Run that QEMU instance without an SDL display. |
+| `--run` | (GatOS only) Boot the produced ISO in QEMU after a successful build, capturing the debug serial channels to `artifacts/debug.log` and `artifacts/user-debug.log` in the project directory (Chapter 25). |
+| `--headless` | (GatOS only) Run that QEMU instance without an SDL display. With `<OutputType>Serial</OutputType>`, the kernel's console output lands directly on your terminal — the standard setup for scripted boot tests. |
 | `--timeout=<Ns/m/h>` | (GatOS only) Kill the QEMU instance after the given duration, e.g. `--timeout=30s`. |
 
 Any uncaught internal compiler failure is reported as `internal compiler error: ...` rather than a raw stack trace; every *expected* failure (bad source, bad manifest, missing toolchain) goes through the diagnostics pipeline (Chapter 29) and exits cleanly on its own.
@@ -1285,7 +1383,7 @@ After that comes lowering: reference counting is inserted and `defer` actions ar
 
 The two chapters in this part are pure lookup tables — keep them bookmarked rather than read start to finish.
 
-## 29. Diagnostics Reference (G000–G043)
+## 29. Diagnostics Reference (G000–G068)
 
 Every error and warning `appa` produces carries a stable code, so you can search this table, or the source, for exactly what triggered it, rather than parsing prose alone. Codes are assigned sequentially in declaration order — there's no category-block numbering scheme, no "G0xx = structural" convention reserving room — a new diagnostic is simply the next integer.
 
@@ -1295,7 +1393,7 @@ Every error and warning `appa` produces carries a stable code, so you can search
 | G001 | DuplicateContext | More than one `kernel { }` block in the program. Multiple `user { }` blocks are allowed and don't trigger this (Ch. 22). |
 | G002 | MissingEntryPoint | No `entry func Main()` (kernel) or equivalent reachable entry point found (Ch. 3). |
 | G003 | DuplicateName | A name is redeclared in a scope where it already exists (Ch. 4). |
-| G004 | TypeMismatch | Incompatible types in an expression/statement position (also used for the `defer` control-flow restriction, Ch. 21). |
+| G004 | TypeMismatch | Incompatible types in an expression/statement position. |
 | G005 | UndefinedVariable | Reference to a name that doesn't resolve (Ch. 4). |
 | G006 | UndefinedMethod | Call to a method that doesn't exist on the receiver's type. |
 | G007 | UndefinedType | Reference to an unknown type name. |
@@ -1335,6 +1433,31 @@ Every error and warning `appa` produces carries a stable code, so you can search
 | G041 | WrongAnnotationKind | An annotation (`@intrinsic`, `@preamble`, `@keep`, ...) attached to a construct it can't apply to (Ch. 24). |
 | G042 | UnknownPreambleTarget | `@preamble(x)` where `x` isn't `kernel`, `user`, or `boot` (Ch. 24). |
 | G043 | ThreadModeNotAllowed | `foreground`/`background` in a `thread` instead of a `process` (Ch. 22). |
+| G044 | Syntax | The general parse error: any syntax problem without a more specific code below. |
+| G045 | AssignInExpr | Assignment used where an expression is required (e.g. `if (x = 1)`) — assignment is a statement in Gata (Ch. 7). |
+| G046 | UnterminatedLiteral | An unterminated string/char literal, block comment, `native { }` block, or `{` inside an interpolated string. |
+| G047 | BadEscape | An unrecognized `\x` escape in a string, char, or interpolated literal (Ch. 5). |
+| G048 | BadAnnotation | A malformed annotation: unknown `@word`, a missing/empty parenthesized argument, or an annotation on an operator (Ch. 24). |
+| G049 | BadNumber | A malformed numeric literal: `0x` with no digits, or an invalid character/suffix (Ch. 5). |
+| G050 | MissingLet | A statement that reads like a declaration without its `let` (Ch. 4). |
+| G051 | InvalidNesting | Disallowed nesting: `kernel`/`user` inside another context or a class, or a class/module inside a class (Ch. 9, Ch. 22). |
+| G052 | TrailingComma | A trailing comma after the last enum member, union variant, or field (Ch. 14, Ch. 15). |
+| G053 | BadDeclHeader | A malformed declaration header: return type written after the parameter list, `static` on an operator or field, a missing `process` keyword, and similar (Ch. 6). |
+| G054 | CannotInfer | Type inference has nothing to work with: `let x = null;`, a `void`-typed initializer, or a computed field initializer without an explicit type (Ch. 4, Ch. 9). |
+| G055 | KernelBlockInHosted | A `kernel { }` block (or an environment with a kernel preamble) in a Hosted build (Ch. 22, Ch. 23). |
+| G056 | MissingUserRealm | A Hosted build with no `user { }` block at all (Ch. 22). |
+| G057 | DuplicateUserRealm | More than one `user { }` block in a Hosted build, which allows exactly one (Ch. 22). |
+| G058 | MissingUserEntry | A Hosted build's `user { }` block declares no `entry func` (Ch. 22). |
+| G059 | DuplicateUserEntry | More than one `entry func` in a Hosted build's `user { }` block (Ch. 22). |
+| G060 | MissingProcessMode | A `process` without `foreground` or `background` (Ch. 22). |
+| G061 | BadEntrySignature | An `entry func` declared with parameters, a return type, or `throws` — it's invoked by the runtime, which passes nothing and receives nothing (Ch. 22). |
+| G062 | DeferTransfer | A `defer` body containing `return`/`break`/`continue` — a deferred action has no sensible control-flow target (Ch. 21). |
+| G063 | ModuleField | A field declared inside a `module` — modules are stateless; use a class for instance state (Ch. 10). |
+| G064 | MisplacedEnvironment | `@environment` anywhere other than the top level of a file (Ch. 23). |
+| G065 | ConflictingModifiers | A duplicated modifier, or `public` and `private` combined on one declaration (Ch. 11). |
+| G066 | BadThrowsReturnType | A `throws` function returning a pointer, array, or function-pointer type — supported `throws` returns are void, primitives, enums, unions, `String`, and classes (Ch. 20). |
+| G067 | LifecycleThrows | `_init` or `_deinit` declared `throws` — they're called by generated allocator/destructor code that can't receive a Result (Ch. 9, Ch. 20). |
+| G068 | EntryOutsideKernel | A free `entry func` inside a `user { }` block of a GatOS build — GatOS userspace entry points are the threads of a `process` (Ch. 22). |
 
 ## 30. Appendix: Keyword List & Operator Precedence
 
@@ -1354,6 +1477,8 @@ Annotation keywords, lexed as one `@word` token, are the only six recognized spe
 ```
 @intrinsic @preamble @extern @environment @keep @builtin
 ```
+
+`native` is contextual rather than reserved: it introduces raw-C blocks and function bodies (Chapter 24), but remains valid as an ordinary identifier everywhere else.
 
 And the operator precedence table, from lowest to highest precedence:
 
@@ -1375,3 +1500,5 @@ And the operator precedence table, from lowest to highest precedence:
 | 14 (highest) | `++` `--` `.` `[]` `()` (postfix) | left |
 
 `as` sits in an unusual position relative to most C-family languages: looser than the unary prefix operators but tighter than the multiplicative operators (`*`/`/`/`%`) below it, so `-x as int` parses as `(-x) as int`, and `x.Field as int` parses as `(x.Field) as int` (Chapter 8).
+
+Finally, the full overloadable-operator set (Chapter 12): binary `+` `-` `*` `/` `&` `|` `^` `<<` `>>`, comparisons `==` `!=` `<` `>` `<=` `>=`, unary `!` `~` `-`, postfix `++` `--`, the indexer pair `[]`/`[]=`, and the conversion form `as`. Notably absent: `%`, `&&`, `||`, and assignment — none of those are overloadable.

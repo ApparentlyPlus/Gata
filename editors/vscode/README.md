@@ -1,7 +1,15 @@
 # Gata Language (VS Code)
 
-Syntax highlighting for `.g` files — a TextMate grammar (`syntaxes/gata.tmLanguage.json`)
-covering every token the lexer produces (`src/Syntax/Lexer.cs`/`Token.cs`).
+Language support for `.g` files: syntax highlighting, plus a real language
+server for real-time syntax diagnostics and on-save semantic diagnostics
+from the actual `appa` compiler.
+
+## Syntax highlighting
+
+A TextMate grammar (`syntaxes/gata.tmLanguage.json`) covering every token
+the lexer produces (`Appa/src/Syntax/Lexer.cs`/`Token.cs`), including the
+`@intrinsic`/`@preamble`/`@builtin`/`@extern`/`@environment`/`@keep`
+annotation family.
 
 This is a language extension, not a theme you have to go find and pick, and
 it does **not** touch your editor theme. `extension.js` activates the first
@@ -19,13 +27,45 @@ files only (`"[gata]": { "editor.bracketPairColorization.enabled": false }`)
 so parens/brackets follow the grammar's own coloring instead of cycling
 through unrelated colors by nesting depth.
 
+## Language server
+
+`server/` is a small LSP server (TypeScript, bundled with esbuild) with two
+layers of diagnostics:
+
+- **Syntax, real-time, every file.** `server/src/lexer.ts` and
+  `server/src/parser.ts` are direct ports of Appa's actual
+  `Lexer.cs`/`Parser.cs` — same token rules, same recursive-descent grammar,
+  same error codes and messages (`missing 'let'?`, a `process` with no
+  `foreground`/`background`, a trailing comma, an unterminated string, ...).
+  They run in-process on every keystroke (debounced ~150ms), so this works
+  on any `.g` file whether or not it belongs to a project, with zero
+  external dependencies.
+- **Semantic, on save, project files only.** `server/src/semantic.ts` walks
+  upward from the saved file looking for a `*.gconf`. If it finds one, it
+  shells out to the real compiler — `appa check <project>` (see
+  `Appa/src/CLI/Program.cs`'s `RunCheck`), a command that runs the full
+  front end (imports, symbol collection, type resolution) and stops before
+  emission — and parses its diagnostic output back into squiggles, tagged
+  `source: "appa"`. This is never approximated in TypeScript: type errors,
+  undefined symbols, and every other semantic `Gxxx` code come straight from
+  the real compiler.
+
+Settings (`gata.appaPath`, `gata.libgataPath`, `gata.enableSemanticChecks`)
+control the second layer — see their descriptions in VS Code's Settings UI,
+or `package.json`'s `contributes.configuration`. With nothing configured,
+the extension auto-detects a debug build of `Appa.csproj` and a `Gata/libgata`
+checkout next to wherever this extension itself lives, which is exactly the
+layout of the Pawstack monorepo this extension ships from.
+
 ## Install (development)
 
 ```sh
 cp -r editors/vscode ~/.vscode/extensions/gata-lang
+cd ~/.vscode/extensions/gata-lang
+npm run compile   # builds server/dist/server.js
 ```
 Restart VS Code and open a `.g` file — the colors apply on top of whatever
-theme you're currently using.
+theme you're currently using, and the language server starts automatically.
 
 ## Design
 

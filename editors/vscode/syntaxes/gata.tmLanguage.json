@@ -42,11 +42,11 @@
     },
 
     "annotations": {
-      "comment": "@intrinsic(role) / @preamble(target) / @extern / @environment / @keep — the compiler-contract layer, same family as kernel/user/process/thread. Like @extern/@environment, @keep takes no parenthesized argument (it's a bare marker exempting a class/module/free-func from Dce+Densifier), so it follows the same no-args spelling.",
+      "comment": "@intrinsic(role) / @preamble(target) / @builtin(name) / @extern / @environment / @keep — the compiler-contract layer, same family as kernel/user/process/thread. Like @extern/@environment, @keep takes no parenthesized argument (it's a bare marker exempting a class/module/free-func from Dce+Densifier), so it follows the same no-args spelling. @builtin, like @intrinsic/@preamble, requires a parenthesized name argument (Lexer.cs's ReadParenArg) — it is a class/module annotation, not a no-args marker.",
       "patterns": [
         {
           "comment": "The (role) group is wrapped as ONE optional unit, not three independently-optional captures — @extern (no parens) used to let the next word (e.g. 'func') match capture 3 as if it were a role name, since an unparenthesized identifier alone satisfied that capture with no paren in sight.",
-          "match": "(@(?:intrinsic|preamble|extern|environment|keep))(?:\\s*(\\()([A-Za-z_][A-Za-z0-9_]*)?(\\)))?",
+          "match": "(@(?:intrinsic|preamble|builtin|extern|environment|keep))(?:\\s*(\\()([A-Za-z_][A-Za-z0-9_]*)?(\\)))?",
           "captures": {
             "1": { "name": "keyword.other.meta.annotation.gata" },
             "2": { "name": "punctuation.gata" },
@@ -66,7 +66,7 @@
     },
 
     "nativeInner": {
-      "comment": "Raw C spliced verbatim by the compiler — greyed out uniformly, NO sub-highlighting at all (not even parens/brackets — this is the one place that's deliberately fully flat, unlike #riskBody), including any #kernel:/#user: section markers. Mirrors the lexer's ReadBalanced brace-counter exactly: a `{`/`}` inside a `//` line comment, a `/* */` block comment, or a \"...\"/'...' string/char literal must NOT be counted as a real brace, or a literal `}` in any of those (e.g. `char* s = \"closing brace }\";`) desyncs the counter and ends the native block early — same hazard the lexer itself was hardened against. Comments and string/char literals are matched FIRST (before the brace-counting alternatives) so they're consumed whole and their internal braces never reach the brace rules at all.",
+      "comment": "Raw C spliced verbatim by the compiler — greyed out uniformly, NO sub-highlighting at all (not even parens/brackets — this is the one place that's deliberately fully flat, unlike #riskBody). Mirrors the lexer's ReadBalanced brace-counter exactly: a `{`/`}` inside a `//` line comment, a `/* */` block comment, or a \"...\"/'...' string/char literal must NOT be counted as a real brace, or a literal `}` in any of those (e.g. `char* s = \"closing brace }\";`) desyncs the counter and ends the native block early — same hazard the lexer itself was hardened against. Comments and string/char literals are matched FIRST (before the brace-counting alternatives) so they're consumed whole and their internal braces never reach the brace rules at all.",
       "patterns": [
         { "match": "//.*$", "name": "comment.block.native.gata" },
         { "begin": "/\\*", "end": "\\*/", "name": "comment.block.native.gata" },

@@ -1,4 +1,6 @@
 const vscode = require('vscode');
+const path = require('path');
+const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 
 // Every scope below ends in '.gata' — a suffix unique to this grammar — so
 // these rules can never match tokens from any other language's grammar.
@@ -39,8 +41,35 @@ const GATA_RULES = [
 
 const GATA_SCOPES = new Set(GATA_RULES.map((rule) => rule.scope));
 
-function activate() {
+/** @type {import('vscode-languageclient/node').LanguageClient | undefined} */
+let client;
+
+function activate(context) {
   applyOverlay();
+  client = startLanguageServer(context);
+}
+
+/**
+ * Starts the Gata language server (a ported Appa Lexer/Parser for instant syntax
+ * diagnostics, plus an on-save shell-out to the real 'appa check' for semantic
+ * diagnostics — see server/src/server.ts). Runs as a separate Node process, same as
+ * any other VS Code LSP extension; this function only wires the client side.
+ */
+function startLanguageServer(context) {
+  const serverModule = context.asAbsolutePath(path.join('server', 'dist', 'server.js'));
+  const serverOptions = {
+    run: { module: serverModule, transport: TransportKind.ipc },
+    debug: { module: serverModule, transport: TransportKind.ipc },
+  };
+  const clientOptions = {
+    documentSelector: [{ scheme: 'file', language: 'gata' }],
+    synchronize: {
+      configurationSection: 'gata',
+    },
+  };
+  const languageClient = new LanguageClient('gata', 'Gata Language Server', serverOptions, clientOptions);
+  languageClient.start();
+  return languageClient;
 }
 
 function applyOverlay() {
@@ -68,6 +97,8 @@ function applyOverlay() {
   );
 }
 
-function deactivate() {}
+function deactivate() {
+  return client?.stop();
+}
 
 module.exports = { activate, deactivate };
