@@ -58,7 +58,21 @@
         if (kind == 3) return ksnprintf(buf, n, fmt, (const char*)(uintptr_t)bits);
         return ksnprintf(buf, n, fmt, (long long)(int64_t)bits);
     }
-    static inline void  _env_write(const char* d, int n) { kprintf("%.*s", n, d); }
+    static inline void  _env_write(const char* d, int n) {
+        if (!d || n <= 0) return;
+        #if defined(GATA_OUTPUT_SERIAL)
+        serial_write_len_port(SERIAL_COM1, d, (size_t)n);
+        #elif defined(GATA_CAP_THREADS)
+        tty_t* t = active_tty;
+        if (sched_active()) {
+            thread_t* cur = sched_current();
+            if (cur && cur->process && cur->process->tty) t = cur->process->tty;
+        }
+        if (t) tty_write(t, d, (size_t)n);
+        #else
+        for (int i = 0; i < n; i++) con_crash_putc(d[i]);
+        #endif
+    }
     static inline int   _env_read(char* buf, int max) {
         int i = 0, ch = -1;
         while (i < max - 1) { ch = _getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
@@ -80,6 +94,13 @@
     static inline void  _env_exit(void)        { }
     static inline void  _env_dbg(const char* m)   { QEMU_LOG("[DEBUG] %s", m); }
     static inline void  _env_panic(const char* m) { panic(m); }
+    static inline int64_t _env_time_ns(void) {
+        #ifdef GATA_NEEDS_INTERRUPT_SUBSYS
+        return (int64_t)get_uptime_ns();
+        #else
+        return 0;
+        #endif
+    }
 
 
     #ifdef GATA_CAP_THREADS
@@ -114,7 +135,9 @@
         if (kind == 3) return snprintf(buf, n, fmt, (const char*)(uintptr_t)bits);
         return snprintf(buf, n, fmt, (long long)(int64_t)bits);
     }
-    static inline void  _env_write(const char* d, int n) { printf("%.*s", n, d); }
+    static inline void  _env_write(const char* d, int n) {
+        if (d && n > 0) syscall_write(d, (size_t)n);
+    }
     static inline int   _env_read(char* buf, int max) {
         int i = 0, ch = -1;
         while (i < max - 1) { ch = u_getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
@@ -134,6 +157,7 @@
         u_debug_write(m, strlen(m));
         u_debug_write("\n", 1);
     }
+    static inline int64_t _env_time_ns(void) { return (int64_t)syscall_time_ns(); }
 
     #include "shared.h"
 }

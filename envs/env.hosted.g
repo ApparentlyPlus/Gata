@@ -20,6 +20,7 @@
     #include <stdint.h>
     #include <stddef.h>
     #include <stdbool.h>
+    #include <time.h>
 
     static inline void* _env_alloc(size_t n) { return malloc(n); }
     static inline void  _env_free(void* p)   { free(p); }
@@ -38,7 +39,9 @@
         if (kind == 3) return snprintf(buf, n, fmt, (const char*)(uintptr_t)bits);
         return snprintf(buf, n, fmt, (long long)(int64_t)bits);
     }
-    static inline void  _env_write(const char* d, int n) { printf("%.*s", n, d); }
+    static inline void  _env_write(const char* d, int n) {
+        if (d && n > 0) fwrite(d, 1, (size_t)n, stdout);
+    }
     static inline int   _env_read(char* buf, int max) {
         int i = 0, ch = -1;
         while (i < max - 1) { ch = getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
@@ -52,6 +55,11 @@
     static inline void  _env_sleep(int ms)     { (void)ms; }
     static inline void  _env_exit(void)        { exit(0); }
     static inline void  _env_dbg(const char* m) { printf("[DEBUG] %s\n", m); }
+    static inline int64_t _env_time_ns(void) {
+        struct timespec ts;
+        if (timespec_get(&ts, TIME_UTC) != TIME_UTC) return 0;
+        return (int64_t)ts.tv_sec * 1000000000 + (int64_t)ts.tv_nsec;
+    }
 
     #include "shared.h"
 }
