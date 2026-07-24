@@ -54,6 +54,8 @@
     static inline void  _env_yield(void)       { }
     static inline void  _env_sleep(int ms)     { (void)ms; }
     static inline void  _env_exit(void)        { exit(0); }
+    static inline void  _env_shutdown(void)    { exit(0); }
+    static inline void  _env_reboot(void)      { exit(0); }
     static inline void  _env_dbg(const char* m) { printf("[DEBUG] %s\n", m); }
     static inline int64_t _env_time_ns(void) {
         struct timespec ts;

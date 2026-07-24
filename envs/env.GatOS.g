@@ -13,6 +13,7 @@
     #define __GATOS_KERNEL__
     #define GATOS_KERNEL
     #include <kernel/caps.h>
+    #include <kernel/bootstrap.h>
     #include <arch/x86_64/cpu/interrupts.h>
     #include <arch/x86_64/cpu/gdt.h>
     #include <arch/x86_64/memory/paging.h>
@@ -92,6 +93,8 @@
     static inline void  _env_yield(void)       { sched_yield(); }
     static inline void  _env_sleep(int ms)     { sched_sleep((uint64_t)(ms < 0 ? 0 : ms)); }
     static inline void  _env_exit(void)        { }
+    static inline void  _env_shutdown(void)    { power_off(); }
+    static inline void  _env_reboot(void)      { reboot(); }
     static inline void  _env_dbg(const char* m)   { QEMU_LOG("[DEBUG] %s", m); }
     static inline void  _env_panic(const char* m) { panic(m); }
     static inline int64_t _env_time_ns(void) {
@@ -112,8 +115,6 @@
     #endif
 
     #include "shared.h"
-
-    static uint8_t multiboot_buffer[8 * 1024];
 }
 
 @preamble(user) native {
@@ -152,6 +153,8 @@
     static inline void  _env_yield(void)       { syscall_yield(); }
     static inline void  _env_sleep(int ms)     { syscall_sleep((uint64_t)(ms < 0 ? 0 : ms)); }
     static inline void  _env_exit(void)        { syscall_exit(); }
+    static inline void  _env_shutdown(void)    { syscall_poweroff(); }
+    static inline void  _env_reboot(void)      { syscall_reboot(); }
     static inline void  _env_dbg(const char* m) {
         u_debug_write("[USER DEBUG] ", sizeof("[USER DEBUG] ") - 1);
         u_debug_write(m, strlen(m));
@@ -165,73 +168,11 @@
 @preamble(boot) native {
     extern void uapps(void);
     void kernel_main(void* mb_info) {
-        serial_init_port(COM1_PORT);
-        serial_init_port(COM2_PORT);
-        #ifdef GATA_CAP_THREADS
-        serial_init_port(COM3_PORT);
-        #endif
-        idt_init();
         multiboot_parser_t multiboot = {0};
-        multiboot_init(&multiboot, mb_info, multiboot_buffer, sizeof(multiboot_buffer));
-        if (!multiboot.initialized) { return; }
-        reserve_required_tablespace(&multiboot);
-        cleanup_kpt(0x0, get_kend(false));
-        build_physmap();
-        console_init(&multiboot);
-        pmm_status_t pmm_status = pmm_init(0x0, PHYSMAP_V2P(get_physmap_end()), PAGE_SIZE);
-        if (pmm_status != PMM_OK) { return; }
-        pmm_exclude_range(get_kstart(false), get_kend(false));
-        for (size_t i = 0; i < multiboot.memory_map_length; i++) {
-            uintptr_t rs, re; uint32_t rt;
-            if (multiboot_get_memory_region(&multiboot, i, &rs, &re, &rt) != 0) continue;
-            if (rt != MULTIBOOT_MEMORY_AVAILABLE) { vmm_add_mmio(re - rs); continue; }
-            pmm_populate((uint64_t)rs, (uint64_t)re);
-        }
-        #ifdef GATA_CAP_MEM
-        slab_status_t slab_status = slab_init();
-        if (slab_status != SLAB_OK) { return; }
-        vmm_status_t vmm_status = vmm_kernel_init(get_kend(true) + PAGE_SIZE, 0xFFFFFFFFFFFFF000);
-        if (vmm_status != VMM_OK) {return; }
-        #endif
-        gdt_init(); cpu_init();
-        #ifdef GATA_CAP_MEM
-        heap_status_t heap_status = heap_kernel_init();
-        if (heap_status != HEAP_OK) { return; }
-        #endif
-        #ifdef GATA_NEEDS_INTERRUPT_SUBSYS
-        acpi_init(&multiboot);
-        apic_init();
-        timer_init();
-        power_rapl_init();
-        #endif
-        #ifdef GATA_CAP_THREADS
-        syscall_init();
-        tty_t* k_tty = tty_create();
-        if (!k_tty) panic("Failed to create kernel TTY!");
-        active_tty = k_tty; kernel_tty = k_tty;
-        #endif
-        input_init();
-        #ifdef GATA_CAP_INPUT
-        keyboard_init();
-        irq_register(INT_FIRST_INTERRUPT + 1, (irq_handler_t)keyboard_handler);
-        ioapic_redirect(1, INT_FIRST_INTERRUPT + 1, lapic_get_id(), 0);
-        ioapic_unmask(1);
-        #if defined(GATA_KBD_EXTERNAL) || defined(GATA_KBD_HOTPLUG)
-        pci_init();
-        xhci_init();
-        #endif
-        #endif
-        #ifdef GATA_CAP_THREADS
-        process_init(); sched_init();
-        #if defined(GATA_KBD_EXTERNAL) || defined(GATA_KBD_HOTPLUG)
-        xhci_hotplug_init();
-        #endif
-        dash_init();
-        #endif
-        intr_on();
+        if (!kernel_bootstrap(mb_info, &multiboot, false)) return;
         uapps();
         gata_kernelspace_main();
         QEMU_LOG("Reached kernel idle loop");
-        while(1) { __asm__ volatile("hlt"); }
+        while(1) cpu_idle();
     }
 }
