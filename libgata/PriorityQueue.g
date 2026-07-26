@@ -1,12 +1,12 @@
-// PriorityQueue.g — binary min-heap `PriorityQueue[T]`, ordered by `<`.
-//
-// Same growable-buffer discipline as List/Stack/Queue. Unlike List, this is
-// inherently comparison-based — instantiating `PriorityQueue[T]` for a T without
-// `<` is expected to fail to compile, the same way `BinarySearch`/`Sort` do; that's
-// not a special case to guard against, it's the point.
+/*
+ * PriorityQueue.g - Binary min-heap PriorityQueue[T], ordered by <
+ *
+ * Author: u/ApparentlyPlus
+ */
 
 import Runtime;
 import String;
+import Mem;
 
 class PriorityQueue[T] {
     T*  data;
@@ -32,6 +32,9 @@ class PriorityQueue[T] {
     public int func Capacity() { return self.cap; }
     public void func Reserve(int n) { if (n > self.cap) { self.Grow(n); } }
 
+    /*
+     * Push - Insert v and sift it up to restore the heap
+     */
     public void func Push(T v) {
         if (self.length >= self.cap) { self.Grow(self.length + 1); }
         unsafe { self.data[self.length] = retain(v); }
@@ -39,7 +42,9 @@ class PriorityQueue[T] {
         self.SiftUp(self.length - 1);
     }
 
-    // Zero value if empty. Ownership transfers to the caller (no extra retain).
+    /*
+     * Pop - Remove and return the minimum, or the zero value if empty (ownership transfers)
+     */
     public T func Pop() {
         if (self.length <= 0) { return default(T); }
         unsafe {
@@ -53,6 +58,9 @@ class PriorityQueue[T] {
         }
     }
 
+    /*
+     * PopOrThrow - Remove and return the minimum; throws if empty
+     */
     public throws T func PopOrThrow() {
         if (self.length <= 0) { throw; }
         unsafe {
@@ -66,7 +74,9 @@ class PriorityQueue[T] {
         }
     }
 
-    // Zero value if empty.
+    /*
+     * Peek - The minimum without removing it, or the zero value if empty
+     */
     public T func Peek() {
         if (self.length > 0) {
             unsafe { return retain(self.data[0]); }
@@ -74,6 +84,9 @@ class PriorityQueue[T] {
         return default(T);
     }
 
+    /*
+     * Clear - Remove all elements, keeping the backing buffer
+     */
     public void func Clear() {
         unsafe {
             let i = 0;
@@ -82,20 +95,25 @@ class PriorityQueue[T] {
         self.length = 0;
     }
 
+    /*
+     * Grow - Double capacity (from 8) until at least need; raw move, no retains
+     */
     void func Grow(int need) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 8; }
         while (nc < need) { nc = nc * 2; }
         unsafe {
             let nd = alloc((nc as usize) * sizeof(T)) as T*;
-            let i = 0;
-            while (i < self.length) { nd[i] = self.data[i]; i = i + 1; }
+            if (self.length > 0) { Mem.Copy(nd, self.data, (self.length as usize) * sizeof(T)); }
             if (self.data != null) { free(self.data); }
             self.data = nd;
         }
         self.cap = nc;
     }
 
+    /*
+     * SiftUp - Bubble the element at i toward the root until the heap holds
+     */
     void func SiftUp(int i) {
         unsafe {
             while (i > 0) {
@@ -110,6 +128,9 @@ class PriorityQueue[T] {
         }
     }
 
+    /*
+     * SiftDown - Push the element at i toward the leaves until the heap holds
+     */
     void func SiftDown(int i) {
         unsafe {
             while (true) {

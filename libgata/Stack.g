@@ -1,11 +1,12 @@
-// Stack.g — generic LIFO stack `Stack[T]`.
-//
-// Same growable-buffer discipline as List. Pop/Peek return the zero value on empty
-// (fast path, no branch/error machinery); PopOrThrow is the `throws` sibling for
-// call sites that need to tell "empty" apart from a legitimately-zero element.
+/*
+ * Stack.g - Generic LIFO stack Stack[T]
+ *
+ * Author: u/ApparentlyPlus
+ */
 
 import Runtime;
 import String;
+import Mem;
 
 class Stack[T] {
     T*  data;
@@ -31,26 +32,36 @@ class Stack[T] {
     public int func Capacity() { return self.cap; }
     public void func Reserve(int n) { if (n > self.cap) { self.Grow(n); } }
 
+    /*
+     * Push - Add v to the top
+     */
     public void func Push(T v) {
         if (self.count >= self.cap) { self.Grow(self.count + 1); }
         unsafe { self.data[self.count] = retain(v); }
         self.count = self.count + 1;
     }
 
-    // Zero value if empty. Ownership transfers to the caller (no extra retain).
+    /*
+     * Pop - Remove and return the top, or the zero value if empty (ownership transfers)
+     */
     public T func Pop() {
         if (self.count <= 0) { return default(T); }
         self.count = self.count - 1;
         unsafe { return self.data[self.count]; }
     }
 
+    /*
+     * PopOrThrow - Remove and return the top; throws if empty
+     */
     public throws T func PopOrThrow() {
         if (self.count <= 0) { throw; }
         self.count = self.count - 1;
         unsafe { return self.data[self.count]; }
     }
 
-    // Zero value if empty.
+    /*
+     * Peek - The top without removing it, or the zero value if empty
+     */
     public T func Peek() {
         if (self.count > 0) {
             unsafe { return retain(self.data[self.count - 1]); }
@@ -58,6 +69,9 @@ class Stack[T] {
         return default(T);
     }
 
+    /*
+     * Clear - Remove all elements, keeping the backing buffer
+     */
     public void func Clear() {
         unsafe {
             let i = 0;
@@ -66,14 +80,16 @@ class Stack[T] {
         self.count = 0;
     }
 
+    /*
+     * Grow - Double capacity (from 8) until at least need; raw move, no retains
+     */
     void func Grow(int need) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 8; }
         while (nc < need) { nc = nc * 2; }
         unsafe {
             let nd = alloc((nc as usize) * sizeof(T)) as T*;
-            let i = 0;
-            while (i < self.count) { nd[i] = self.data[i]; i = i + 1; }
+            if (self.count > 0) { Mem.Copy(nd, self.data, (self.count as usize) * sizeof(T)); }
             if (self.data != null) { free(self.data); }
             self.data = nd;
         }

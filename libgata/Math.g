@@ -1,33 +1,20 @@
-// Math.g — the floating-point math library, a pure-Gata port of fdlibm.
-//
-//   module Math — double-precision. Float works in any realm (GatOS handles the FPU
-//   per-file, restricting SSE only in interrupt-context code), so Math is realm-free.
-//
-// This is a faithful translation of GatOS's ulibc/math.c (itself based on fdlibm).
-// It is pure numeric policy and depends on NOTHING from the environment — so wherever
-// libgata compiles, Math compiles. (Float-to-text now lives in Format.g, not here.)
-// The bit-level double<->uint64 punning that fdlibm performs through a `union { double;
-// uint64; }` is expressed here with the `bits` / `frombits` reinterpret helpers.
-//
-// Translation notes (this port predates Gata's ternary; it uses union/switch/goto
-// rewrites throughout):
-//   * a `dbl_cast dc` becomes a single uint64 holding the bit pattern; `dc.f` reads
-//     are `frombits(u)`, `dc.f = e` is `u = bits(e)`, `dc.u` is just `u`.
-//   * `a ? b : c` is rewritten into if/else; `switch` into if/else chains; the one
-//     `goto recompute` (in __kernel_rem_pio2) into a `while (true)` loop.
-//   * explicit `as` casts are inserted wherever C narrows implicitly, so the emitted
-//     C performs the exact same conversions fdlibm relies on.
+/*
+ * Math.g - Double-precision floating-point math, a pure-Gata port of fdlibm
+ *
+ * Author: u/ApparentlyPlus
+ */
+
+import Algorithms;
 
 module Math {
-    // ── Bit reinterpretation (the fdlibm dbl_cast union) ──────────────────────
-    /// Raw IEEE-754 bits of a double.
+
     uint64 func bits(double x) {
         unsafe {
             let p = (&x) as uint64*;
             return *p;
         }
     }
-    /// The double with the given raw IEEE-754 bit pattern.
+
     double func frombits(uint64 u) {
         unsafe {
             let p = (&u) as double*;
@@ -35,13 +22,16 @@ module Math {
         }
     }
 
-    // ── Constants (public) ────────────────────────────────────────────────────
-    /// The ratio of a circle's circumference to its diameter.
+    /*
+     * Pi - The ratio of a circle's circumference to its diameter
+     */
     public double func Pi() { return 3.141592653589793; }
-    /// Euler's number.
+
+    /*
+     * E - Euler's number
+     */
     public double func E()  { return 2.718281828459045; }
 
-    // ══ Utility functions ═════════════════════════════════════════════════════
     double func fabs(double x) {
         let u = bits(x) & 0x7FFFFFFFFFFFFFFFULL;
         return frombits(u);
@@ -244,7 +234,6 @@ module Math {
         return frombits(u);
     }
 
-    // ══ Square root ═══════════════════════════════════════════════════════════
     double func sqrt(double number) {
         if (number < 0.0) { return (number - number) / (number - number); }
         if (number == 0.0) { return 0.0; }
@@ -273,7 +262,6 @@ module Math {
         return number * y;
     }
 
-    // ── Shared fdlibm constants (kept as accessors so log/exp/log1p agree) ────
     double func k_ln2hi() { return 6.93147180369123816490e-01; }
     double func k_ln2lo() { return 1.90821492927058770002e-10; }
     double func k_lg1()   { return 6.666666666666735130e-01; }
@@ -284,7 +272,6 @@ module Math {
     double func k_lg6()   { return 1.531383769920937332e-01; }
     double func k_lg7()   { return 1.479819860511658591e-01; }
 
-    // ══ Logarithm and exponential ════════════════════════════════════════════
     double func log(double x) {
         let u = bits(x);
         let b = u;
@@ -570,7 +557,6 @@ module Math {
         return (k as double) * k_ln2hi() - ((hfsq - (s * (hfsq + r) + ((k as double) * k_ln2lo() + c))) - f);
     }
 
-    // ══ Floating remainder ════════════════════════════════════════════════════
     double func fmod(double x, double y) {
         let ux = bits(x);
         let uy = bits(y);
@@ -706,7 +692,6 @@ module Math {
         return frombits(ux);
     }
 
-    // ══ Power ═════════════════════════════════════════════════════════════════
     double func pow(double x, double y) {
         let z = 0.0;
         let ax = 0.0;
@@ -952,7 +937,6 @@ module Math {
         return s * z;
     }
 
-    // ── Constant tables (returned by value; callers fetch once) ───────────────
     [4]int func init_jk_tbl() { return [2, 3, 4, 6]; }
 
     [8]double func PIo2_tbl() {
@@ -1011,7 +995,6 @@ module Math {
                 2.59073051863633712884e-05];
     }
 
-    // asin/acos polynomial coefficients (shared, so the two agree exactly).
     double func k_pS0() { return 1.66666666666666657415e-01; }
     double func k_pS1() { return -3.25565818622400915405e-01; }
     double func k_pS2() { return 2.01212532134862925881e-01; }
@@ -1023,7 +1006,6 @@ module Math {
     double func k_qS3() { return -6.88283971605453293030e-01; }
     double func k_qS4() { return 7.70381505559019352791e-02; }
 
-    // ══ Argument reduction: x mod pi/2 ════════════════════════════════════════
     int func __kernel_rem_pio2(double* x, double* y, int e0, int nx, int prec, [66]int ipio2) {
         unsafe {
             let ijk = init_jk_tbl();
@@ -1276,7 +1258,6 @@ module Math {
         }
     }
 
-    // ══ Kernel trig (|x| <= pi/4) ═════════════════════════════════════════════
     double func __kernel_cos(double x, double y) {
         let u = bits(x);
         let ix = ((u >> 32) as int) & 0x7fffffff;
@@ -1368,7 +1349,6 @@ module Math {
         return t + a * (s + t * v);
     }
 
-    // ══ Trigonometric ═════════════════════════════════════════════════════════
     double func sin(double x) {
         let [2]double y = [0.0, 0.0];
         let z = 0.0;
@@ -1413,7 +1393,6 @@ module Math {
         return __kernel_tan(y[0], y[1], 1 - ((n & 1) << 1));
     }
 
-    // ══ Inverse trigonometric ═════════════════════════════════════════════════
     double func asin(double x) {
         let u = bits(x);
         let hx = ((u >> 32) as int);
@@ -1603,7 +1582,6 @@ module Math {
         return (z - 1.2246467991473531772E-16) - 3.14159265358979311600e+00;
     }
 
-    // ══ Hyperbolic ════════════════════════════════════════════════════════════
     double func sinh(double x) {
         let u = bits(x);
         let jx = ((u >> 32) as int);
@@ -1748,7 +1726,7 @@ module Math {
         return -t;
     }
 
-    // ══ Public API (thin wrappers over the fdlibm primitives) ═════════════════
+    // Public API
     public double func Abs(double x)   { return fabs(x); }
     public double func Floor(double x) { return floor(x); }
     public double func Ceil(double x)  { return ceil(x); }
@@ -1777,27 +1755,25 @@ module Math {
     public double func Acosh(double x) { return acosh(x); }
     public double func Atanh(double x) { return atanh(x); }
 
-    /// -1.0, 0.0 or 1.0 according to the sign of `x`.
     public double func Sign(double x) {
         if (x > 0.0) { return 1.0; }
         if (x < 0.0) { return -1.0; }
         return 0.0;
     }
-    /// Smaller of two values.
-    public double func Min(double a, double b) {
-        if (a < b) { return a; }
-        return b;
-    }
-    /// Larger of two values.
-    public double func Max(double a, double b) {
-        if (a > b) { return a; }
-        return b;
-    }
-    /// Constrain `v` to the inclusive range [lo, hi].
-    public double func Clamp(double v, double lo, double hi) {
-        if (v < lo) { return lo; }
-        if (v > hi) { return hi; }
-        return v;
-    }
+
+    /*
+     * Min - The smaller of a and b; delegates to Algorithms' generic Min
+     */
+    public double func Min(double a, double b) { return Algorithms.Min(a, b); }
+
+    /*
+     * Max - The larger of a and b; delegates to Algorithms' generic Max
+     */
+    public double func Max(double a, double b) { return Algorithms.Max(a, b); }
+
+    /*
+     * Clamp - v restricted to [lo, hi]
+     */
+    public double func Clamp(double v, double lo, double hi) { return Algorithms.Max(Algorithms.Min(v, hi), lo); }
 
 }

@@ -1,14 +1,17 @@
-// Misc.g — kernel boot/startup utilities (currently just the startup banner).
-//
-// Ported from GatOS's own kernel/misc.c so it's ordinary, replaceable Gata code
-// instead of something baked into the kernel boot sequence. Colors are the raw
-// VGA palette indices from kernel/drivers/console.h's CONSOLE_COLOR_* (cyan=3,
-// magenta=5, yellow=14, white=15, black=0).
+/*
+ * Misc.g - Kernel boot/startup utilities
+ *
+ * Author: u/ApparentlyPlus
+ */
 
 import String;
 import Console;
 
 module Misc {
+
+    /*
+     * PrintBanner - Print the centered GatOS startup banner
+     */
     public void func PrintBanner() {
         let int screenWidth = Console.Width();
         let int contentWidth = 59;
@@ -36,15 +39,17 @@ module Misc {
         Console.NewLine();
 
         Console.SetColor(15, 0); // white on black
-        for (let int i = 0; i < screenWidth; i++) { Console.Print("_"); }
+        Console.Print("_".Repeat(screenWidth));
         Console.NewLine();
         Console.NewLine();
     }
 
+    /*
+     * PrintCentered - Print one padded line, the single built string is one batched write
+     */
     void func PrintCentered(String line, int screenWidth, int contentWidth) {
         let int pad = (screenWidth - contentWidth) / 2;
         if (pad < 0) { pad = 0; }
-        for (let int i = 0; i < pad; i++) { Console.Print(" "); }
-        Console.PrintLine(line);
+        Console.PrintLine(" ".Repeat(pad) + line);
     }
 }

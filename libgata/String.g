@@ -1,19 +1,21 @@
-// String.g — the String type and StringBuilder.
-//
-// String owns `char* data; usize length;`. A "..." literal is a STATIC String built
-// by GATA_STRLIT at the bottom of this file (no allocation); everything else that
-// builds a String goes through the platform allocator. All public methods are
-// null/bounds safe. Comparison operators are built on CompareTo so String slots
-// into the duck-typed generic algorithms in Algorithms.g (Sort/Min/Max/...).
+/*
+ * String.g - The String type and StringBuilder
+ *
+ * Author: u/ApparentlyPlus
+ */
 
 import Runtime;
 import Char;
 import Mem;
 import List;
+import Int; // Int.ToString backs the `as String` operator below
+import Long; // Long.ToString backs `int64 as String`
+import Format; // Format.Double backs `v as String` for double
 
-// @builtin(String) lets the compiler resolve String as a first-class type from
-// this declaration instead of hardcoding the name "String" throughout the semantic
-// layer - see SymbolTable.BuiltinTypes / ResolveBuiltinType.
+/*
+ * @builtin(String) lets the compiler resolve String as a first class type from this
+ * declaration instead of hardcoding the name.
+ */
 @builtin(String)
 class String {
     char* data;
@@ -31,9 +33,9 @@ class String {
     public int func Length() { return self.length as int; }
     public bool func IsEmpty() { return self.Length() == 0; }
 
-    // The raw NUL-terminated buffer, for the few platform calls (printf-style
-    // formatting, the write syscall) that need a real char* rather than going
-    // through CharAt/Substring. `data` itself stays private.
+    /*
+     * CStr - The raw NUL-terminated buffer, for platform calls that need a char*
+     */
     public char* func CStr() { return self.data; }
 
     public char func CharAt(int i) {
@@ -41,80 +43,93 @@ class String {
         unsafe { return self.data[i]; }
     }
 
-    // `str[i]` sugar for CharAt — read-only, same as List/Map's operator[]. There is
-    // deliberately no operator[]=: a "..." literal is a single STATIC String instance
-    // (see GATA_STRLIT at the bottom of this file), so every variable holding that
-    // literal aliases the same buffer — in-place mutation would corrupt it for every
-    // other alias, not just the one you meant to change. Build text with
-    // StringBuilder and call ToString() when you're done, the same split as C#'s
-    // String/StringBuilder.
+    /*
+     * [] - Read-only `str[i]` sugar for CharAt
+     *
+     * There is deliberately no operator[]=: a "..." literal is a single STATIC String
+     * instance, so every variable holding it aliases the same buffer - in-place
+     * mutation would corrupt every alias. Build text with StringBuilder instead.
+     */
     public operator char func [](int i) { return self.CharAt(i); }
 
-    public bool func Equals(String other) {
+    /*
+     * == - Content equality: compares characters, never buffer identity
+     *
+     * A comparison against the null LITERAL is compiled by appa as a pointer check
+     * and never reaches this operator - which is what lets this body null-guard its
+     * own operand without recursing.
+     */
+    public operator bool func ==(String other) {
         if (other == null) { return false; }
-        if (self.Length() != other.Length()) { return false; }
-        let i = 0;
-        while (i < self.Length()) {
-            if (self.CharAt(i) != other.CharAt(i)) { return false; }
-            i = i + 1;
-        }
-        return true;
+        if (self.length != other.length) { return false; }
+        unsafe { return Mem.Compare(self.data, other.data, self.length) == 0; }
     }
 
+    public bool func Equals(String other) { return self == other; }
+
+    /*
+     * CompareTo - Lexicographic order: <0, 0, or >0 (null sorts first)
+     */
     public int func CompareTo(String other) {
         if (other == null) { return 1; }
         let n = self.Length();
         let m = other.Length();
-        let i = 0;
-        while (i < n && i < m) {
-            let a = self.CharAt(i) as int;
-            let b = other.CharAt(i) as int;
-            if (a != b) { return a - b; }
-            i = i + 1;
+        let k = n < m ? n : m;
+        unsafe {
+            let c = Mem.Compare(self.data, other.data, k as usize);
+            if (c != 0) { return c; }
         }
         return n - m;
     }
 
-    public operator bool func <  (String other) { return self.CompareTo(other) < 0; }
-    public operator bool func >  (String other) { return self.CompareTo(other) > 0; }
+    public operator bool func < (String other) { return self.CompareTo(other) < 0; }
+    public operator bool func > (String other) { return self.CompareTo(other) > 0; }
     public operator bool func <= (String other) { return self.CompareTo(other) <= 0; }
     public operator bool func >= (String other) { return self.CompareTo(other) >= 0; }
 
+    /*
+     * StartsWith - True if this string begins with prefix
+     */
     public bool func StartsWith(String prefix) {
         if (prefix == null) { return false; }
         let m = prefix.Length();
         if (m > self.Length()) { return false; }
-        let i = 0;
-        while (i < m) {
-            if (self.CharAt(i) != prefix.CharAt(i)) { return false; }
-            i = i + 1;
-        }
-        return true;
+        unsafe { return Mem.Compare(self.data, prefix.data, m as usize) == 0; }
     }
 
+    /*
+     * EndsWith - True if this string ends with suffix
+     */
     public bool func EndsWith(String suffix) {
         if (suffix == null) { return false; }
         let n = self.Length();
         let m = suffix.Length();
         if (m > n) { return false; }
-        let i = 0;
-        while (i < m) {
-            if (self.CharAt(n - m + i) != suffix.CharAt(i)) { return false; }
-            i = i + 1;
-        }
-        return true;
+        unsafe { return Mem.Compare(self.data + (n - m), suffix.data, m as usize) == 0; }
     }
 
+    /*
+     * IndexOfChar - First index of c, or -1 if absent
+     */
     public int func IndexOfChar(char c) {
-        let i = 0;
-        while (i < self.Length()) {
-            if (self.CharAt(i) == c) { return i; }
-            i = i + 1;
+        let n = self.Length();
+        unsafe {
+            let d = self.data;
+            let i = 0;
+            while (i < n) {
+                if (d[i] == c) { return i; }
+                i = i + 1;
+            }
         }
         return -1;
     }
 
-    // First index of `sub` at or after `from`, or -1. Empty `sub` matches at `from`.
+    /*
+     * IndexOf - First index of sub at or after `from`, or -1 (empty sub matches at from)
+     *
+     * Scans for the first character before comparing the rest, so mismatches cost one
+     * comparison instead of a call per character.
+     */
     public int func IndexOf(String sub, int from) {
         if (sub == null) { return -1; }
         if (from < 0) { from = 0; }
@@ -122,37 +137,53 @@ class String {
         let m = sub.Length();
         if (m == 0) { return from <= n ? from : -1; }
         if (from > n - m) { return -1; }
-        let i = from;
-        while (i <= n - m) {
-            let j = 0;
-            while (j < m && self.CharAt(i + j) == sub.CharAt(j)) { j = j + 1; }
-            if (j == m) { return i; }
-            i = i + 1;
+        unsafe {
+            let d = self.data;
+            let p = sub.data;
+            let first = p[0];
+            let i = from;
+            while (i <= n - m) {
+                if (d[i] == first) {
+                    let j = 1;
+                    while (j < m && d[i + j] == p[j]) { j = j + 1; }
+                    if (j == m) { return i; }
+                }
+                i = i + 1;
+            }
         }
         return -1;
     }
 
     public int func IndexOf(String sub) { return self.IndexOf(sub, 0); }
 
+    /*
+     * LastIndexOf - Last index of sub, or -1 if absent
+     */
     public int func LastIndexOf(String sub) {
         if (sub == null) { return -1; }
         let n = self.Length();
         let m = sub.Length();
         if (m == 0) { return n; }
         if (m > n) { return -1; }
-        let i = n - m;
-        while (i >= 0) {
-            let j = 0;
-            while (j < m && self.CharAt(i + j) == sub.CharAt(j)) { j = j + 1; }
-            if (j == m) { return i; }
-            i = i - 1;
+        unsafe {
+            let d = self.data;
+            let p = sub.data;
+            let i = n - m;
+            while (i >= 0) {
+                let j = 0;
+                while (j < m && d[i + j] == p[j]) { j = j + 1; }
+                if (j == m) { return i; }
+                i = i - 1;
+            }
         }
         return -1;
     }
 
     public bool func Contains(String sub) { return self.IndexOf(sub) >= 0; }
 
-    // `len` characters starting at `start`; indices are clamped, never out of bounds.
+    /*
+     * Substring - len characters starting at start; indices are clamped, never out of bounds
+     */
     public String func Substring(int start, int len) {
         if (start < 0) { start = 0; }
         if (len < 0) { len = 0; }
@@ -162,17 +193,16 @@ class String {
         let r = new String();
         unsafe {
             r.data = alloc((len + 1) as usize) as char*;
-            let i = 0;
-            while (i < len) {
-                r.data[i] = self.data[start + i];
-                i = i + 1;
-            }
+            if (len > 0) { Mem.Copy(r.data, self.data + start, len as usize); }
             r.data[len] = '\0';
         }
         r.length = len as usize;
         return r;
     }
 
+    /*
+     * ToUpper - A new string with ASCII letters uppercased
+     */
     public String func ToUpper() {
         let n = self.length as int;
         let r = new String();
@@ -191,6 +221,9 @@ class String {
         return r;
     }
 
+    /*
+     * ToLower - A new string with ASCII letters lowercased
+     */
     public String func ToLower() {
         let n = self.length as int;
         let r = new String();
@@ -209,6 +242,9 @@ class String {
         return r;
     }
 
+    /*
+     * Trim - A new string with leading and trailing whitespace removed
+     */
     public String func Trim() {
         let n = self.Length();
         let start = 0;
@@ -218,7 +254,9 @@ class String {
         return self.Substring(start, end - start);
     }
 
-    // Split on every occurrence of `sep`. A null/empty `sep` returns `[self]`.
+    /*
+     * Split - Split on every occurrence of sep; a null/empty sep returns [self]
+     */
     public List[String] func Split(String sep) {
         let result = new List[String]();
         if (sep == null || sep.Length() == 0 || self.Length() == 0) {
@@ -236,6 +274,9 @@ class String {
         return result;
     }
 
+    /*
+     * Join - Concatenate parts with sep between them
+     */
     public static String func Join(List[String] parts, String sep) {
         let sb = new StringBuilder();
         let n = parts.Length();
@@ -248,6 +289,9 @@ class String {
         return sb.ToString();
     }
 
+    /*
+     * Replace - A new string with every occurrence of oldVal replaced by newVal
+     */
     public String func Replace(String oldVal, String newVal) {
         if (oldVal == null || oldVal.Length() == 0) { return self; }
         let sb = new StringBuilder();
@@ -263,6 +307,9 @@ class String {
         return sb.ToString();
     }
 
+    /*
+     * PadLeft - Left-pad with pad up to width (returns self if already wide enough)
+     */
     public String func PadLeft(int width, char pad) {
         let n = self.Length();
         if (n >= width) { return self; }
@@ -273,6 +320,9 @@ class String {
         return sb.ToString();
     }
 
+    /*
+     * PadRight - Right-pad with pad up to width (returns self if already wide enough)
+     */
     public String func PadRight(int width, char pad) {
         let n = self.Length();
         if (n >= width) { return self; }
@@ -283,6 +333,9 @@ class String {
         return sb.ToString();
     }
 
+    /*
+     * Repeat - This string concatenated with itself n times ("" for n <= 0)
+     */
     public String func Repeat(int n) {
         if (n <= 0) { return ""; }
         let sb = new StringBuilder();
@@ -291,8 +344,9 @@ class String {
         return sb.ToString();
     }
 
-    // Backs `+` and string interpolation (the non-String side is stringified first
-    // by the front-end, so this always receives two Strings).
+    /*
+     * + - Concatenation, backing `+` and interpolation (both sides are Strings here)
+     */
     public operator String func +(String other) {
         let r = new String();
         unsafe {
@@ -313,10 +367,13 @@ class String {
     public String func Concat(String other) { return self + other; }
     public String func ToString() { return self; }
 
-    // Bound to the stringify_char role: interpolating/concatenating a char routes
-    // here instead of stringify_int, so it prints the character, not its codepoint.
-    // Lives here rather than as a Char.g wrapper because it pokes data/length
-    // directly, which are private to String.
+    /*
+     * FromChar - A one-character string (the stringify_char role)
+     *
+     * Interpolating/concatenating a char routes here, not stringify_int, so it prints
+     * the character rather than its codepoint. Lives here because it pokes the private
+     * data/length directly.
+     */
     @intrinsic(stringify_char)
     public static String func FromChar(char c) {
         let r = new String();
@@ -329,19 +386,18 @@ class String {
         return r;
     }
 
-    // The runtime path for wrapping a computed (non-literal) char* buffer into a heap
-    // String — copies the bytes, so unlike a "..." literal this always allocates. A
-    // static method (not a free function) because it pokes `data`/`length` directly,
-    // which are private now that fields default to class-internal access.
+    /*
+     * FromRaw - Wrap a computed NUL-terminated char* into a heap String (copies the bytes)
+     */
     public static String func FromRaw(char* raw) {
         let n = 0;
         if (raw != null) { unsafe { n = Mem.StrLen(raw) as int; } }
         return String.FromBuffer(raw, n);
     }
 
-    // Like FromRaw, but for a buffer that is not (or may not be) NUL-terminated and
-    // whose length is already known — e.g. StringBuilder's backing array, which
-    // tracks length separately rather than relying on a terminator.
+    /*
+     * FromBuffer - Like FromRaw but for a buffer of known length, not NUL-terminated
+     */
     public static String func FromBuffer(char* raw, int len) {
         let r = new String();
         unsafe {
@@ -353,19 +409,16 @@ class String {
         return r;
     }
 
-    // Explicit-cast spellings for the two single-argument factories above: `c as String` and
-    // `raw as String` instead of `String.FromChar(c)` / `String.FromRaw(raw)`. These are static
-    // 'as' operators (one parameter, no self - the value doesn't exist yet) rather than the
-    // usual instance form, since char/char* have no class body of their own to declare a
-    // conversion on. They delegate rather than duplicate: the @intrinsic(stringify_char) binding
-    // stays on FromChar itself, since that's what `+`/interpolation call directly, and FromChar
-    // is still there to call by name if you don't want cast syntax.
     public operator String func as(char c) { return String.FromChar(c); }
     public operator String func as(char* raw) { return String.FromRaw(raw); }
+    public operator String func as(int n)    { return Int.ToString(n); }
+    public operator String func as(int64 n)  { return Long.ToString(n); }
+    public operator String func as(double v) { return Format.Double(v); }
+    public operator String func as(bool b)   { return b ? "true" : "false"; }
 }
 
-// Growable text buffer for hot-loop string building — a chain of `+` is O(n^2)
-// (each concat allocates a fresh buffer), this amortizes to O(n).
+
+@builtin(StringBuilder)
 class StringBuilder {
     char* data;
     int length;
@@ -379,28 +432,45 @@ class StringBuilder {
     public void func Reserve(int n) { if (n > self.cap) { self.Grow(n); } }
     public void func Clear() { self.length = 0; }
 
+    /*
+     * AppendChar - Append a single character
+     */
     public void func AppendChar(char c) {
         if (self.length + 1 > self.cap) { self.Grow(self.length + 1); }
         unsafe { self.data[self.length] = c; }
         self.length = self.length + 1;
     }
 
+    /*
+     * Append - Append a string (null and empty are no-ops)
+     */
     public void func Append(String s) {
         if (s == null) { return; }
         let n = s.Length();
         if (n == 0) { return; }
         if (self.length + n > self.cap) { self.Grow(self.length + n); }
-        unsafe {
-            let i = 0;
-            while (i < n) { self.data[self.length + i] = s.CharAt(i); i = i + 1; }
-        }
+        unsafe { Mem.Copy(self.data + self.length, s.CStr(), n as usize); }
         self.length = self.length + n;
     }
 
+    /*
+     * Put - Chainable Append: returns self so appends compose (the lowering's shape)
+     */
+    public StringBuilder func Put(String s) {
+        self.Append(s);
+        return self;
+    }
+
+    /*
+     * ToString - Snapshot the buffer into a new String
+     */
     public String func ToString() {
         unsafe { return String.FromBuffer(self.data, self.length); }
     }
 
+    /*
+     * Grow - Double capacity (from 16) until at least need
+     */
     void func Grow(int need) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 16; }
@@ -414,9 +484,11 @@ class StringBuilder {
     }
 }
 
-// The compiler emits GATA_STRLIT("...") for every "..." literal: a STATIC String
-// (GATA_OBJ_STATIC gives it the sentinel refcount, so ARC leaves it alone) with no
-// heap allocation — a program built only from string literals needs no allocator.
+/*
+ * The compiler emits GATA_STRLIT("...") for every "..." literal: a STATIC String
+ * (GATA_OBJ_STATIC gives it the sentinel refcount, so ARC leaves it alone) with no
+ * heap allocation - a program built only from string literals needs no allocator.
+ */
 native {
     #define GATA_STRLIT(T, lit) (__extension__({ \
         static const char _gsb[] = lit; \
@@ -424,4 +496,3 @@ native {
         &_gss; \
     }))
 }
-

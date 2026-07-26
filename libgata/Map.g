@@ -1,57 +1,23 @@
-// Map.g — hash maps.
-//
-//   Map[K, V]      — open-addressing hash map for value-comparable keys (primitives,
-//                    pointers, or a class with `operator ==`). Reference keys without
-//                    an `==` overload compare by identity — use StringMap for content-
-//                    keyed strings.
-//   StringMap[V]   — string-keyed map: content-hashed (FNV-1a) and content-compared.
-//
-// Both: linear probing, backward-shift deletion (no tombstones, so lookups stay O(1)
-// amortized after removals), power-of-2 capacities indexed with a bitmask (not `%`,
-// which is a division), grow/rehash at a 0.7 load factor. `Map`'s key hash runs the
-// raw `(key as usize)` through a SplitMix64-style finalizer first — a bare identity
-// hash clusters badly on structured keys (sequential IDs, anything sharing low bits);
-// the finalizer is what every production integer hash table does instead. Same
-// method set and naming on both types — the only difference is what's inside, since
-// the language has no hashable/equatable trait to unify them further.
+/*
+ * Map.g - Hash maps: Map[K, V] (value keyed) and StringMap[V] (string keyed)
+ *
+ * Author: u/ApparentlyPlus
+ */
 
 import Runtime;
 import String;
 import List;
-
-// Shared hashing primitives for Map/StringMap (and, via import, Set/StringSet) — kept
-// in one module rather than as loose free functions so every hash table in libgata
-// calls Hash.Mix/Hash.HashString instead of an unqualified global.
-module Hash {
-    public usize func Mix(usize x) {
-        x = (x ^ (x >> 30)) * (0xbf58476d1ce4e5b9 as usize);
-        x = (x ^ (x >> 27)) * (0x94d049bb133111eb as usize);
-        return x ^ (x >> 31);
-    }
-
-    // FNV-1a over the string's bytes. Lives here (not as a StringMap method) so
-    // StringSet can share it too — a static method nested in a generic class gets
-    // re-mangled per instantiation, so there's no single callable "StringMap.Hash"
-    // independent of a concrete V.
-    public usize func HashString(String key) {
-        let h = 0xcbf29ce484222325 as usize;
-        let n = key.Length();
-        let i = 0;
-        while (i < n) {
-            h = h ^ ((key.CharAt(i) as usize) & (255 as usize));
-            h = h * (0x100000001b3 as usize);
-            i = i + 1;
-        }
-        return h;
-    }
-}
+import Mem;
+import Hash;
 
 class Map[K, V] {
-    K*    keys;
-    V*    vals;
-    char* used;     // 0 = empty, 1 = occupied
-    int   cap;
-    int   count;
+
+    // Private fields
+    K* keys;
+    V* vals;
+    char* used; // 0 = empty, 1 = occupied
+    int cap;
+    int count;
 
     func _init() {
         self.keys = null;
@@ -78,6 +44,9 @@ class Map[K, V] {
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
 
+    /*
+     * Reserve - Grow so n pairs fit under the 0.7 load factor without rehashing
+     */
     public void func Reserve(int n) {
         let target = self.cap;
         if (target == 0) { target = 16; }
@@ -85,6 +54,9 @@ class Map[K, V] {
         if (target > self.cap) { self.Grow(target); }
     }
 
+    /*
+     * Put - Insert or overwrite the value for key
+     */
     public void func Put(K key, V value) {
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
         unsafe {
@@ -105,7 +77,9 @@ class Map[K, V] {
         }
     }
 
-    // Zero value if absent.
+    /*
+     * Get - Value for key, or the zero value if absent
+     */
     public V func Get(K key) {
         if (self.cap == 0) { return default(V); }
         unsafe {
@@ -121,6 +95,9 @@ class Map[K, V] {
         return default(V);
     }
 
+    /*
+     * GetOrThrow - Value for key; throws if absent
+     */
     public throws V func GetOrThrow(K key) {
         if (self.cap > 0) {
             unsafe {
@@ -140,6 +117,9 @@ class Map[K, V] {
     public operator V func [](K key) { return self.Get(key); }
     public operator func []=(K key, V value) { self.Put(key, value); }
 
+    /*
+     * Has - True if key is present
+     */
     public bool func Has(K key) {
         if (self.cap == 0) { return false; }
         unsafe {
@@ -155,7 +135,9 @@ class Map[K, V] {
         return false;
     }
 
-    // Backward-shift clustering re-inserts any pair displaced behind the freed slot.
+    /*
+     * Remove - Delete key if present, backward-shifting any displaced pairs
+     */
     public void func Remove(K key) {
         if (self.cap == 0) { return; }
         unsafe {
@@ -190,6 +172,9 @@ class Map[K, V] {
         }
     }
 
+    /*
+     * Clear - Remove all pairs, keeping the backing buffers
+     */
     public void func Clear() {
         unsafe {
             let i = 0;
@@ -205,6 +190,9 @@ class Map[K, V] {
         self.count = 0;
     }
 
+    /*
+     * Keys - A new List of the live keys (unspecified order)
+     */
     public List[K] func Keys() {
         let result = new List[K]();
         unsafe {
@@ -217,6 +205,9 @@ class Map[K, V] {
         return result;
     }
 
+    /*
+     * Values - A new List of the live values (unspecified order)
+     */
     public List[V] func Values() {
         let result = new List[V]();
         unsafe {
@@ -229,7 +220,9 @@ class Map[K, V] {
         return result;
     }
 
-    // Doubles (from 16) until at least `minCap`, then re-hashes every live pair.
+    /*
+     * Grow - Double (from 16) until at least minCap, then rehash every live pair
+     */
     void func Grow(int minCap) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 16; }
@@ -239,9 +232,8 @@ class Map[K, V] {
             let nv = alloc((nc as usize) * sizeof(V)) as V*;
             let nu = alloc(nc as usize) as char*;
             let mask = (nc - 1) as usize;
+            Mem.Fill(nu, 0 as byte, nc as usize);
             let i = 0;
-            while (i < nc) { nu[i] = 0; i = i + 1; }
-            i = 0;
             while (i < self.cap) {
                 if (self.used[i] != 0) {
                     let h = Hash.Mix(self.keys[i] as usize) & mask;
@@ -265,10 +257,10 @@ class Map[K, V] {
 
 class StringMap[V] {
     String* keys;
-    V*      vals;
-    char*   used;
-    int     cap;
-    int     count;
+    V* vals;
+    char* used;
+    int cap;
+    int count;
 
     func _init() {
         self.keys = null;
@@ -295,6 +287,9 @@ class StringMap[V] {
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
 
+    /*
+     * Reserve - Grow so n pairs fit under the 0.7 load factor without rehashing
+     */
     public void func Reserve(int n) {
         let target = self.cap;
         if (target == 0) { target = 16; }
@@ -302,7 +297,9 @@ class StringMap[V] {
         if (target > self.cap) { self.Grow(target); }
     }
 
-    // A null key is ignored.
+    /*
+     * Put - Insert or overwrite the value for key; a null key is ignored
+     */
     public void func Put(String key, V value) {
         if (key == null) { return; }
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
@@ -324,7 +321,9 @@ class StringMap[V] {
         }
     }
 
-    // Zero value if absent (incl. a null key).
+    /*
+     * Get - Value for key, or the zero value if absent (incl. a null key)
+     */
     public V func Get(String key) {
         if (self.cap == 0 || key == null) { return default(V); }
         unsafe {
@@ -340,6 +339,9 @@ class StringMap[V] {
         return default(V);
     }
 
+    /*
+     * GetOrThrow - Value for key; throws if absent or key is null
+     */
     public throws V func GetOrThrow(String key) {
         if (self.cap > 0 && key != null) {
             unsafe {
@@ -359,6 +361,9 @@ class StringMap[V] {
     public operator V func [](String key) { return self.Get(key); }
     public operator func []=(String key, V value) { self.Put(key, value); }
 
+    /*
+     * Has - True if key is present
+     */
     public bool func Has(String key) {
         if (self.cap == 0 || key == null) { return false; }
         unsafe {
@@ -374,6 +379,9 @@ class StringMap[V] {
         return false;
     }
 
+    /*
+     * Remove - Delete key if present, backward-shifting any displaced pairs
+     */
     public void func Remove(String key) {
         if (self.cap == 0 || key == null) { return; }
         unsafe {
@@ -408,6 +416,9 @@ class StringMap[V] {
         }
     }
 
+    /*
+     * Clear - Remove all pairs, keeping the backing buffers
+     */
     public void func Clear() {
         unsafe {
             let i = 0;
@@ -423,6 +434,9 @@ class StringMap[V] {
         self.count = 0;
     }
 
+    /*
+     * Keys - A new List of the live keys (unspecified order)
+     */
     public List[String] func Keys() {
         let result = new List[String]();
         unsafe {
@@ -435,6 +449,9 @@ class StringMap[V] {
         return result;
     }
 
+    /*
+     * Values - A new List of the live values (unspecified order)
+     */
     public List[V] func Values() {
         let result = new List[V]();
         unsafe {
@@ -447,6 +464,9 @@ class StringMap[V] {
         return result;
     }
 
+    /*
+     * Grow - Double (from 16) until at least minCap, then rehash every live pair
+     */
     void func Grow(int minCap) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 16; }
@@ -456,9 +476,8 @@ class StringMap[V] {
             let nv = alloc((nc as usize) * sizeof(V)) as V*;
             let nu = alloc(nc as usize) as char*;
             let mask = (nc - 1) as usize;
+            Mem.Fill(nu, 0 as byte, nc as usize);
             let i = 0;
-            while (i < nc) { nu[i] = 0; i = i + 1; }
-            i = 0;
             while (i < self.cap) {
                 if (self.used[i] != 0) {
                     let h = Hash.HashString(self.keys[i]) & mask;

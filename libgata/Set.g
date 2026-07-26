@@ -1,17 +1,20 @@
-// Set.g — hash sets. Same open-addressing/backward-shift/power-of-2-mask engine as
-// Map.g (Set[T] reuses Map.g's `Hash.Mix` finalizer for non-string T), just without a
-// stored value array — `Set[T] == Map[T, bool]` minus the wasted value array.
+/*
+ * Set.g - Hash sets: Set[T] (value-keyed) and StringSet (string-keyed)
+ *
+ * Author: u/ApparentlyPlus
+ */
 
 import Runtime;
 import String;
 import List;
-import Map;   // Hash.Mix / Hash.HashString (SplitMix64 finalizer, FNV-1a)
+import Hash;
+import Mem;
 
 class Set[T] {
-    T*    keys;
+    T* keys;
     char* used;
-    int   cap;
-    int   count;
+    int cap;
+    int count;
 
     func _init() {
         self.keys = null;
@@ -36,6 +39,9 @@ class Set[T] {
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
 
+    /*
+     * Reserve - Grow so n items fit under the 0.7 load factor without rehashing
+     */
     public void func Reserve(int n) {
         let target = self.cap;
         if (target == 0) { target = 16; }
@@ -43,6 +49,9 @@ class Set[T] {
         if (target > self.cap) { self.Grow(target); }
     }
 
+    /*
+     * Add - Insert item if absent (duplicates are ignored)
+     */
     public void func Add(T item) {
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
         unsafe {
@@ -58,6 +67,9 @@ class Set[T] {
         }
     }
 
+    /*
+     * Has - True if item is present
+     */
     public bool func Has(T item) {
         if (self.cap == 0) { return false; }
         unsafe {
@@ -73,6 +85,9 @@ class Set[T] {
         return false;
     }
 
+    /*
+     * Remove - Delete item if present, backward-shifting the following run
+     */
     public void func Remove(T item) {
         if (self.cap == 0) { return; }
         unsafe {
@@ -104,6 +119,9 @@ class Set[T] {
         }
     }
 
+    /*
+     * Clear - Remove all elements, keeping the backing buffers
+     */
     public void func Clear() {
         unsafe {
             let i = 0;
@@ -115,6 +133,9 @@ class Set[T] {
         self.count = 0;
     }
 
+    /*
+     * ToList - Collect the elements into a new List (unspecified order)
+     */
     public List[T] func ToList() {
         let result = new List[T]();
         unsafe {
@@ -127,24 +148,54 @@ class Set[T] {
         return result;
     }
 
+    /*
+     * Union - A new set with every element of self and other; walks live buckets directly
+     */
     public Set[T] func Union(Set[T] other) {
         let result = new Set[T]();
-        let mine = self.ToList();
-        let theirs = other.ToList();
-        for v in mine { result.Add(v); }
-        for v in theirs { result.Add(v); }
-        return result;
-    }
-
-    public Set[T] func Intersect(Set[T] other) {
-        let result = new Set[T]();
-        let mine = self.ToList();
-        for v in mine {
-            if (other.Has(v)) { result.Add(v); }
+        unsafe {
+            let i = 0;
+            while (i < self.cap) {
+                if (self.used[i] != 0) { result.Add(self.keys[i]); }
+                i = i + 1;
+            }
+            i = 0;
+            while (i < other.cap) {
+                if (other.used[i] != 0) { result.Add(other.keys[i]); }
+                i = i + 1;
+            }
         }
         return result;
     }
 
+    /*
+     * Intersect - A new set with the elements present in both self and other
+     */
+    public Set[T] func Intersect(Set[T] other) {
+        let result = new Set[T]();
+        unsafe {
+            let i = 0;
+            while (i < self.cap) {
+                if (self.used[i] != 0 && other.Has(self.keys[i])) { result.Add(self.keys[i]); }
+                i = i + 1;
+            }
+        }
+        return result;
+    }
+
+    /*
+     * + - Operator spelling of Union
+     */
+    public operator Set[T] func +(Set[T] other) { return self.Union(other); }
+
+    /*
+     * & - Operator spelling of Intersect
+     */
+    public operator Set[T] func &(Set[T] other) { return self.Intersect(other); }
+
+    /*
+     * Grow - Reallocate to >= minCap (power of two) and rehash every live key
+     */
     void func Grow(int minCap) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 16; }
@@ -153,9 +204,8 @@ class Set[T] {
             let nk = alloc((nc as usize) * sizeof(T)) as T*;
             let nu = alloc(nc as usize) as char*;
             let mask = (nc - 1) as usize;
+            Mem.Fill(nu, 0 as byte, nc as usize);
             let i = 0;
-            while (i < nc) { nu[i] = 0; i = i + 1; }
-            i = 0;
             while (i < self.cap) {
                 if (self.used[i] != 0) {
                     let h = Hash.Mix(self.keys[i] as usize) & mask;
@@ -176,9 +226,9 @@ class Set[T] {
 
 class StringSet {
     String* keys;
-    char*   used;
-    int     cap;
-    int     count;
+    char* used;
+    int cap;
+    int count;
 
     func _init() {
         self.keys = null;
@@ -203,6 +253,9 @@ class StringSet {
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
 
+    /*
+     * Reserve - Grow so n items fit under the 0.7 load factor without rehashing
+     */
     public void func Reserve(int n) {
         let target = self.cap;
         if (target == 0) { target = 16; }
@@ -210,7 +263,9 @@ class StringSet {
         if (target > self.cap) { self.Grow(target); }
     }
 
-    // A null item is ignored.
+    /*
+     * Add - Insert item if absent; a null item is ignored
+     */
     public void func Add(String item) {
         if (item == null) { return; }
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
@@ -227,6 +282,9 @@ class StringSet {
         }
     }
 
+    /*
+     * Has - True if item is present (by content)
+     */
     public bool func Has(String item) {
         if (self.cap == 0 || item == null) { return false; }
         unsafe {
@@ -242,6 +300,9 @@ class StringSet {
         return false;
     }
 
+    /*
+     * Remove - Delete item if present, backward-shifting the following run
+     */
     public void func Remove(String item) {
         if (self.cap == 0 || item == null) { return; }
         unsafe {
@@ -273,6 +334,9 @@ class StringSet {
         }
     }
 
+    /*
+     * Clear - Remove all elements, keeping the backing buffers
+     */
     public void func Clear() {
         unsafe {
             let i = 0;
@@ -284,6 +348,9 @@ class StringSet {
         self.count = 0;
     }
 
+    /*
+     * ToList - Collect the strings into a new List (unspecified order)
+     */
     public List[String] func ToList() {
         let result = new List[String]();
         unsafe {
@@ -296,6 +363,9 @@ class StringSet {
         return result;
     }
 
+    /*
+     * Grow - Reallocate to >= minCap (power of two) and rehash every live key
+     */
     void func Grow(int minCap) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 16; }
@@ -304,9 +374,8 @@ class StringSet {
             let nk = alloc((nc as usize) * sizeof(String)) as String*;
             let nu = alloc(nc as usize) as char*;
             let mask = (nc - 1) as usize;
+            Mem.Fill(nu, 0 as byte, nc as usize);
             let i = 0;
-            while (i < nc) { nu[i] = 0; i = i + 1; }
-            i = 0;
             while (i < self.cap) {
                 if (self.used[i] != 0) {
                     let h = Hash.HashString(self.keys[i]) & mask;

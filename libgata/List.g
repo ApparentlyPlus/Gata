@@ -1,15 +1,12 @@
-// List.g — generic growable array `List[T]`.
-//
-// The monomorphizer stamps List_int, List_String, ... per instantiation used. The
-// backing buffer is a raw `T*` poked inside `unsafe`, where ARC steps aside and
-// element lifetimes are managed by hand (retain on store, release on overwrite/
-// remove/clear/dealloc — a no-op for value T). `==` (IndexOf/Contains) is value
-// equality for primitive T, identity for reference T — Gata has no per-type
-// comparator. `for x in list` works because of Length()/Get(int); `list[i]` because
-// of the declared `operator []`/`[]=` below — two separate, independent opt-ins.
+/*
+ * List.g - Generic growable array List[T]
+ *
+ * Author: u/ApparentlyPlus
+ */
 
 import Runtime;
 import String;
+import Mem;
 
 class List[T] {
     T*  data;
@@ -35,7 +32,9 @@ class List[T] {
     public int func Capacity() { return self.cap; }
     public void func Reserve(int n) { if (n > self.cap) { self.Grow(n); } }
 
-    // Zero value if `i` is out of range.
+    /*
+     * Get - Element at i, or the zero value if i is out of range
+     */
     public T func Get(int i) {
         if (i >= 0 && i < self.length) {
             unsafe { return retain(self.data[i]); }
@@ -43,7 +42,9 @@ class List[T] {
         return default(T);
     }
 
-    // No-op if `i` is out of range.
+    /*
+     * Set - Store v at i; a no-op if i is out of range
+     */
     public void func Set(int i, T v) {
         if (i >= 0 && i < self.length) {
             unsafe {
@@ -56,40 +57,94 @@ class List[T] {
     public operator T func [](int i) { return self.Get(i); }
     public operator func []=(int i, T v) { self.Set(i, v); }
 
+    /*
+     * Raw - BORROW-ONLY view of the backing buffer: no bounds checks, no retain
+     * Elements stay owned by the list (the Algorithms.g sorts walk it directly).
+     */
+    public T* func Raw() { return self.data; }
     public T func First() { return self.Get(0); }
     public T func Last() { return self.Get(self.Length() - 1); }
 
+    /*
+     * Add - Append v to the end
+     */
     public void func Add(T v) {
         if (self.length >= self.cap) { self.Grow(self.length + 1); }
         unsafe { self.data[self.length] = retain(v); }
         self.length = self.length + 1;
     }
 
-    // `i` is clamped to [0, length].
+    /*
+     * << - Operator spelling of Add; returns self so appends chain
+     */
+    public operator List[T] func <<(T v) { self.Add(v); return self; }
+
+    /*
+     * AddRange - Append every element of other (retained); reserves once up front
+     */
+    public void func AddRange(List[T] other) {
+        if (other == null) { return; }
+        let n = other.Length();
+        if (n == 0) { return; }
+        self.Reserve(self.length + n);
+        unsafe {
+            let i = 0;
+            while (i < n) {
+                self.data[self.length + i] = retain(other.data[i]);
+                i = i + 1;
+            }
+        }
+        self.length = self.length + n;
+    }
+
+    /*
+     * Clone - A new list with the same elements (retained, not deep-copied)
+     */
+    public List[T] func Clone() {
+        let result = new List[T]();
+        result.AddRange(self);
+        return result;
+    }
+
+    /*
+     * Insert - Insert v at i (clamped to [0, length]). Shifts the tail with one Mem.Move.
+     */
     public void func Insert(int i, T v) {
         if (i < 0) { i = 0; }
         if (i > self.length) { i = self.length; }
         if (self.length >= self.cap) { self.Grow(self.length + 1); }
         unsafe {
-            let j = self.length;
-            while (j > i) { self.data[j] = self.data[j - 1]; j = j - 1; }
+            if (i < self.length) {
+                let base = self.data as char*;
+                Mem.Move(base + ((i + 1) as usize) * sizeof(T),
+                         base + (i as usize) * sizeof(T),
+                         ((self.length - i) as usize) * sizeof(T));
+            }
             self.data[i] = retain(v);
         }
         self.length = self.length + 1;
     }
 
-    // No-op if `i` is out of range.
+    /*
+     * RemoveAt - Remove the element at i
+     */
     public void func RemoveAt(int i) {
         if (i < 0 || i >= self.length) { return; }
         unsafe {
             release(self.data[i]);
-            let j = i;
-            while (j < self.length - 1) { self.data[j] = self.data[j + 1]; j = j + 1; }
+            if (i < self.length - 1) {
+                let base = self.data as char*;
+                Mem.Move(base + (i as usize) * sizeof(T),
+                         base + ((i + 1) as usize) * sizeof(T),
+                         ((self.length - 1 - i) as usize) * sizeof(T));
+            }
         }
         self.length = self.length - 1;
     }
 
-    // No-op if empty.
+    /*
+     * RemoveLast - Drop the last element
+     */
     public void func RemoveLast() {
         if (self.length > 0) {
             unsafe { release(self.data[self.length - 1]); }
@@ -97,6 +152,9 @@ class List[T] {
         }
     }
 
+    /*
+     * Reverse - Reverse the list in place
+     */
     public void func Reverse() {
         let a = 0;
         let b = self.length - 1;
@@ -111,7 +169,9 @@ class List[T] {
         }
     }
 
-    // Keeps the backing buffer.
+    /*
+     * Clear - Remove all elements, keeping the backing buffer
+     */
     public void func Clear() {
         unsafe {
             let i = 0;
@@ -120,6 +180,9 @@ class List[T] {
         self.length = 0;
     }
 
+    /*
+     * IndexOf - First index of v by ==, or -1 if absent
+     */
     public int func IndexOf(T v) {
         unsafe {
             let i = 0;
@@ -133,16 +196,16 @@ class List[T] {
 
     public bool func Contains(T v) { return self.IndexOf(v) >= 0; }
 
-    // Doubles capacity (from 8) until at least `need`; raw move, no retains (the
-    // pointer relocates, ownership doesn't change).
+    /*
+     * Grow - Double capacity (from 8) until at least need; raw move, no retains
+     */
     void func Grow(int need) {
         let nc = self.cap * 2;
         if (nc == 0) { nc = 8; }
         while (nc < need) { nc = nc * 2; }
         unsafe {
             let nd = alloc((nc as usize) * sizeof(T)) as T*;
-            let i = 0;
-            while (i < self.length) { nd[i] = self.data[i]; i = i + 1; }
+            if (self.length > 0) { Mem.Copy(nd, self.data, (self.length as usize) * sizeof(T)); }
             if (self.data != null) { free(self.data); }
             self.data = nd;
         }

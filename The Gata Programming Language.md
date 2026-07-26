@@ -186,7 +186,7 @@ By the end of this book, you will understand not only how to write Gata code, bu
 
 **Part IX: Reference**
 
-29. [Diagnostics Reference (G000–G068)](#29-diagnostics-reference-g000g068)
+29. [Diagnostics Reference (G000–G081)](#29-diagnostics-reference-g000g081)
 30. [Appendix: Keyword List & Operator Precedence](#30-appendix-keyword-list--operator-precedence)
 
 
@@ -262,8 +262,8 @@ myos/
 and writes this starter `src/main.g`:
 
 ```go
-import LibGata;
-import Collections;
+import Misc;
+import Console;
 
 kernel {
     entry func Main() {
@@ -283,7 +283,7 @@ user {
 }
 ```
 
-(`Misc.PrintBanner()` draws the GatOS startup banner — a `libgata` nicety, not a requirement; delete the line and the banner is gone.)
+(`Misc.PrintBanner()` draws the GatOS startup banner — a `libgata` nicety, not a requirement; delete the line, and its `import Misc;`, and the banner is gone.)
 
 `appa build --run` takes this file, produces a bootable image, and boots it in QEMU. Try it! When QEMU boots, use `ALT+TAB` to cycle through consoles (one for each user process and one for each kernel process). In our example, we only have the kernel console and a userspace program console.
 
@@ -754,7 +754,7 @@ class String {
     public operator String func as(char c)   { return String.FromChar(c); }
     public operator String func as(int n)    { return Int.ToString(n); }
     public operator String func as(double v) { return Format.Double(v); }
-    public operator String func as(bool b)   { return Bool.ToString(b); }
+    public operator String func as(bool b)   { return b ? "true" : "false"; }
 }
 
 let String a = 42 as String;      // dispatches to as(int)
@@ -802,9 +802,43 @@ T func First[T](List[T] xs) { return xs.Get(0); }
 let int x = First(myIntList);   // T inferred as int from myIntList's List[int]-ness
 ```
 
-What generics don't support: there are no explicit type constraints, meaning no `T : Comparable`-style syntax. Generic code is duck-typed, so a function body using `a < b` on a generic `T` simply fails to monomorphize for any concrete `T` lacking `operator <`. 
+A method on a `class` or `module` can be generic too, with its own type parameters independent of whatever generic parameters (if any) the class itself declares. It's monomorphized per call site exactly like a free function — not stamped as a unit alongside the rest of the class — so `self` (for an instance method) is simply the concrete receiver, no different from an ordinary method:
 
-This is also *why* `libgata`'s sorting and searching algorithms (Chapter 26) are written as free functions in an `Algorithms` module rather than as `List[T]` methods: every member of a generic *class* is stamped unconditionally for every instantiation, so a `<`-using method directly on `List[T]` would break `List[List[int]]` (no `<` on `List[int]`) and any other non-comparable `T`. A free function only instantiates per call site, so this risk doesn't apply to it.
+```go
+module Algorithms {
+    public T func Min[T](T a, T b) { return a < b ? a : b; }
+}
+
+class Box {
+    int tag;
+    func _init(int t) { self.tag = t; }
+    public U func TagWith[U](U extra) { return extra; }   // self.tag is an ordinary int here
+}
+
+let double m = Algorithms.Min(3.0, 5.0);   // T inferred as double
+let Box b = new Box(1);
+let String s = b.TagWith("x");             // U inferred as String
+```
+
+What generics don't support: there are no explicit type constraints, meaning no `T : Comparable`-style syntax. Generic code is duck-typed, so a function or method body using `a < b` on a generic `T` simply fails to monomorphize for any concrete `T` lacking `operator <`.
+
+This distinction — a method's *own* generic parameters vs. the *class's* generic parameters — matters for one specific risk: every member of a generic *class* is stamped unconditionally for every instantiation of the class's own type parameter, so giving `List[T]` a method that used `<` directly on that class's own `T` would break `List[List[int]]` (no `<` on `List[int]`) and any other non-comparable `T`, even if that method is never called. A method's own, independently-generic parameters don't have this problem, since they monomorphize lazily per call site, exactly like a free function. `libgata`'s sorting and searching algorithms (Chapter 26) still live in their own `Algorithms` module rather than directly on `List[T]`, but that's about keeping general-purpose, `T`-agnostic algorithms decoupled from any one container's own type parameter — not because generic methods themselves were unsupported.
+
+A bare (unqualified) call to a generic free function always wins over an equally-named sibling method or free function elsewhere in scope — resolving that ambiguity by picking one silently would be worse than asking you to qualify it (diagnostic `G069`, Chapter 29). Qualify through whichever mechanism fits: `Module.Name(...)` for a real module or class, `self.Name(...)` for a sibling instance method, or, when neither applies — for instance, two unrelated files that each declare their own free function under the same name — `FileName.Name(...)`, where `FileName` is the declaring file's name without its `.g` extension. This last form works for any free function, generic or not, and for a `private` one it's only usable from within its own declaring file:
+
+```go
+// Sorting.g
+T func Find[T](List[T] xs, T target) { ... }
+
+// Searching.g
+T func Find[T](List[T] xs, T target) { ... }
+
+// main.g
+import Sorting;
+import Searching;
+let int a = Sorting.Find(myList, 5);     // qualified: unambiguous
+let int b = Searching.Find(myList, 5);   // qualified: unambiguous
+```
 
 ## 14. Enums
 
@@ -1322,7 +1356,7 @@ Everything you've seen so far — `Console.PrintLine`, `Int.ToString`, `List[T]`
 
 ## 26. The Standard Library: `libgata`
 
-The standard library ships as two imports, and you've been writing both since Chapter 2. `import LibGata;` pulls in the core: `Runtime`, `Mem`, `String`, `Char`, `Int`, `Math`, `Format`, `Console`, `Sys`, `Time`, `Sync`, `Random`, and `Misc`, in that dependency order. `import Collections;` adds the generic container family and its algorithms on top. A program that uses no containers can skip the second import entirely.
+The standard library is `libgata`, and you import from it à la carte: a program names the specific modules it uses — `import Console;`, `import List;`, `import Math;` — at the top of the file. There's no umbrella import that pulls in "everything"; a module you never name isn't parsed or compiled into your program at all, so unused parts of the library cost you nothing. Each module declares its own dependencies, so importing one transitively brings in what it's built on: `import Console;` is enough to also reach `String` and `Int`, because `Console` imports them. As a matter of style, still import what you directly reference rather than leaning on that transitivity. The modules, in the rough order they layer on top of each other, are: `Runtime`, `Mem`, `String`, `Char`, `Int`, `Long`, `Math`, `Format`, `Console`, `Sys`, `Time`, `Sync`, `Random`, and `Misc` for the core, then `Hash` and the generic container family — `List`, `Stack`, `Queue`, `Map`, `Set`, `PriorityQueue` — and `Algorithms` on top.
 
 `libgata` is itself ordinary Gata, so there's no hidden compiler magic in it beyond the handful of `@intrinsic`/`@builtin` bindings from Chapter 24. Its exact method names and signatures are still actively changing, so rather than print a table here that would go stale within a few releases, the full, current surface of every module is kept in a separate `libgata` reference document.
 
@@ -1331,15 +1365,19 @@ In broad terms, here's what each module is for:
 - `Runtime`: the reference-counting runtime itself (the object header, retain/release, Chapter 17 and Chapter 24).
 - `Mem`: raw heap allocation and low-level buffer operations — `Copy`, `Fill`, `Compare`, and the overlap-safe `Move`, all of which work word-at-a-time rather than byte-at-a-time on aligned data.
 - `String` and `Char`: the managed string type and character classification/conversion helpers. `String` declares content-comparing `==`/`!=` (null comparisons stay pointer identity, Chapter 12), conversion operators so `42 as String`/`true as String`/`2.5 as String` just work, and a growable `StringBuilder` companion that interpolation lowers onto (Chapter 8).
-- `Int`, `Math`, `Format`: numeric parsing/formatting and the usual math functions.
+- `Int`, `Long`: text conversion and parsing for the `int` and `int64` primitives — one module (and one import) each, so you pull in only what you name. `bool` gets no module of its own: its only stdlib-visible behavior is a two-branch conversion, so it lives directly as `String.as(bool)` (Chapter 12).
+- `Math`, `Format`: the usual math functions and printf-style value formatting.
 - `Console`: console/TTY input and output. Output is batched — one `Print` is one write to the environment, whatever the string's length.
 - `Sys`: yielding, sleeping, and process exit.
 - `Time`: the monotonic clock — `Time.Nanos()` and `Time.Millis()` over the `_env_time_ns` floor bind (Chapter 23). On GatOS this is nanoseconds since boot; using it is what pulls the timer subsystem into the build.
 - `Sync`: the thread-synchronization floor — `SpinLock` and `AtomicInt`, built on `fields { }` and the compiler's atomic builtins so the same types work in kernel, user, and Hosted code. Chapter 22 shows the sharing pattern they exist for.
 - `Random`: a fast, statistically solid PRNG (`xoshiro256**`). `new Random()` seeds from the clock; `Reseed(seed)` gives a deterministic, reproducible sequence. Explicitly *not* for keys or tokens.
 - `Misc`: boot/startup niceties, like the `Misc.PrintBanner()` you met in Chapter 2.
-- `Collections`: the generic container family — `List[T]`, `Stack[T]`, `Queue[T]`, `Map[K,V]`/`StringMap[V]`, `Set[T]`/`StringSet`, `PriorityQueue[T]`.
-- `Algorithms`: free generic functions over the containers, kept separate from the collection classes for the reason explained in Chapter 13. `Sort`/`IsSorted`/`BinarySearch`/`Min`/`Max` are duck-typed over `operator <`; alongside them sits a comparator family — `SortBy`, `MinBy`, `MaxBy` — that takes a `func(T, T) -> bool` "less" function (Chapter 16), for ordering types with no `<` or ordering them differently.
+- The container modules — `List` (`List[T]`), `Stack` (`Stack[T]`), `Queue` (`Queue[T]`), `Map` (`Map[K,V]`/`StringMap[V]`), `Set` (`Set[T]`/`StringSet`), and `PriorityQueue` (`PriorityQueue[T]`): the generic container family, each its own import. Where an operation has a natural operator reading, the type declares the operator alongside its named method rather than making callers spell out the method every time: `List[T]` declares `<<` as chainable sugar for `Add`, and `Set[T]` declares `+`/`&` for `Union`/`Intersect`.
+- `Hash`: the hashing primitives (`Hash.Mix`, `Hash.HashString`) that the hash-table containers share. `Map` and `Set` import it; you'll rarely import it directly unless you're hashing something yourself.
+- `Algorithms`: a module of generic algorithms over the containers, kept separate from the collection classes for the reason explained in Chapter 13. `Sort`/`IsSorted`/`BinarySearch`/`Min`/`Max` are duck-typed over `operator <`; alongside them sits a comparator family — `SortBy`, `MinBy`, `MaxBy` — that takes a `func(T, T) -> bool` "less" function (Chapter 16), for ordering types with no `<` or ordering them differently. Call it as an ordinary qualified module call, e.g. `Algorithms.Sort(myList)` — its methods are independently generic (Chapter 13), monomorphized per call site like any generic method.
+
+**Convention: don't make a module just to back one conversion.** If a primitive's only stdlib-visible behavior is "turn it into/from a `String`," that's an `as` operator on `String` (Chapter 12), not a standalone module with a `ToString`/`Parse` pair. A module earns its own file when it has real, non-conversion behavior — `Int`/`Long` still justify their files because they own parsing *and* arbitrary-radix/overflow-checked formatting beyond a single ternary. `bool`'s conversion is a two-branch ternary, so it lives directly as `String.as(bool)` with no module at all — that's the shape to copy. The same instinct applies one level up: prefer an operator over a same-named method when the method already matches one of Chapter 12's overloadable shapes (`+`, `&`, `<<`, `==`, `[]`, `[]=`) and a sibling type in the same module family already uses the operator form for the same concept — but don't manufacture an operator for a method with no natural operator reading (`Contains`, `Length`, and friends stay named methods).
 
 ## 27. The `appa` CLI in Depth
 
@@ -1383,9 +1421,22 @@ After that comes lowering: reference counting is inserted and `defer` actions ar
 
 The two chapters in this part are pure lookup tables — keep them bookmarked rather than read start to finish.
 
-## 29. Diagnostics Reference (G000–G068)
+## 29. Diagnostics Reference (G000–G081)
 
 Every error and warning `appa` produces carries a stable code, so you can search this table, or the source, for exactly what triggered it, rather than parsing prose alone. Codes are assigned sequentially in declaration order — there's no category-block numbering scheme, no "G0xx = structural" convention reserving room — a new diagnostic is simply the next integer.
+
+Severity is a property of the diagnostic, not of its code range: `G023`–`G026`, `G070`–`G074`, `G076`–`G078`, `G080`, and `G081` are warnings, everything else is an error. Warnings never stop a build on their own; pass `--werror` to `appa check` to treat them as failures.
+
+Suggestions are never folded into the message text. A diagnostic carries zero or more *hints*, and the renderer prints each on its own `= help:` line beneath the source snippet, after the caret:
+
+```
+warn.g:15:20: error[G075]: integer division by a literal zero
+   |
+15 |         return y / 0;
+   |                    ^
+   |
+   = help: this traps at runtime; guard the divisor or use a non-zero constant
+```
 
 | Code | Name | Fires when |
 |---|---|---|
@@ -1458,6 +1509,29 @@ Every error and warning `appa` produces carries a stable code, so you can search
 | G066 | BadThrowsReturnType | A `throws` function returning a pointer, array, or function-pointer type — supported `throws` returns are void, primitives, enums, unions, `String`, and classes (Ch. 20). |
 | G067 | LifecycleThrows | `_init` or `_deinit` declared `throws` — they're called by generated allocator/destructor code that can't receive a Result (Ch. 9, Ch. 20). |
 | G068 | EntryOutsideKernel | A free `entry func` inside a `user { }` block of a GatOS build — GatOS userspace entry points are the threads of a `process` (Ch. 22). |
+| G069 | AmbiguousCall | A bare call matches both a generic function/method and an equally plausible lower-precedence candidate (a sibling class/module method, a private free function, or another in-scope file's same-named public generic) — qualify with `Module.Name(...)`, `self.Name(...)`, or `FileName.Name(...)` (Ch. 13). |
+| G070 | ShadowedVariable | *(warning)* A `let` declares a name that already exists in an enclosing scope, hiding it for the rest of the block. Redeclaring in the *same* scope is `G003` instead (Ch. 4). |
+| G071 | SelfAssignment | *(warning)* An assignment whose target and value denote the same storage (`x = x`, `self.n = self.n`) — it compiles and does nothing. |
+| G072 | NoEffect | *(warning)* A side-effect-free expression used as a statement, so its value is computed and discarded. A call is never side-effect-free, so ignoring a return value stays silent. |
+| G073 | ConstantCondition | *(warning)* An `if` or ternary condition that is a literal `true`/`false`. Loop conditions are exempt: `while (true)` and `for (;;)` are the idiomatic infinite loops. |
+| G074 | RedundantCast | *(warning)* An `as` cast to the type the value already has. A cast on a *literal* is exempt, since it pins that literal's width deliberately. |
+| G075 | DivisionByZero | Integer `/` or `%` by a literal `0`, which traps at runtime on every target. Float division is defined (infinity) and not reported. |
+| G076 | UnusedParameter | *(warning)* A parameter the body never reads. Prefix the name with `_` to opt out. `native` bodies are exempt, since raw C may reference anything by name. |
+| G077 | UnreachableCase | *(warning)* A `default` arm on a `match` whose cases already cover every variant of the union. Dropping it makes a newly added variant a `G039` error instead of a silent fall-through. |
+| G078 | SelfComparison | *(warning)* A comparison whose two sides denote the same storage (`a == a`, `a < a`), making the result constant. Reported in loop conditions too. |
+| G079 | BadShiftCount | A literal `<<`/`>>` count that is negative, or at least as wide as the left operand's type — undefined behaviour in the emitted C. The bound follows the operand's own width, so `32` is illegal for `int` but fine for `int64`. |
+| G080 | MissingInterpolation | *(warning)* A plain string literal containing `{name}` where `name` is a variable in scope — the signature of a `$` dropped from an interpolated string. Only fires when the name resolves, so braces around anything else stay silent (Ch. 5). |
+| G081 | UnusedPrivate | *(warning)* A private free function, method, or operator (members are private by default, Ch. 8) that nothing else in the program refers to. `_init`/`_deinit`, `@keep`, `@intrinsic`, and any name appearing in a `native` block are exempt. |
+
+
+### What `G081` can and cannot see
+
+`G081` answers "does anything other than this symbol itself refer to it?", which is deliberately weaker than full reachability from the entry points. Two consequences are worth knowing:
+
+- A self-recursive private helper that nothing else calls **is** reported — references are attributed to the enclosing symbol, so a function calling only itself does not keep itself alive.
+- Two dead private functions that call *each other* are **not** reported. Erring this way is intentional: the analysis never claims live code is dead, and dead code left behind is still stripped by the reachability pass before codegen.
+
+Generic templates are judged differently. A template body is only resolved when some call site instantiates it, so "never instantiated in this build" does not mean dead — a private helper called only from a public generic that the current program happens not to use has no IR at all, yet is plainly live. For templates the compiler falls back to asking whether the name occurs anywhere else in its declaring file, which is the whole search space (privacy is file-scoped for a free function, and a class lives in one file). A mention in a comment therefore also silences it.
 
 ## 30. Appendix: Keyword List & Operator Precedence
 
