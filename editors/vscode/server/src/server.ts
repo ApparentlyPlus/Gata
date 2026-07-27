@@ -14,6 +14,7 @@ import { Lexer } from './lexer';
 import { Parser } from './parser';
 import { ParseError, Span } from './codes';
 import { checkProject, GataSettings, defaultSettings } from './semantic';
+import { validateGconf } from './gconf';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -37,7 +38,11 @@ connection.onInitialized(() => {
 });
 
 connection.onDidChangeConfiguration(async () => {
-  await refreshSettings();
+  try {
+    await refreshSettings();
+  } catch (e) {
+    connection.console.warn(`gata: could not refresh settings: ${e instanceof Error ? e.message : String(e)}`);
+  }
   documents.all().forEach(validateSyntax);
 });
 
@@ -72,6 +77,25 @@ function spanToRange(doc: TextDocument, span: Span) {
 /// and publishes every syntax error it throws. This never shells out to anything, so it
 /// runs on every keystroke regardless of whether the file belongs to a real project.
 function validateSyntax(doc: TextDocument): void {
+  // A .gconf is XML, not Gata. Running the Gata parser over one would report a wall of
+  // nonsense, so each language gets its own validator and they never cross.
+  if (doc.languageId === 'gconf') {
+    let diags: Diagnostic[];
+    try {
+      diags = validateGconf(doc);
+    } catch (e) {
+      diags = [{
+        severity: DiagnosticSeverity.Warning,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        message: `gconf: internal validator error: ${e instanceof Error ? e.message : String(e)}`,
+        source: 'gconf',
+      }];
+    }
+    syntaxDiagnostics.set(doc.uri, diags);
+    publish(doc.uri);
+    return;
+  }
+
   const text = doc.getText();
   const diags: Diagnostic[] = [];
   try {
@@ -101,15 +125,42 @@ function validateSyntax(doc: TextDocument): void {
   publish(doc.uri);
 }
 
-let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+// Keyed by URI: one shared timer meant that editing file A and then file B within the
+// debounce window cancelled A's pending validation and never rescheduled it, leaving A
+// showing stale diagnostics until it was touched again.
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 documents.onDidChangeContent((change) => {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => validateSyntax(change.document), 150);
+  const uri = change.document.uri;
+  const pending = debounceTimers.get(uri);
+  if (pending) clearTimeout(pending);
+  debounceTimers.set(uri, setTimeout(() => {
+    debounceTimers.delete(uri);
+    validateSyntax(change.document);
+  }, 150));
+});
+
+// Closing a file must retract its diagnostics, and drop the state we were holding for it.
+documents.onDidClose((change) => {
+  const uri = change.document.uri;
+  const pending = debounceTimers.get(uri);
+  if (pending) { clearTimeout(pending); debounceTimers.delete(uri); }
+  syntaxDiagnostics.delete(uri);
+  semanticDiagnostics.delete(uri);
+  connection.sendDiagnostics({ uri, diagnostics: [] });
 });
 
 documents.onDidOpen((change) => {
   validateSyntax(change.document);
   void runSemanticCheck(change.document);
+});
+
+// A crash in a handler must not take the server process down with it and silently kill
+// diagnostics for the whole session; log and keep serving.
+process.on('uncaughtException', (e) => {
+  connection.console.error(`gata: uncaught server error: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+});
+process.on('unhandledRejection', (e) => {
+  connection.console.error(`gata: unhandled rejection: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
 });
 
 documents.onDidSave((change) => {
@@ -118,6 +169,7 @@ documents.onDidSave((change) => {
 
 async function runSemanticCheck(doc: TextDocument): Promise<void> {
   if (!settings.enableSemanticChecks) return;
+  if (doc.languageId !== 'gata') return;   // 'appa check' takes Gata sources, not manifests
   const filePath = uriToPath(doc.uri);
   if (!filePath) return;
   try {
@@ -153,4 +205,5 @@ function uriToPath(uri: string): string | undefined {
 documents.listen(connection);
 connection.listen();
 
-void refreshSettings();
+void refreshSettings().catch((e) =>
+  connection.console.warn(`gata: initial settings load failed: ${e instanceof Error ? e.message : String(e)}`));

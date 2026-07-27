@@ -21,7 +21,7 @@ export enum TK {
   // Keywords (Flow control)
   Return, If, Else, While, For, In, Break, Continue, Switch, Case,
   Try, Catch, New, Let, Null, Unsafe, Throw, Sizeof, Default, Enum,
-  Debug, Panic, Defer, Match, Union,
+  Debug, Panic, Defer, Match, Union, Assign,
 
   // Primitive types
   TBool, TInt, TChar, TFloat, TDouble, TShort, TVoid, TPrim,

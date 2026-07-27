@@ -186,7 +186,7 @@ By the end of this book, you will understand not only how to write Gata code, bu
 
 **Part IX: Reference**
 
-29. [Diagnostics Reference (G000–G081)](#29-diagnostics-reference-g000g081)
+29. [Diagnostics Reference (G000–G082)](#29-diagnostics-reference-g000g082)
 30. [Appendix: Keyword List & Operator Precedence](#30-appendix-keyword-list--operator-precedence)
 
 
@@ -1011,7 +1011,90 @@ try {
 }
 ```
 
-If any statement inside `try` invokes a `throws` function and that call comes back as an error, control transfers to `catch`. There's no exception object to bind, Gata has no `catch (e)` form; the error itself carries no payload beyond "did this fail." A `throws` function is most naturally called from inside another `throws` function, propagating the error, or inside a `try`, handling it locally. Calling one and ignoring the possibility of failure is legal syntax, since Gata doesn't force a separate "must-check" step.
+If any statement inside `try` invokes a `throws` function and that call comes back as an error, control transfers to `catch`. There's no exception object to bind, Gata has no `catch (e)` form; the error itself carries no payload beyond "did this fail."
+
+Failure is not ignorable. A `throws` function may only be called from one of two places: inside another `throws` function, which propagates the error outward, or inside a `try`, which handles it locally. Calling one anywhere else is a compile error (`G021`), so there is no way to silently drop a failure on the floor.
+
+A second rule falls out of the same diagnostic: a throwing call must be the *whole* of its statement — either a `let` initializer or an expression statement on its own. It can't be buried inside a larger expression:
+
+```go
+let int a = Parse(s);              // OK: the initializer is the call
+Parse(s);                          // OK: a statement on its own
+let int b = Parse(s) + 1;          // error G021: inside a larger expression
+Use(Parse(s));                     // error G021: inside a larger expression
+if (Parse(s) > 0) { }              // error G021: inside a larger expression
+```
+
+The restriction exists because the call's error branch has to unwind the current frame, and there's no sensible place to put that unwinding in the middle of evaluating a bigger expression. Bind the result to a local first, then use it.
+
+### Handling a failure in place: `catch` on a call
+
+`try`/`catch` handles failure for a whole *block*, and that block is a scope. That's the right shape when several statements share one recovery path, but it's the wrong shape for the most common case of all — reading one value and carrying on:
+
+```go
+try {
+    let String name = Console.InputLine();
+    // everything that uses `name` is now trapped in here,
+    // because `name` dies at the closing brace
+} catch {
+    Console.PrintLine("read failed");
+}
+```
+
+For that case, a `catch` block can be attached directly to the call instead. The declaration stays in the enclosing scope, and the handler supplies a replacement value with `assign`:
+
+```go
+let String name = Console.InputLine() catch { assign "anonymous"; };
+Console.PrintLine($"hello, {name}");     // still in scope - no nesting
+```
+
+That's the whole feature: `f() catch { … }` counts as handling the failure, exactly like wrapping the call in a `try`, but without introducing a scope for the value to be stranded in.
+
+**Every path through the handler must end in `assign`**, because a path that fell out of the bottom would leave the variable declared but unset:
+
+```go
+let int port = Parse(s) catch {
+    if (IsEmpty(s)) { assign 8080; }
+    else            { assign 0; }        // both arms assign: OK
+};
+```
+
+A handler may also decline to produce a value at all, as long as it leaves some other way — `return`, `throw`, `break`, or `continue`:
+
+```go
+int func ReadPort(String s) {
+    let int port = Parse(s) catch { return -1; };   // give up on the whole function
+    return port;
+}
+
+throws int func ReadPortOrFail(String s) {
+    let int port = Parse(s) catch { throw; };       // propagate to our own caller
+    return port;
+}
+```
+
+Handlers nest, and each `assign` belongs to its own declaration:
+
+```go
+let int x = Parse(a) catch {
+    let int fallback = Parse(b) catch { assign 0; };   // assigns `fallback`
+    assign fallback;                                   // assigns `x`
+};
+```
+
+A handler can also go on a call whose result you're discarding, to recover without producing anything. There's no declaration behind it, so `assign` is a compile error there (`G081`) — the handler is for its side effects only:
+
+```go
+Log.Flush() catch { debug "flush-failed"; };
+```
+
+Three rules are worth stating explicitly:
+
+- **`catch` attaches to a call, and only to a call.** Anything else is a syntax error, and a call that isn't `throws` is `G021` — a handler that outlived its reason to exist gets reported rather than silently ignored.
+- **It binds tighter than any operator**, so `a + f() catch { … }` groups as `a + (f() catch { … })`. But the subexpression rule above still applies: the call must be the whole initializer or the whole statement, so that example is rejected anyway. Bind it to a local first.
+- **A handler doesn't cover the call's arguments.** In `Outer(Inner())`, `Inner` fails before `Outer` is ever entered, so `Outer(Inner()) catch { … }` leaves `Inner`'s failure unhandled and reports `G021`.
+
+`assign` is its own keyword rather than a reuse of `return` for exactly one reason: inside a handler, `return` still means "return from the enclosing function", and the two need to stay visibly different.
 
 ## 21. `defer`
 
@@ -1421,11 +1504,11 @@ After that comes lowering: reference counting is inserted and `defer` actions ar
 
 The two chapters in this part are pure lookup tables — keep them bookmarked rather than read start to finish.
 
-## 29. Diagnostics Reference (G000–G081)
+## 29. Diagnostics Reference (G000–G082)
 
 Every error and warning `appa` produces carries a stable code, so you can search this table, or the source, for exactly what triggered it, rather than parsing prose alone. Codes are assigned sequentially in declaration order — there's no category-block numbering scheme, no "G0xx = structural" convention reserving room — a new diagnostic is simply the next integer.
 
-Severity is a property of the diagnostic, not of its code range: `G023`–`G026`, `G070`–`G074`, `G076`–`G078`, `G080`, and `G081` are warnings, everything else is an error. Warnings never stop a build on their own; pass `--werror` to `appa check` to treat them as failures.
+Severity is a property of the diagnostic, not of its code range: `G023`–`G026`, `G070`–`G074`, `G076`–`G078`, and `G080` are warnings, everything else is an error. Warnings never stop a build on their own; pass `--werror` to `appa check` to treat them as failures.
 
 Suggestions are never folded into the message text. A diagnostic carries zero or more *hints*, and the renderer prints each on its own `= help:` line beneath the source snippet, after the caret:
 
@@ -1521,17 +1604,9 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G078 | SelfComparison | *(warning)* A comparison whose two sides denote the same storage (`a == a`, `a < a`), making the result constant. Reported in loop conditions too. |
 | G079 | BadShiftCount | A literal `<<`/`>>` count that is negative, or at least as wide as the left operand's type — undefined behaviour in the emitted C. The bound follows the operand's own width, so `32` is illegal for `int` but fine for `int64`. |
 | G080 | MissingInterpolation | *(warning)* A plain string literal containing `{name}` where `name` is a variable in scope — the signature of a `$` dropped from an interpolated string. Only fires when the name resolves, so braces around anything else stay silent (Ch. 5). |
-| G081 | UnusedPrivate | *(warning)* A private free function, method, or operator (members are private by default, Ch. 8) that nothing else in the program refers to. `_init`/`_deinit`, `@keep`, `@intrinsic`, and any name appearing in a `native` block are exempt. |
+| G081 | AssignOutsideCatch | `assign` used outside a `catch` handler attached to a call, or inside one whose call result is discarded and so has no declaration to assign to (Ch. 20). |
+| G082 | CatchHandlerNoAssign | A `catch` handler attached to a declaration has a path that reaches its end without an `assign` and without leaving through `return`/`throw`/`break`/`continue` (Ch. 20). |
 
-
-### What `G081` can and cannot see
-
-`G081` answers "does anything other than this symbol itself refer to it?", which is deliberately weaker than full reachability from the entry points. Two consequences are worth knowing:
-
-- A self-recursive private helper that nothing else calls **is** reported — references are attributed to the enclosing symbol, so a function calling only itself does not keep itself alive.
-- Two dead private functions that call *each other* are **not** reported. Erring this way is intentional: the analysis never claims live code is dead, and dead code left behind is still stripped by the reachability pass before codegen.
-
-Generic templates are judged differently. A template body is only resolved when some call site instantiates it, so "never instantiated in this build" does not mean dead — a private helper called only from a public generic that the current program happens not to use has no IR at all, yet is plainly live. For templates the compiler falls back to asking whether the name occurs anywhere else in its declaring file, which is the whole search space (privacy is file-scoped for a free function, and a class lives in one file). A mention in a comment therefore also silences it.
 
 ## 30. Appendix: Keyword List & Operator Precedence
 
@@ -1541,7 +1616,7 @@ Reserved words. These cannot be used as identifiers:
 import kernel user process thread foreground background
 class enum union module func static public private entry throws operator
 as fields ref return if else while for in switch case break continue
-debug panic try catch new let null unsafe throw sizeof default match defer
+debug panic try catch new let null unsafe throw sizeof default match defer assign
 bool int char float double short void int64 uint uint64 ushort byte sbyte
 usize uintptr true false
 ```

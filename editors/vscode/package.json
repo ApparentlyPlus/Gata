@@ -1,13 +1,21 @@
 {
   "name": "gata-highlighting",
   "displayName": "Gata-Highlighting",
-  "description": "Language support for the Gata systems language (.g) — syntax highlighting, real-time syntax diagnostics, and on-save semantic checks from the real appa compiler.",
-  "version": "0.2.0",
+  "description": "Language support for the Gata systems language (.g) and its project manifests (.gconf) \u2014 syntax highlighting, real-time syntax diagnostics, and on-save semantic checks from the real appa compiler.",
+  "version": "0.3.0",
   "publisher": "gata-lang",
-  "engines": { "vscode": "^1.75.0" },
-  "categories": ["Programming Languages", "Linters"],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
   "main": "./extension.js",
-  "activationEvents": ["onLanguage:gata"],
+  "activationEvents": [
+    "onLanguage:gata",
+    "onLanguage:gconf"
+  ],
   "scripts": {
     "compile": "npm --prefix server install && npm --prefix server run build",
     "vscode:prepublish": "npm run compile"
@@ -19,9 +27,25 @@
     "languages": [
       {
         "id": "gata",
-        "aliases": ["Gata", "gata"],
-        "extensions": [".g"],
+        "aliases": [
+          "Gata",
+          "gata"
+        ],
+        "extensions": [
+          ".g"
+        ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "gconf",
+        "aliases": [
+          "Gata Project Manifest",
+          "gconf"
+        ],
+        "extensions": [
+          ".gconf"
+        ],
+        "configuration": "./gconf-language-configuration.json"
       }
     ],
     "grammars": [
@@ -29,6 +53,11 @@
         "language": "gata",
         "scopeName": "source.gata",
         "path": "./syntaxes/gata.tmLanguage.json"
+      },
+      {
+        "language": "gconf",
+        "scopeName": "text.xml.gconf",
+        "path": "./syntaxes/gconf.tmLanguage.json"
       }
     ],
     "themes": [
@@ -41,6 +70,10 @@
     "configurationDefaults": {
       "[gata]": {
         "editor.bracketPairColorization.enabled": false
+      },
+      "[gconf]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
       }
     },
     "configuration": {

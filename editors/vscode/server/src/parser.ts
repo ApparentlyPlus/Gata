@@ -603,6 +603,8 @@ export class Parser {
     if (this.at(TK.Continue)) { this.advance(); this.expect(TK.Semi); return; }
 
     if (this.at(TK.Throw)) { this.advance(); this.expect(TK.Semi); return; }
+    // `assign v;` terminates a catch handler. A statement, not an expression - same as throw.
+    if (this.at(TK.Assign)) { this.advance(); this.parseExpr(); this.expect(TK.Semi); return; }
     if (this.at(TK.Debug)) {
       this.advance();
       if (!this.at(TK.StrLit)) this.fail("'debug' takes a string literal", Codes.Syntax, ['e.g. debug "message";']);
@@ -861,12 +863,26 @@ export class Parser {
 
   private parsePostfix(): void {
     this.parsePrimary();
+    // Tracks whether the expression built so far ends in a call, which is the only thing a
+    // `catch` handler may attach to.
+    let called = false;
     while (true) {
       if (this.at(TK.Inc)) { this.advance(); }
       else if (this.at(TK.Dec)) { this.advance(); }
-      else if (this.at(TK.Dot)) { this.advance(); this.expect(TK.Ident); }
-      else if (this.at(TK.LBrack)) { this.advance(); this.parseExpr(); this.expect(TK.RBrack); }
-      else if (this.at(TK.LParen)) { this.advance(); this.parseArgList(); this.expect(TK.RParen); }
+      else if (this.at(TK.Dot)) { this.advance(); this.expect(TK.Ident); called = false; }
+      else if (this.at(TK.LBrack)) { this.advance(); this.parseExpr(); this.expect(TK.RBrack); called = false; }
+      else if (this.at(TK.LParen)) { this.advance(); this.parseArgList(); this.expect(TK.RParen); called = true; }
+      // `f() catch { ... }` - binds to the call it follows, tighter than any binary operator.
+      // Only a call can throw, so anything else in front of it is a syntax error here.
+      else if (this.at(TK.Catch)) {
+        if (!called) {
+          this.fail("'catch' here must follow a call to a 'throws' function", Codes.Syntax,
+            ['e.g. let int x = Parse(s) catch { assign 0; };']);
+        }
+        this.advance();
+        this.parseBlock();
+        called = false;
+      }
       else break;
     }
   }

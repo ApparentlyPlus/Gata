@@ -72,6 +72,8 @@ export const Codes = {
   BadThrowsReturnType: 'G066',
   LifecycleThrows: 'G067',
   EntryOutsideKernel: 'G068',
+  AssignOutsideCatch: 'G081',
+  CatchHandlerNoAssign: 'G082',
 } as const;
 
 export type Code = typeof Codes[keyof typeof Codes];

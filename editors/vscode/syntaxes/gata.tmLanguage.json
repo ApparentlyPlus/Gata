@@ -247,7 +247,7 @@
     "controlFlowKeywords": {
       "comment": "Branching/looping/control-transfer — if/else/while/for/switch/case/break/continue/... 'return' and 'default' live here too: 'return' is a control-transfer statement like break/continue, not a declaration; 'default' is overwhelmingly used as a switch/match case label (pairs visually with 'case'), even though it also appears in the rarer 'default(Type)' value-expression form.",
       "name": "keyword.control.flow.gata",
-      "match": "\\b(import|return|default|if|else|while|for|in|switch|case|break|continue|debug|try|catch|new|match)\\b"
+      "match": "\\b(import|return|default|if|else|while|for|in|switch|case|break|continue|debug|try|catch|new|match|assign)\\b"
     },
 
     "languageConstants": {

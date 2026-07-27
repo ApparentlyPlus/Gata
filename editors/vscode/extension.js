@@ -45,8 +45,22 @@ const GATA_SCOPES = new Set(GATA_RULES.map((rule) => rule.scope));
 let client;
 
 function activate(context) {
-  applyOverlay();
-  client = startLanguageServer(context);
+  // Neither of these may take activation down with them: a failed overlay write or a
+  // server that won't spawn should degrade to plain syntax highlighting, not a dead
+  // extension with no diagnostics and no explanation.
+  try {
+    applyOverlay();
+  } catch (err) {
+    console.error('gata: could not apply the color overlay:', err);
+  }
+  try {
+    client = startLanguageServer(context);
+  } catch (err) {
+    console.error('gata: could not start the language server:', err);
+    vscode.window.showWarningMessage(
+      'Gata: the language server failed to start, so live diagnostics are unavailable. Syntax highlighting still works.'
+    );
+  }
 }
 
 /**
@@ -62,13 +76,23 @@ function startLanguageServer(context) {
     debug: { module: serverModule, transport: TransportKind.ipc },
   };
   const clientOptions = {
-    documentSelector: [{ scheme: 'file', language: 'gata' }],
+    documentSelector: [
+      { scheme: 'file', language: 'gata' },
+      { scheme: 'file', language: 'gconf' },
+    ],
     synchronize: {
       configurationSection: 'gata',
     },
   };
   const languageClient = new LanguageClient('gata', 'Gata Language Server', serverOptions, clientOptions);
-  languageClient.start();
+  // start() is async; without a catch a spawn failure surfaces as an unhandled rejection
+  // in the extension host rather than as something the user can act on.
+  languageClient.start().catch((err) => {
+    console.error('gata: language server exited:', err);
+    vscode.window.showWarningMessage(
+      `Gata: the language server stopped (${err && err.message ? err.message : err}). Syntax highlighting still works.`
+    );
+  });
   return languageClient;
 }
 
@@ -90,15 +114,20 @@ function applyOverlay() {
     return;
   }
 
-  config.update(
-    'editor.tokenColorCustomizations',
-    { ...current, textMateRules: nextRules },
-    vscode.ConfigurationTarget.Global
-  );
+  // update() returns a Thenable; an unhandled rejection here (e.g. a read-only settings
+  // file) would otherwise surface as an opaque extension-host error.
+  Promise.resolve(
+    config.update(
+      'editor.tokenColorCustomizations',
+      { ...current, textMateRules: nextRules },
+      vscode.ConfigurationTarget.Global
+    )
+  ).then(undefined, (err) => console.error('gata: could not write the color overlay:', err));
 }
 
 function deactivate() {
-  return client?.stop();
+  if (!client) return undefined;
+  return client.stop().catch((err) => console.error('gata: error stopping the language server:', err));
 }
 
 module.exports = { activate, deactivate };

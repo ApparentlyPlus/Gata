@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Schema for a Gata project manifest (<project>.gconf), mirroring Appa/src/CLI/Manifest.cs.
+  Every element is optional except the <appa> root; appa applies the defaults noted below.
+  Values are parsed case-insensitively by the compiler, so each spelling is listed in the
+  casing appa itself emits from 'appa init'.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+  <xs:simpleType name="targetBackend">
+    <xs:annotation><xs:documentation>GatOS (default) builds a bootable image; Hosted builds an ordinary libc program.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="GatOS"/>
+      <xs:enumeration value="Hosted"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="buildMode">
+    <xs:annotation><xs:documentation>Debug (default) keeps diagnostics; Release rejects 'debug' and 'panic' outright.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Debug"/>
+      <xs:enumeration value="Release"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="outputType">
+    <xs:annotation><xs:documentation>GatOS console device. Framebuffer (default) or Serial.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Framebuffer"/>
+      <xs:enumeration value="Serial"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="keyboardSupport">
+    <xs:annotation><xs:documentation>Default = PS/2 only; External adds USB; Hotplug adds dynamic (re)detection.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Default"/>
+      <xs:enumeration value="External"/>
+      <xs:enumeration value="Hotplug"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="capabilityDiscovery">
+    <xs:annotation><xs:documentation>On (default) links only the kernel subsystems the program calls. Off assumes all are needed - the escape valve when raw native{} code reaches a subsystem inference cannot see.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="On"/>
+      <xs:enumeration value="Off"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="appa">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="ProjectName" type="xs:string" minOccurs="0"/>
+        <xs:element name="TargetBackend" type="targetBackend" minOccurs="0"/>
+        <xs:element name="BuildMode" type="buildMode" minOccurs="0"/>
+        <xs:element name="OutputType" type="outputType" minOccurs="0"/>
+        <xs:element name="KeyboardSupport" type="keyboardSupport" minOccurs="0"/>
+        <xs:element name="CapabilityDiscovery" type="capabilityDiscovery" minOccurs="0"/>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

@@ -1,8 +1,8 @@
 # Gata Language (VS Code)
 
-Language support for `.g` files: syntax highlighting, plus a real language
-server for real-time syntax diagnostics and on-save semantic diagnostics
-from the actual `appa` compiler.
+Language support for `.g` sources and `.gconf` project manifests: syntax
+highlighting, plus a real language server for real-time syntax diagnostics
+and on-save semantic diagnostics from the actual `appa` compiler.
 
 ## Syntax highlighting
 
@@ -130,3 +130,29 @@ genuinely ambiguous without semantic info:
   (`Point`) isn't affected and still renders gold.
 
 Both are cosmetic-only; nothing here affects the compiler.
+
+
+## Project manifests (`.gconf`)
+
+A `.gconf` is registered as its own language, coloured with VS Code's built-in
+XML grammar and validated in-process by the same language server that handles
+`.g` files — no third-party XML extension required.
+
+The validator mirrors `Appa/src/CLI/Manifest.cs`:
+
+| Reported | Severity |
+|---|---|
+| Root element is not `<appa>`, or the file is empty | Error |
+| A value outside the set `appa` accepts (with "did you mean") | Error |
+| An unknown or misspelled element (with "did you mean") | Warning |
+| The same element set twice | Warning |
+| An empty `<ProjectName>` | Warning |
+| A value spelled in non-canonical case (`release` vs `Release`) | Hint |
+
+Values are compared case-insensitively, exactly as `appa` parses them, so a
+lowercase value is a hint rather than an error. Content inside `<!-- -->` and
+`<![CDATA[ ]]>` is masked before scanning, so a commented-out element is never
+reported.
+
+An XSD (`schemas/gconf.xsd`) also ships for anyone who prefers to point the
+Red Hat XML extension at it; nothing in this extension depends on it.
