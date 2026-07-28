@@ -5,6 +5,7 @@
  */
 
 import Runtime;
+import Optional;
 import String;
 import Mem;
 
@@ -31,6 +32,16 @@ class List[T] {
     public bool func IsEmpty() { return self.Length() == 0; }
     public int func Capacity() { return self.cap; }
     public void func Reserve(int n) { if (n > self.cap) { self.Grow(n); } }
+
+    /*
+     * At - Some(element) at i, or None if i is out of range
+     */
+    public Optional[T] func At(int i) {
+        if (i >= 0 && i < self.length) {
+            unsafe { return Optional.Some(retain(self.data[i])); }
+        }
+        return Optional.None();
+    }
 
     /*
      * Get - Element at i, or the zero value if i is out of range

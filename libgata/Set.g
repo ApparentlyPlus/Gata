@@ -52,19 +52,25 @@ class Set[T] {
     /*
      * Add - Insert item if absent (duplicates are ignored)
      */
-    public void func Add(T item) {
+    public void func Add(T item) { self.AddNew(item); }
+
+    /*
+     * AddNew - Insert item, returning false if it was already there; one probe, not Has then Add
+     */
+    public bool func AddNew(T item) {
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
             let h = Hash.Mix(item as usize) & mask;
             while (self.used[h] != 0) {
-                if (self.keys[h] == item) { return; }
+                if (self.keys[h] == item) { return false; }
                 h = (h + (1 as usize)) & mask;
             }
             self.keys[h] = retain(item);
             self.used[h] = 1;
             self.count = self.count + 1;
         }
+        return true;
     }
 
     /*
@@ -138,6 +144,7 @@ class Set[T] {
      */
     public List[T] func ToList() {
         let result = new List[T]();
+        result.Reserve(self.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {
@@ -153,6 +160,7 @@ class Set[T] {
      */
     public Set[T] func Union(Set[T] other) {
         let result = new Set[T]();
+        result.Reserve(self.count + other.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {
@@ -173,6 +181,7 @@ class Set[T] {
      */
     public Set[T] func Intersect(Set[T] other) {
         let result = new Set[T]();
+        result.Reserve(self.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {
@@ -266,20 +275,26 @@ class StringSet {
     /*
      * Add - Insert item if absent; a null item is ignored
      */
-    public void func Add(String item) {
-        if (item == null) { return; }
+    public void func Add(String item) { self.AddNew(item); }
+
+    /*
+     * AddNew - Insert item, returning false if it was already there (or null); one probe
+     */
+    public bool func AddNew(String item) {
+        if (item == null) { return false; }
         if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
             let h = Hash.HashString(item) & mask;
             while (self.used[h] != 0) {
-                if (self.keys[h].Equals(item)) { return; }
+                if (self.keys[h].Equals(item)) { return false; }
                 h = (h + (1 as usize)) & mask;
             }
             self.keys[h] = retain(item);
             self.used[h] = 1;
             self.count = self.count + 1;
         }
+        return true;
     }
 
     /*
@@ -353,6 +368,7 @@ class StringSet {
      */
     public List[String] func ToList() {
         let result = new List[String]();
+        result.Reserve(self.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {

@@ -9,6 +9,7 @@ import String;
 import List;
 import Mem;
 import Hash;
+import Optional;
 
 class Map[K, V] {
 
@@ -114,6 +115,66 @@ class Map[K, V] {
         throw;
     }
 
+    /*
+     * Find - Some(value) for key, or None; one probe, and tells absent from a stored zero
+     */
+    public Optional[V] func Find(K key) {
+        if (self.cap > 0) {
+            unsafe {
+                let mask = (self.cap - 1) as usize;
+                let h = Hash.Mix(key as usize) & mask;
+                let start = h;
+                while (self.used[h] != 0) {
+                    if (self.keys[h] == key) { return Optional.Some(retain(self.vals[h])); }
+                    h = (h + (1 as usize)) & mask;
+                    if (h == start) { break; }
+                }
+            }
+        }
+        return Optional.None();
+    }
+
+    /*
+     * TryGet - Value for key into out, or false if absent; one probe, not Has then Get
+     */
+    public bool func TryGet(K key, ref V out) {
+        if (self.cap == 0) { return false; }
+        unsafe {
+            let mask = (self.cap - 1) as usize;
+            let h = Hash.Mix(key as usize) & mask;
+            let start = h;
+            while (self.used[h] != 0) {
+                if (self.keys[h] == key) {
+                    release(out);
+                    out = retain(self.vals[h]);
+                    return true;
+                }
+                h = (h + (1 as usize)) & mask;
+                if (h == start) { break; }
+            }
+        }
+        return false;
+    }
+
+    /*
+     * GetOr - Value for key, or fallback if absent; tells absent from a stored zero value
+     */
+    public V func GetOr(K key, V fallback) {
+        if (self.cap > 0) {
+            unsafe {
+                let mask = (self.cap - 1) as usize;
+                let h = Hash.Mix(key as usize) & mask;
+                let start = h;
+                while (self.used[h] != 0) {
+                    if (self.keys[h] == key) { return retain(self.vals[h]); }
+                    h = (h + (1 as usize)) & mask;
+                    if (h == start) { break; }
+                }
+            }
+        }
+        return fallback;
+    }
+
     public operator V func [](K key) { return self.Get(key); }
     public operator func []=(K key, V value) { self.Put(key, value); }
 
@@ -195,6 +256,7 @@ class Map[K, V] {
      */
     public List[K] func Keys() {
         let result = new List[K]();
+        result.Reserve(self.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {
@@ -210,6 +272,7 @@ class Map[K, V] {
      */
     public List[V] func Values() {
         let result = new List[V]();
+        result.Reserve(self.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {
@@ -358,6 +421,66 @@ class StringMap[V] {
         throw;
     }
 
+    /*
+     * Find - Some(value) for key, or None; one probe, and tells absent from a stored zero
+     */
+    public Optional[V] func Find(String key) {
+        if (self.cap > 0 && key != null) {
+            unsafe {
+                let mask = (self.cap - 1) as usize;
+                let h = Hash.HashString(key) & mask;
+                let start = h;
+                while (self.used[h] != 0) {
+                    if (self.keys[h].Equals(key)) { return Optional.Some(retain(self.vals[h])); }
+                    h = (h + (1 as usize)) & mask;
+                    if (h == start) { break; }
+                }
+            }
+        }
+        return Optional.None();
+    }
+
+    /*
+     * TryGet - Value for key into out, or false if absent; one probe, not Has then Get
+     */
+    public bool func TryGet(String key, ref V out) {
+        if (self.cap == 0 || key == null) { return false; }
+        unsafe {
+            let mask = (self.cap - 1) as usize;
+            let h = Hash.HashString(key) & mask;
+            let start = h;
+            while (self.used[h] != 0) {
+                if (self.keys[h].Equals(key)) {
+                    release(out);
+                    out = retain(self.vals[h]);
+                    return true;
+                }
+                h = (h + (1 as usize)) & mask;
+                if (h == start) { break; }
+            }
+        }
+        return false;
+    }
+
+    /*
+     * GetOr - Value for key, or fallback if absent; tells absent from a stored zero value
+     */
+    public V func GetOr(String key, V fallback) {
+        if (self.cap > 0 && key != null) {
+            unsafe {
+                let mask = (self.cap - 1) as usize;
+                let h = Hash.HashString(key) & mask;
+                let start = h;
+                while (self.used[h] != 0) {
+                    if (self.keys[h].Equals(key)) { return retain(self.vals[h]); }
+                    h = (h + (1 as usize)) & mask;
+                    if (h == start) { break; }
+                }
+            }
+        }
+        return fallback;
+    }
+
     public operator V func [](String key) { return self.Get(key); }
     public operator func []=(String key, V value) { self.Put(key, value); }
 
@@ -439,6 +562,7 @@ class StringMap[V] {
      */
     public List[String] func Keys() {
         let result = new List[String]();
+        result.Reserve(self.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {
@@ -454,6 +578,7 @@ class StringMap[V] {
      */
     public List[V] func Values() {
         let result = new List[V]();
+        result.Reserve(self.count);
         unsafe {
             let i = 0;
             while (i < self.cap) {
