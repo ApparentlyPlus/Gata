@@ -265,14 +265,14 @@ and writes this starter `src/main.g`:
 import Misc;
 import Console;
 
-kernel {
+realm kernel {
     entry func Main() {
         Misc.PrintBanner();
         Console.PrintLine("Hello from myos!");
     }
 }
 
-user {
+realm userspace {
     foreground process App {
         thread Main {
             entry func Run() {
@@ -291,11 +291,11 @@ user {
 
 This is the first GatOS-specific idea you'll meet, and it's worth understanding now even though the full mechanics wait until Part VII. GatOS genuinely runs two different kinds of code: kernel code and ordinary user-space code, organized into processes and threads, the way any OS runs your programs. 
 
-These aren't just two coding conventions, they genuinely execute completely differently under the hood: kernel code runs as part of the boot sequence with direct hardware access, while user code is handed to a scheduler and time-sliced like any process on a normal OS. Gata makes this split a first-class part of the syntax (`kernel { }` and `user { }`) specifically so it's structurally impossible to accidentally write user-space logic that ends up compiled into the kernel realm, or vice versa. 
+These aren't just two coding conventions, they genuinely execute completely differently under the hood: kernel code runs as part of the boot sequence with direct hardware access, while user code is handed to a scheduler and time-sliced like any process on a normal OS. Gata makes this split a first-class part of the syntax (`realm kernel { }` and `realm userspace { }`) specifically so it's structurally impossible to accidentally write user-space logic that ends up compiled into the kernel realm, or vice versa. 
 
 That's why `entry func Main()` (the kernel code boot entry) and `entry func Run()` (a thread's start routine) live in visibly different places: they run in visibly different worlds. 
 
-Chapter 22 covers realms, processes, threads, and the scheduler in full; for now, just read `kernel { }` as "boot-time, privileged" and `user { }` as "scheduled, like a normal program."
+Chapter 22 covers realms, processes, threads, and the scheduler in full; for now, just read `realm kernel { }` as "boot-time, privileged" and `realm userspace { }` as "scheduled, like a normal program."
 
 ## 3. Anatomy of a Gata Project
 
@@ -321,7 +321,7 @@ Alongside the manifest sits `env.g`, the **environment file**. You will almost n
 
 Finally, every build needs at least one place execution starts: an **entry point**. 
 
-You already met both shapes in Chapter 2's example: a free function `entry func Main()` inside `kernel { }` is the kernel's entry. Then, we have one `entry func` per `thread`, inside a `process`, inside `user { }`. That simply tells us:
+You already met both shapes in Chapter 2's example: a free function `entry func Main()` inside `realm kernel { }` is the kernel's entry. Then, we have one `entry func` per `thread`, inside a `process`, inside `realm userspace { }`. That simply tells us:
 
 > In userland, we have a single (foreground) process - App - that has a single thread, that starts *here*.
 
@@ -467,7 +467,7 @@ int64 func combine(int64 a, int64 b) {
     return a + b; 
 }
 
-kernel {
+realm kernel {
     entry func Main() {
         let int res1 = combine(a, a);       // Exact match for combine(int, int)
         let int64 res2 = combine(b, b);     // Exact match for combine(int64, int64)
@@ -593,7 +593,7 @@ let List[int] ys = new List[int] { 1, 2, 3 };    // constructor + collection ini
 
 And indexing/calling work through any expression of the right shape, or anything that implements the custom `operator []`, covered in Chapter 12:
 
-```go
+```text
 xs[0]                 // operator [] (if declared) or array index
 xs[0] = 1             // operator []= (if declared) or array index assignment
 fn(args)              // call through any callable expression
@@ -792,13 +792,15 @@ T func Identity[T](T x) { return x; }
 T func Max[T](T a, T b) { return a > b ? a : b; }
 
 let int m = Max(3, 5);          // T inferred as int
-let int m2 = Max[int](3, 5);    // T given explicitly
 ```
+
+A generic function's type arguments are always inferred from the call. There is no explicit form: `Max[int](3, 5)` is a syntax error, because `[...]` after a name is a generic *type*, and a function is not one. When inference cannot see enough to decide, give an argument the type you mean instead.
 
 A generic free function can also have its type argument inferred from a parameterized-container parameter, not just from a bare `T`:
 
 ```go
 T func First[T](List[T] xs) { return xs.Get(0); }
+
 let int x = First(myIntList);   // T inferred as int from myIntList's List[int]-ness
 ```
 
@@ -826,7 +828,7 @@ This distinction — a method's *own* generic parameters vs. the *class's* gener
 
 A bare (unqualified) call to a generic free function always wins over an equally-named sibling method or free function elsewhere in scope — resolving that ambiguity by picking one silently would be worse than asking you to qualify it (diagnostic `G069`, Chapter 29). Qualify through whichever mechanism fits: `Module.Name(...)` for a real module or class, `self.Name(...)` for a sibling instance method, or, when neither applies — for instance, two unrelated files that each declare their own free function under the same name — `FileName.Name(...)`, where `FileName` is the declaring file's name without its `.g` extension. This last form works for any free function, generic or not, and for a `private` one it's only usable from within its own declaring file:
 
-```go
+```text
 // Sorting.g
 T func Find[T](List[T] xs, T target) { ... }
 
@@ -1123,20 +1125,20 @@ At this point you know the entire language: every kind of statement and expressi
 
 # Part VII: The GatOS Systems Model
 
-Chapter 2 told you, without proof, that `kernel { }` and `user { }` are genuinely different execution worlds under GatOS, and that the difference is load-bearing enough to be baked into the language rather than left to convention. This part makes good on that: the real mechanics of realms, processes, and threads; the environment file that wires a build to a real platform; how to drop to raw C when the language itself isn't enough; and the kernel-only debugging statements built for exactly this environment.
+Chapter 2 told you, without proof, that `realm kernel { }` and `realm userspace { }` are genuinely different execution worlds under GatOS, and that the difference is load-bearing enough to be baked into the language rather than left to convention. This part makes good on that: the real mechanics of realms, processes, and threads; the environment file that wires a build to a real platform; how to drop to raw C when the language itself isn't enough; and the kernel-only debugging statements built for exactly this environment.
 
 ## 22. Realms, Processes, and Threads
 
-A GatOS program genuinely runs two different kinds of code: kernel code, privileged and not preempted the way user code is, with direct hardware access; and user-space code, scheduled, sandboxed, and organized into processes and threads the way a normal OS would be. This is *why* `kernel { }`/`user { }` are syntax rather than a naming convention: it's structurally impossible to accidentally write user-space logic that ends up compiled into the kernel realm, or vice versa, because the two realms are parsed, type-checked, and emitted into separate C translation units.
+A GatOS program genuinely runs two different kinds of code: kernel code, privileged and not preempted the way user code is, with direct hardware access; and user-space code, scheduled, sandboxed, and organized into processes and threads the way a normal OS would be. This is *why* `realm kernel { }`/`realm userspace { }` are syntax rather than a naming convention: it's structurally impossible to accidentally write user-space logic that ends up compiled into the kernel realm, or vice versa, because the two realms are parsed, type-checked, and emitted into separate C translation units.
 
 ```go
-kernel { /* declarations that run with kernel privilege */ }
-user   { /* declarations that run as scheduled user-space code */ }
+realm kernel { /* declarations that run with kernel privilege */ }
+realm userspace   { /* declarations that run as scheduled user-space code */ }
 ```
 
-Recall from Chapter 3 that which of these realms even exist for a given build is decided by the environment file (Chapter 23) — a Hosted environment has no kernel realm at all, meaning its execution is user-space-only. However, **every** Gata build unconditionally requires exactly one `kernel { }` block containing exactly one `entry func` to define the program's primary entry point (which typically compiles as a stub in Hosted programs, just ignored).
+Recall from Chapter 3 that which of these realms even exist for a given build is decided by the environment file (Chapter 23) — a Hosted environment has no kernel realm at all, meaning its execution is user-space-only. However, **every** Gata build unconditionally requires exactly one `realm kernel { }` block containing exactly one `entry func` to define the program's primary entry point (which typically compiles as a stub in Hosted programs, just ignored).
 
-Only one `kernel { }` block is allowed per program, whereas multiple non-contiguous `user { }` blocks are permitted. They cannot nest, there's no `kernel { user { } }` or vice versa. 
+Only one `realm kernel { }` block is allowed per program, whereas multiple non-contiguous `realm userspace { }` blocks are permitted. They cannot nest, there's no `realm kernel { realm userspace { } }` or vice versa. 
 
 Inside either block (or at the root file level), you may declare anything a top-level file could: `class`, `module`, free `func`, `enum`, `union`, and `process`.
 
@@ -1144,21 +1146,21 @@ Inside either block (or at the root file level), you may declare anything a top-
 A `process` is the unit of execution topology and can exist in **either** the kernel or user realm:
 
 ```go
-user {
+realm userspace {
     foreground process App {
         thread Ui      { entry func Run() { } }
         thread Worker  { entry func Run() { } }
     }
 }
 
-kernel {
+realm kernel {
     background process DiskDriver {
         thread Loop { entry func Run() { } }
     }
 }
 ```
 
-Declaring a `process` inside the `kernel { }` block compiles its threads directly into the kernel translation unit, spawning them as **genuine kernel threads** with kernel privileges (`is_user = 0`). Conversely, declaring a `process` inside the `user { }` block compiles its threads into the user translation unit, spawning them as **sandboxed user-space threads** (`is_user = 1`).
+Declaring a `process` inside the `realm kernel { }` block compiles its threads directly into the kernel translation unit, spawning them as **genuine kernel threads** with kernel privileges (`is_user = 0`). Conversely, declaring a `process` inside the `realm userspace { }` block compiles its threads into the user translation unit, spawning them as **sandboxed user-space threads** (`is_user = 1`).
 
 `foreground`/`background` is set exclusively on the process itself. "Foreground" means the process is attached to a TTY and can produce visible console output; "background" means it's hidden, with no TTY attachment, running silently. 
 
@@ -1182,6 +1184,68 @@ The entry function takes no parameters and returns `void`. Under the hood, Gata 
 
 Underneath, a `process` maps to a genuine GatOS userspace process: its own address space, its own TTY handle if foreground, and a thread group. A `thread` maps to a real kernel-scheduled thread on GatOS, or a host OS thread on Hosted; an entry function is the thread's start routine, handed to the kernel's thread-creation machinery underneath, or the Hosted platform's thread-spawn equivalent. A process can of course have many threads, all sharing the same TTY.
 
+### Names and Scopes
+
+Realms and processes are name scopes as well as compilation targets. A `class`, `module`, `enum`, `union`, `native type` or free `func` declared inside `realm kernel { }` belongs to that realm; one declared inside a `process` belongs to that process. Two processes may each declare a `Config`, and they are different types.
+
+Lookup walks outward — process, then realm, then the top level of the file, then its imports — and the innermost declaration wins. Because that means an inner declaration can quietly take a name away from an outer one, **displacing a name is something you have to say**:
+
+```go
+int func Depth() { return 1; }
+
+realm kernel {
+    @shadows int func Depth() { return 2; }
+
+    foreground process P {
+        @shadows int func Depth() { return 3; }
+        thread T { entry func Run() { let int d = Depth(); } }   // 3
+    }
+}
+```
+
+Without `@shadows` the inner declarations are a hard error (`G088`). Writing `@shadows` where nothing is displaced is the same error, so the annotation is never decoration. It is legal on exactly the six forms a scope gives a name to; a mark on a `thread`, a `process`, a realm, an `import`, a class member or an `entry func` is rejected, since none of those is a name in any scope.
+
+One further rule keeps a scope honest: **one name means one thing in a scope**. Two overloads of a function are fine, and two declarations of one type are the ordinary duplicate error, but a type and a function of the same name, a generic template beside a non-generic type of the same base name, or either beside a process of that name, are all `G003`.
+
+#### Naming a scope outright
+
+`@shadows` declares the displacement; a **scope qualifier** reaches past it. A qualifier names an enclosing scope and then a declaration in it:
+
+```text
+kernel.Step()            // the kernel realm's Step
+kernel.P.Config          // a type belonging to process P inside the kernel realm
+userspace.Step()         // the userspace realm's Step
+::Step()                 // the top level: this file, or anything it imports
+```
+
+`::` is the root scope, so it is what reaches a name an import gave you before a realm took it over. A qualifier is valid in expression *and* type position, which matters because four of the six shadowable forms are types:
+
+```go
+class Cargo { public int root; }
+
+realm kernel {
+    @shadows class Cargo { public int inr; }
+
+    class Holder { public ::Cargo held; }
+    ::Cargo func Make(::Cargo c) { return c; }
+
+    entry func Main() {
+        let Cargo near = new Cargo();        // the realm's
+        let ::Cargo far = new ::Cargo();     // the file's
+    }
+}
+```
+
+Three rules bound it:
+
+- **Outward only.** A qualifier may name a scope this code is inside — an enclosing process, an enclosing realm, or the root. Naming a sibling realm or a sibling process is `G089`, because reaching sideways is exactly what scopes exist to prevent.
+- **One exact scope.** `kernel.Config` means the kernel realm's `Config` and nothing else. If the realm does not declare that name, that is `G090` rather than a quiet walk further out.
+- **It does not replace `@shadows`.** One says the displacement is deliberate; the other reaches past it. Writing a qualifier never excuses omitting the annotation.
+
+A qualifier costs nothing at runtime: it picks a symbol at compile time, exactly as an unqualified name does.
+
+Both realm names are reserved words, so `kernel` and `userspace` cannot be used as ordinary identifiers. `process` and `thread` remain contextual and stay available as names.
+
 ### Sharing State Between Threads
 
 Threads in one process share an address space, and the scheduler preempts them on timer interrupts — which means two threads touching the same data is both possible and, done naively, a genuine data race. `x = x + 1` compiles to a load, an add, and a store; preempt between the load and the store and another thread's update is silently overwritten. The compiler and CPU are also free to reorder plain memory accesses, so even "I set a flag, then you read it" is broken without explicit ordering.
@@ -1191,7 +1255,7 @@ Threads in one process share an address space, and the scheduler preempts them o
 That leaves one structural question: threads' entry functions take no parameters, and Gata deliberately has no global variables — so how do two threads reach the *same* `AtomicInt`? The idiomatic answer is a small native-static bridge (Chapter 24's `native { }` at the realm's top level): one thread creates the objects and publishes their pointers into file-scope C statics, the others read them back.
 
 ```go
-user {
+realm userspace {
     // The bridge: file-scope statics in this realm's translation unit. The
     // release/acquire pair on g_ready makes the publication itself race-free —
     // a thread that sees g_ready == 1 is guaranteed to see the pointers too.
@@ -1265,8 +1329,8 @@ The environment declares which realms a build has by wrapping each `native { }` 
 
 These annotation blocks dictate what raw C code to emit at the boundaries of each realm in a Gata project. If a `@preamble` target for a realm is omitted in the environment file, then that realm is not transpiled at all, and the build's structural syntax rules follow suit:
 
-- A **GatOS** build requires exactly one `kernel { }` block with exactly one `entry func` to define the primary boot entry point. Multiple non-contiguous `user { }` blocks are permitted.
-- A **Hosted** build must not contain any `kernel { }` block at all (it's a hard error), and requires exactly one `user { }` block with exactly one `entry func` - this becomes the program's `int main()`.
+- A **GatOS** build requires exactly one `realm kernel { }` block with exactly one `entry func` to define the primary boot entry point. Multiple non-contiguous `realm userspace { }` blocks are permitted.
+- A **Hosted** build must not contain any `realm kernel { }` block at all (it's a hard error), and requires exactly one `realm userspace { }` block with exactly one `entry func` - this becomes the program's `int main()`.
 
 During compilation, the compiler structures the translation units as follows:
 - `@preamble(kernel)` is emitted at the very top of the kernel translation unit (`kmain.c`). The environment file must manually include `#include "shared.h"` at the end of this block to expose Gata's generated class and type structures to the rest of the preamble.
@@ -1274,7 +1338,7 @@ During compilation, the compiler structures the translation units as follows:
 - `@preamble(boot)` is emitted at the very end of the kernel translation unit (`kmain.c`), following all Gata-generated types and function definitions. This is where boot sequencing (`kernel_main()`) and final assembly live, and is GatOS-only.
 
 
-Whichever of `kernel`/`user` realms are declared here is what authorizes the rest of your program to use a matching `kernel { }` or `user { }` block from Chapter 22: a GatOS environment normally provides both; a Hosted environment provides `user` only. Exactly one file per project carries `@environment`; `appa build` auto-discovers it, or you pin it explicitly with `--env` (Chapter 27).
+Whichever of `kernel`/`user` realms are declared here is what authorizes the rest of your program to use a matching `realm kernel { }` or `realm userspace { }` block from Chapter 22: a GatOS environment normally provides both; a Hosted environment provides `user` only. Exactly one file per project carries `@environment`; `appa build` auto-discovers it, or you pin it explicitly with `--env` (Chapter 27).
 
 Inside those `native { }` blocks, the environment is responsible for defining a small, fixed set of plain C functions — the **floor** — that the compiler and `libgata` assume exist no matter what platform you're targeting. `libgata`'s `Console`, `Mem`, `Sys`, and so on are themselves just thin Gata wrappers around these. If the environment is missing one that your program transitively needs, the build fails with a clear diagnostic rather than a linker error.
 
@@ -1326,12 +1390,12 @@ native {
 }
 ```
 
-### Realm-Specific C (`kernel { }` / `user { }`)
-A native body is spliced verbatim into whichever translation unit(s) its declaration belongs to, so most native code needs nothing special — the same C text lands in every realm the declaration is visible from. When a function's implementation must genuinely differ by privilege level (a kernel build calling `kmalloc` where a user build calls `malloc`, say), give it a single Gata declaration and put a same-named C helper in each realm's own `native { }` block, nested inside `kernel { }` and `user { }` respectively (Chapter 22) — each such block is emitted only into its own translation unit — then have the one native method body call the helper:
+### Realm-Specific C (`realm kernel { }` / `realm userspace { }`)
+A native body is spliced verbatim into whichever translation unit(s) its declaration belongs to, so most native code needs nothing special — the same C text lands in every realm the declaration is visible from. When a function's implementation must genuinely differ by privilege level (a kernel build calling `kmalloc` where a user build calls `malloc`, say), give it a single Gata declaration and put a same-named C helper in each realm's own `native { }` block, nested inside `realm kernel { }` and `realm userspace { }` respectively (Chapter 22) — each such block is emitted only into its own translation unit — then have the one native method body call the helper:
 
 ```go
-kernel { native { void* platform_alloc(usize n) { return kmalloc(n); } } }
-user   { native { void* platform_alloc(usize n) { return malloc(n); } } }
+realm kernel { native { void* platform_alloc(usize n) { return kmalloc(n); } } }
+realm userspace   { native { void* platform_alloc(usize n) { return malloc(n); } } }
 
 public void* func Alloc(usize n) native {
     return platform_alloc(n);
@@ -1406,7 +1470,7 @@ To prevent the compiler from stripping or renaming a symbol, annotate it with `@
 
 ```go
 @keep
-public class HelperOnlyReferencedFromNative { /* ... */ }
+class HelperOnlyReferencedFromNative { /* ... */ }
 
 @keep
 func OnlyCalledFromRawC() { /* ... */ }
@@ -1504,7 +1568,7 @@ After that comes lowering: reference counting is inserted and `defer` actions ar
 
 The two chapters in this part are pure lookup tables — keep them bookmarked rather than read start to finish.
 
-## 29. Diagnostics Reference (G000–G082)
+## 29. Diagnostics Reference (G000–G090)
 
 Every error and warning `appa` produces carries a stable code, so you can search this table, or the source, for exactly what triggered it, rather than parsing prose alone. Codes are assigned sequentially in declaration order — there's no category-block numbering scheme, no "G0xx = structural" convention reserving room — a new diagnostic is simply the next integer.
 
@@ -1524,9 +1588,9 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | Code | Name | Fires when |
 |---|---|---|
 | G000 | File | Generic structural/parse-level error: misplaced annotation, malformed generic parameter list, a field preceded by `entry`/`throws`, etc. |
-| G001 | DuplicateContext | More than one `kernel { }` block in the program. Multiple `user { }` blocks are allowed and don't trigger this (Ch. 22). |
+| G001 | DuplicateContext | More than one `realm kernel { }` block in the program. Multiple `realm userspace { }` blocks are allowed and don't trigger this (Ch. 22). |
 | G002 | MissingEntryPoint | No `entry func Main()` (kernel) or equivalent reachable entry point found (Ch. 3). |
-| G003 | DuplicateName | A name is redeclared in a scope where it already exists (Ch. 4). |
+| G003 | DuplicateName | A name is redeclared in a scope where it already exists (Ch. 4). Also fires when two declarations would be emitted under one C name: readable C names join their parts with `_`, which is legal inside each part, so `class A_B { M }` and `class A { B_M }` both spell `gata_A_B_M`. |
 | G004 | TypeMismatch | Incompatible types in an expression/statement position. |
 | G005 | UndefinedVariable | Reference to a name that doesn't resolve (Ch. 4). |
 | G006 | UndefinedMethod | Call to a method that doesn't exist on the receiver's type. |
@@ -1576,13 +1640,13 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G050 | MissingLet | A statement that reads like a declaration without its `let` (Ch. 4). |
 | G051 | InvalidNesting | Disallowed nesting: `kernel`/`user` inside another context or a class, or a class/module inside a class (Ch. 9, Ch. 22). |
 | G052 | TrailingComma | A trailing comma after the last enum member, union variant, or field (Ch. 14, Ch. 15). |
-| G053 | BadDeclHeader | A malformed declaration header: return type written after the parameter list, `static` on an operator or field, a missing `process` keyword, and similar (Ch. 6). |
+| G053 | BadDeclHeader | A malformed declaration header: return type written after the parameter list, `static` on an operator or field, a missing `process` keyword, and similar (Ch. 6). Also fires on a visibility or `static` modifier written on a top-level `class`, `module`, `enum`, `union` or `native type`: only a free function takes one there (Ch. 11). |
 | G054 | CannotInfer | Type inference has nothing to work with: `let x = null;`, a `void`-typed initializer, or a computed field initializer without an explicit type (Ch. 4, Ch. 9). |
-| G055 | KernelBlockInHosted | A `kernel { }` block (or an environment with a kernel preamble) in a Hosted build (Ch. 22, Ch. 23). |
-| G056 | MissingUserRealm | A Hosted build with no `user { }` block at all (Ch. 22). |
-| G057 | DuplicateUserRealm | More than one `user { }` block in a Hosted build, which allows exactly one (Ch. 22). |
-| G058 | MissingUserEntry | A Hosted build's `user { }` block declares no `entry func` (Ch. 22). |
-| G059 | DuplicateUserEntry | More than one `entry func` in a Hosted build's `user { }` block (Ch. 22). |
+| G055 | KernelBlockInHosted | A `realm kernel { }` block (or an environment with a kernel preamble) in a Hosted build (Ch. 22, Ch. 23). |
+| G056 | MissingUserRealm | A Hosted build with no `realm userspace { }` block at all (Ch. 22). |
+| G057 | DuplicateUserRealm | More than one `realm userspace { }` block in a Hosted build, which allows exactly one (Ch. 22). |
+| G058 | MissingUserEntry | A Hosted build's `realm userspace { }` block declares no `entry func` (Ch. 22). |
+| G059 | DuplicateUserEntry | More than one `entry func` in a Hosted build's `realm userspace { }` block (Ch. 22). |
 | G060 | MissingProcessMode | A `process` without `foreground` or `background` (Ch. 22). |
 | G061 | BadEntrySignature | An `entry func` declared with parameters, a return type, or `throws` — it's invoked by the runtime, which passes nothing and receives nothing (Ch. 22). |
 | G062 | DeferTransfer | A `defer` body containing `return`/`break`/`continue` — a deferred action has no sensible control-flow target (Ch. 21). |
@@ -1591,7 +1655,7 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G065 | ConflictingModifiers | A duplicated modifier, or `public` and `private` combined on one declaration (Ch. 11). |
 | G066 | BadThrowsReturnType | A `throws` function returning a pointer, array, or function-pointer type — supported `throws` returns are void, primitives, enums, unions, `String`, and classes (Ch. 20). |
 | G067 | LifecycleThrows | `_init` or `_deinit` declared `throws` — they're called by generated allocator/destructor code that can't receive a Result (Ch. 9, Ch. 20). |
-| G068 | EntryOutsideKernel | A free `entry func` inside a `user { }` block of a GatOS build — GatOS userspace entry points are the threads of a `process` (Ch. 22). |
+| G068 | EntryOutsideKernel | A free `entry func` inside a `realm userspace { }` block of a GatOS build — GatOS userspace entry points are the threads of a `process` (Ch. 22). |
 | G069 | AmbiguousCall | A bare call matches both a generic function/method and an equally plausible lower-precedence candidate (a sibling class/module method, a private free function, or another in-scope file's same-named public generic) — qualify with `Module.Name(...)`, `self.Name(...)`, or `FileName.Name(...)` (Ch. 13). |
 | G070 | ShadowedVariable | *(warning)* A `let` declares a name that already exists in an enclosing scope, hiding it for the rest of the block. Redeclaring in the *same* scope is `G003` instead (Ch. 4). |
 | G071 | SelfAssignment | *(warning)* An assignment whose target and value denote the same storage (`x = x`, `self.n = self.n`) — it compiles and does nothing. |
@@ -1606,6 +1670,14 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G080 | MissingInterpolation | *(warning)* A plain string literal containing `{name}` where `name` is a variable in scope — the signature of a `$` dropped from an interpolated string. Only fires when the name resolves, so braces around anything else stay silent (Ch. 5). |
 | G081 | AssignOutsideCatch | `assign` used outside a `catch` handler attached to a call, or inside one whose call result is discarded and so has no declaration to assign to (Ch. 20). |
 | G082 | CatchHandlerNoAssign | A `catch` handler attached to a declaration has a path that reaches its end without an `assign` and without leaving through `return`/`throw`/`break`/`continue` (Ch. 20). |
+| G083 | IdentityPayloadComparison | A union comparison that would compare payloads by identity rather than by value. |
+| G084 | ImprecisePayloadComparison | A union comparison whose payload type compares imprecisely (floating point). |
+| G085 | MissingRealmKeyword | A bare `realm kernel { }` block; realms are written `realm kernel { }` (Ch. 22). |
+| G086 | UnknownRealm | `realm` followed by anything but `kernel` or `userspace`. |
+| G087 | ScopedNameNotVisible | A name that exists, but only inside a realm or process this code is not in (Ch. 22). |
+| G088 | UnmarkedShadow | A scoped declaration displaces a name from an enclosing scope without `@shadows`, or carries `@shadows` while displacing nothing (Ch. 22). |
+| G089 | ScopeNotEnclosing | A scope qualifier names a sibling realm or process, or a scope this code is not inside (Ch. 22). |
+| G090 | UnknownInScope | A scope qualifier names a scope that does not declare the name written after it (Ch. 22). |
 
 
 ## 30. Appendix: Keyword List & Operator Precedence
@@ -1613,7 +1685,7 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 Reserved words. These cannot be used as identifiers:
 
 ```
-import kernel user process thread foreground background
+import realm kernel userspace process thread foreground background
 class enum union module func static public private entry throws operator
 as fields ref return if else while for in switch case break continue
 debug panic try catch new let null unsafe throw sizeof default match defer assign
@@ -1621,13 +1693,15 @@ bool int char float double short void int64 uint uint64 ushort byte sbyte
 usize uintptr true false
 ```
 
-Annotation keywords, lexed as one `@word` token, are the only six recognized spellings. Any other `@word` is a lex error:
+Annotation keywords, lexed as one `@word` token, are the only seven recognized spellings. Any other `@word` is a lex error:
 
 ```
-@intrinsic @preamble @extern @environment @keep @builtin
+@intrinsic @preamble @extern @environment @keep @builtin @shadows
 ```
 
-`native` is contextual rather than reserved: it introduces raw-C blocks and function bodies (Chapter 24), but remains valid as an ordinary identifier everywhere else.
+Two name spaces belong to the compiler. The `_g` prefix is reserved for the dense tokens the Densifier hands out — a declaration spelling one is legal, and the compiler simply picks a different token. A handful of symbols the backend emits itself cannot be taken over at all: the process launcher `uapps`, the kernel entry symbol, each thread's entry, and the typedef synthesised for a function-pointer or fixed-array type. A declaration that would be emitted under one of those names is `G003`. Raw C inside a `native { }` block is the one exception — it is emitted verbatim, so defining one of those symbols there is caught by the C compiler rather than by `appa`.
+
+`process` and `thread` are contextual rather than reserved, and stay usable as ordinary identifiers; `kernel` and `userspace` are not, because a scope qualifier has to be recognizable before anything is resolved (Chapter 22). `native` is likewise contextual: it introduces raw-C blocks and function bodies (Chapter 24), but remains valid as an ordinary identifier everywhere else.
 
 And the operator precedence table, from lowest to highest precedence:
 
