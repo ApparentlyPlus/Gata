@@ -26,17 +26,36 @@ module Int {
     public String func ToString(int n) {
         if (n == 0) { return "0"; }
         let neg = n < 0;
-        let v = n;
-        if (neg) { v = 0 - n; }
+        let v = n as uint;
+        if (neg) { v = (0 as uint) - v; }
         unsafe {
             let [24]char buf;
             let i = 24;
-            while (v > 0) {
+            while (v > (0 as uint)) {
                 i = i - 1;
-                buf[i] = ('0' + v % 10) as char;
-                v = v / 10;
+                buf[i] = ('0' + ((v % (10 as uint)) as int)) as char;
+                v = v / (10 as uint);
             }
             if (neg) { i = i - 1; buf[i] = '-'; }
+            return String.FromBuffer(&buf[i], 24 - i);
+        }
+    }
+
+    /*
+     * ToUnsignedString - Decimal text for an unsigned value, which the signed printer would
+     * render with its high bit read as a sign
+     */
+    @intrinsic(stringify_uint)
+    public String func ToUnsignedString(uint64 v) {
+        if (v == (0 as uint64)) { return "0"; }
+        unsafe {
+            let [24]char buf;
+            let i = 24;
+            while (v > (0 as uint64)) {
+                i = i - 1;
+                buf[i] = ('0' + ((v % (10 as uint64)) as int)) as char;
+                v = v / (10 as uint64);
+            }
             return String.FromBuffer(&buf[i], 24 - i);
         }
     }
@@ -77,13 +96,13 @@ module Int {
             neg = s.CharAt(i) == '-';
             i = i + 1;
         }
-        let result = 0;
+        let result = 0 as uint;
         while (i < n && Char.IsDigit(s.CharAt(i))) {
-            result = result * 10 + Char.DigitValue(s.CharAt(i));
+            result = result * (10 as uint) + (Char.DigitValue(s.CharAt(i)) as uint);
             i = i + 1;
         }
-        if (neg) { return 0 - result; }
-        return result;
+        if (neg) { return ((0 as uint) - result) as int; }
+        return result as int;
     }
 
     /*
@@ -101,14 +120,14 @@ module Int {
             i = i + 1;
         }
         if (i >= n || !Char.IsDigit(s.CharAt(i))) { throw; }
-        let result = 0;
+        let result = 0 as uint;
         while (i < n && Char.IsDigit(s.CharAt(i))) {
-            result = result * 10 + Char.DigitValue(s.CharAt(i));
+            result = result * (10 as uint) + (Char.DigitValue(s.CharAt(i)) as uint);
             i = i + 1;
         }
         while (i < n && Char.IsWhitespace(s.CharAt(i))) { i = i + 1; }
         if (i != n) { throw; }
-        if (neg) { return 0 - result; }
-        return result;
+        if (neg) { return ((0 as uint) - result) as int; }
+        return result as int;
     }
 }

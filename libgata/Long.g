@@ -15,15 +15,15 @@ module Long {
     public String func ToString(int64 n) {
         if (n == (0 as int64)) { return "0"; }
         let neg = n < (0 as int64);
-        let v = n;
-        if (neg) { v = (0 as int64) - n; }
+        let v = n as uint64;
+        if (neg) { v = (0 as uint64) - v; }
         unsafe {
             let [24]char buf;
             let i = 24;
-            while (v > (0 as int64)) {
+            while (v > (0 as uint64)) {
                 i = i - 1;
-                buf[i] = ('0' + ((v % (10 as int64)) as int)) as char;
-                v = v / (10 as int64);
+                buf[i] = ('0' + ((v % (10 as uint64)) as int)) as char;
+                v = v / (10 as uint64);
             }
             if (neg) { i = i - 1; buf[i] = '-'; }
             return String.FromBuffer(&buf[i], 24 - i);
@@ -43,13 +43,14 @@ module Long {
             neg = s.CharAt(i) == '-';
             i = i + 1;
         }
-        let result = (0 as int64);
+        
+        let result = (0 as uint64);
         while (i < n && Char.IsDigit(s.CharAt(i))) {
-            result = result * (10 as int64) + (Char.DigitValue(s.CharAt(i)) as int64);
+            result = result * (10 as uint64) + (Char.DigitValue(s.CharAt(i)) as uint64);
             i = i + 1;
         }
-        if (neg) { return (0 as int64) - result; }
-        return result;
+        if (neg) { return ((0 as uint64) - result) as int64; }
+        return result as int64;
     }
 
     /*
@@ -66,14 +67,14 @@ module Long {
             i = i + 1;
         }
         if (i >= n || !Char.IsDigit(s.CharAt(i))) { throw; }
-        let result = (0 as int64);
+        let result = (0 as uint64);
         while (i < n && Char.IsDigit(s.CharAt(i))) {
-            result = result * (10 as int64) + (Char.DigitValue(s.CharAt(i)) as int64);
+            result = result * (10 as uint64) + (Char.DigitValue(s.CharAt(i)) as uint64);
             i = i + 1;
         }
         while (i < n && Char.IsWhitespace(s.CharAt(i))) { i = i + 1; }
         if (i != n) { throw; }
-        if (neg) { return (0 as int64) - result; }
-        return result;
+        if (neg) { return ((0 as uint64) - result) as int64; }
+        return result as int64;
     }
 }
