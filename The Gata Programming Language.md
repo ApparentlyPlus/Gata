@@ -382,6 +382,47 @@ let int64 b = a;            // OK: implicit widening
 let int c = b as int;       // requires explicit `as`: narrowing
 ```
 
+A `let` without an initialiser declares the variable but stores nothing in it. For a class or `String` that is `null`; for a primitive it is whatever the memory already held, so reading one before assigning it is **G098**:
+
+```go
+let int x;
+let int y = x + 1;          // error[G098]: 'x' is read before it is assigned
+
+let int n;
+if (ready) { n = 1; }
+Use(n);                     // accepted - the check reports only reads no store could precede
+```
+
+The check is deliberately one-sided: a branch counts as assigning if any arm does, a loop counts before its body runs, and passing `ref n` or taking `&n` counts. It catches the read that is certainly wrong and stays out of the way of the ones that merely might be.
+
+### Arithmetic result types
+
+An arithmetic or bitwise operator resolves to the type of its higher-ranked operand, with a tie going to the left one, and **both operands convert into that type before the operator runs**. A shift is the exception: it takes its type from the left operand alone, and the count is not converted into it.
+
+The result type is the real one, not an approximation of it. `byte + byte` is a `byte` everywhere, not only when you store it back into one:
+
+```go
+let byte a = 200;
+let byte b = 200;
+let byte r = a + b;                     // 144
+Console.PrintLine($"{a + b}");          // also 144 - not 400
+if (a + b == 144) { }                   // taken
+```
+
+This is the concrete meaning of the promise above: a value's width and signedness mean the same thing in every position, so an expression cannot be worth one thing in a variable and another thing in an argument.
+
+Mixing a signed operand with an unsigned one is where that promise runs out. For `+`, `-`, `*`, `&`, `|`, `^`, `<<`, `==` and `!=` it does not matter — the answer is the same bit pattern whichever type wins. For `/`, `%`, `<`, `<=`, `>` and `>=` it decides the answer, and if the operand converting cannot be represented in the type it converts to, that conversion changes what the value means: `uint 4000000000` read as an `int` is negative, and `sbyte -1` read as a `ushort` is 65535. Rather than pick for you, Gata rejects it with **G095** and asks which domain you meant:
+
+```go
+let int a = -10;
+let uint b = 3;
+let int bad = a / b;                // error[G095]
+let int asSigned = a / (b as int);  // -3
+let uint asUnsigned = (a as uint) / b;  // 1431655762
+```
+
+The direction that loses nothing stays silent: an unsigned operand widening into a strictly larger signed type keeps every value it had, so `int64 / uint` is fine. A signed operand that is a non-negative constant is also fine, which is why `hx >= 0x40862E42` against an unsigned `hx` needs no cast.
+
 As for arrays, `[N]T` is an array of exactly `N` elements of type `T`, where the size `N` is **part of the type itself**:
 
 ```go
@@ -1678,6 +1719,14 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G088 | UnmarkedShadow | A scoped declaration displaces a name from an enclosing scope without `@shadows`, or carries `@shadows` while displacing nothing (Ch. 22). |
 | G089 | ScopeNotEnclosing | A scope qualifier names a sibling realm or process, or a scope this code is not inside (Ch. 22). |
 | G090 | UnknownInScope | A scope qualifier names a scope that does not declare the name written after it (Ch. 22). |
+| G091 | ProcessWithoutThreads | A `process` block declaring no threads. It is created at boot, never runs, and is never reclaimed. |
+| G092 | PartialOperatorSet | *(warning)* A class declaring `<` but not `>`, or any other half of a relational pair. Relational operators are each declared separately; none derives from another. |
+| G093 | UnsafeAllocatingTemporary | *(warning)* An `unsafe` block builds a managed value it never releases. Silent when the block names `retain`/`release`, which is hand-managed counting. |
+| G094 | ManagedFixedArray | *(warning)* A fixed array of a managed element type leaks its contents at scope exit. Stores into one are counted, so it leaks but never dangles. |
+| G095 | MixedSignedness | `/`, `%`, `<`, `<=`, `>` or `>=` mixing a signed operand with an unsigned one, where converting one into the other's type would change what it means (Ch. 5). |
+| G096 | CharArithmetic | *(warning)* `+` on two `char` values, which adds their codepoints rather than joining them into text. Convert a side with `as String` to concatenate (Ch. 5). |
+| G097 | ExplicitTypeArgs | Explicit type arguments on a call, `f[T](x)`. A function is not a generic type; its type parameters are inferred from the argument types. |
+| G098 | UseBeforeAssignment | A primitive local declared without an initialiser and read before any store to it can have happened. Managed locals start as `null` and are exempt (Ch. 5). |
 
 
 ## 30. Appendix: Keyword List & Operator Precedence

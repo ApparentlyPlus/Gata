@@ -10,8 +10,9 @@ import Char;
 module Long {
 
     /*
-     * ToString - Decimal text for an int64 (same single-allocation shape as Int.ToString)
+     * ToString - Decimal text for an int64
      */
+    @intrinsic(stringify_long)
     public String func ToString(int64 n) {
         if (n == (0 as int64)) { return "0"; }
         let neg = n < (0 as int64);
