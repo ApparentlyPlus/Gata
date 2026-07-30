@@ -234,36 +234,73 @@ module Math {
         return frombits(u);
     }
 
+    double func refine(double x, double r) {
+        let c = 134217729.0 * r;            // 2^27 + 1, the Veltkamp splitting factor
+        let rh = c - (c - r);
+        let rl = r - rh;
+        let hi = r * r;
+        let lo = ((rh * rh - hi) + 2.0 * rh * rl) + rl * rl;
+        let d = (x - hi) - lo;              // exact residual, x - r^2
+        return r + d / (r + r);
+    }
+
+    uint64 func mulhi(uint64 a, uint64 b) {
+        let a0 = a & 0xFFFFFFFFULL; let a1 = a >> 32;
+        let b0 = b & 0xFFFFFFFFULL; let b1 = b >> 32;
+        let p00 = a0 * b0;
+        let mid1 = a1 * b0 + (p00 >> 32);
+        let mid2 = a0 * b1 + (mid1 & 0xFFFFFFFFULL);
+        return a1 * b1 + (mid1 >> 32) + (mid2 >> 32);
+    }
+
+    bool func le128(uint64 ah, uint64 al, uint64 bh, uint64 bl) {
+        if (ah != bh) { return ah < bh; }
+        return al <= bl;
+    }
+
     double func sqrt(double number) {
         if (number < 0.0) { return (number - number) / (number - number); }
-        if (number == 0.0) { return 0.0; }
-
+        if (number == 0.0) { return number; }        // preserves -0.0, as IEEE requires
         let i = bits(number);
-
-        // Handle denormals by scaling
+        if ((i & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL) { return number + number; }
+        let k = 0;
         if ((i & 0x7FF0000000000000ULL) == 0) {
             number = number * 18014398509481984.0;   // 2^54
             i = bits(number);
-            i = 0x5fe6eb50c7b537a9ULL - (i >> 1);
-            let y = frombits(i);
-            y = y * (1.5 - (number * 0.5 * y * y));
-            y = y * (1.5 - (number * 0.5 * y * y));
-            y = y * (1.5 - (number * 0.5 * y * y));
-            y = y * (1.5 - (number * 0.5 * y * y));
-            return (number * y) * 7.450580596923828125e-09;   // 2^-27
+            k = -27;
         }
+        let ex = (((i >> 52) & 0x7FFULL) as int) - 1023;
+        k = k + (ex >> 1);                        // floor(ex / 2); the odd bit stays in f
+        let f = frombits((i & 0x000FFFFFFFFFFFFFULL) |
+                         (((1023 + (ex & 1)) as uint64) << 52));
 
-        i = 0x5fe6eb50c7b537a9ULL - (i >> 1);
-        let y = frombits(i);
-        y = y * (1.5 - (number * 0.5 * y * y));
-        y = y * (1.5 - (number * 0.5 * y * y));
-        y = y * (1.5 - (number * 0.5 * y * y));
-        y = y * (1.5 - (number * 0.5 * y * y));
-        return number * y;
+        let j = 0x5fe6eb50c7b537a9ULL - (bits(f) >> 1);
+        let y = frombits(j);
+        y = y * (1.5 - (f * 0.5 * y * y));
+        y = y * (1.5 - (f * 0.5 * y * y));
+        y = y * (1.5 - (f * 0.5 * y * y));
+        y = y * (1.5 - (f * 0.5 * y * y));
+        let r = refine(f, f * y);
+        let F = (bits(f) & 0x000FFFFFFFFFFFFFULL) | 0x0010000000000000ULL;
+        if ((ex & 1) != 0) { F = F << 1; }
+        let nh = F >> 12;  let nl = F << 52;
+        let qh = F >> 10;  let ql = F << 54;
+
+        let s = (r * 4503599627370496.0) as uint64;
+        if (s < 0x0010000000000000ULL) { s = 0x0010000000000000ULL; }
+        if (s > 0x001FFFFFFFFFFFFFULL) { s = 0x001FFFFFFFFFFFFFULL; }
+
+        while (!le128(mulhi(s, s), s * s, nh, nl)) { s = s - 1ULL; }
+        while (le128(mulhi(s + 1ULL, s + 1ULL), (s + 1ULL) * (s + 1ULL), nh, nl)) { s = s + 1ULL; }
+        let m = s + s + 1ULL;
+        if (le128(mulhi(m, m), m * m, qh, ql)) { s = s + 1ULL; }
+
+        return scalbn((s as double) * 2.220446049250313e-16, k);   // 2^-52
     }
 
     double func k_ln2hi() { return 6.93147180369123816490e-01; }
     double func k_ln2lo() { return 1.90821492927058770002e-10; }
+    double func k_ln2()   { return 6.93147180559945286227e-01; }
     double func k_lg1()   { return 6.666666666666735130e-01; }
     double func k_lg2()   { return 3.999999999940941908e-01; }
     double func k_lg3()   { return 2.857142874366239149e-01; }
@@ -528,12 +565,12 @@ module Math {
             hu = hu & 0x000fffff;
             if (hu < 0x6a09e) {
                 let ub = bits(uu);
-                ub = (ub & 0x800fffff00000000ULL) | 0x3ff0000000000000ULL;
+                ub = (ub & 0x800fffffffffffffULL) | 0x3ff0000000000000ULL;
                 uu = frombits(ub);
             } else {
                 k = k + 1;
                 let ub = bits(uu);
-                ub = (ub & 0x800fffff00000000ULL) | 0x3fe0000000000000ULL;
+                ub = (ub & 0x800fffffffffffffULL) | 0x3fe0000000000000ULL;
                 uu = frombits(ub);
                 hu = (0x00100000 - hu) >> 2;
             }
@@ -555,6 +592,13 @@ module Math {
         let r = z * (k_lg1() + z * (k_lg2() + z * (k_lg3() + z * (k_lg4() + z * (k_lg5() + z * (k_lg6() + z * k_lg7()))))));
         if (k == 0) { return f - (hfsq - s * (hfsq + r)); }
         return (k as double) * k_ln2hi() - ((hfsq - (s * (hfsq + r) + ((k as double) * k_ln2lo() + c))) - f);
+    }
+
+    int func normshift(uint v) {
+        if (v == 0) { return 0; }
+        let n = 0;
+        while ((v & (0x80000000 as uint)) == 0) { v = v << 1; n = n + 1; }
+        return n;
     }
 
     double func fmod(double x, double y) {
@@ -583,29 +627,15 @@ module Math {
         let n = 0;
 
         if (hx < 0x00100000) {
-            if (hx == 0) {
-                ix = -1043;
-                i = (lx as int);
-                while (i > 0) { ix = ix - 1; i = i << 1; }
-            } else {
-                ix = -1022;
-                i = (hx << 11);
-                while (i > 0) { ix = ix - 1; i = i << 1; }
-            }
+            if (hx == 0) { ix = -1043 - normshift(lx); }
+            else         { ix = -1022 - normshift((hx << 11) as uint); }
         } else {
             ix = (hx >> 20) - 1023;
         }
 
         if (hy < 0x00100000) {
-            if (hy == 0) {
-                iy = -1043;
-                i = (ly as int);
-                while (i > 0) { iy = iy - 1; i = i << 1; }
-            } else {
-                iy = -1022;
-                i = (hy << 11);
-                while (i > 0) { iy = iy - 1; i = i << 1; }
-            }
+            if (hy == 0) { iy = -1043 - normshift(ly); }
+            else         { iy = -1022 - normshift((hy << 11) as uint); }
         } else {
             iy = (hy >> 20) - 1023;
         }
@@ -750,7 +780,7 @@ module Math {
 
         if (ly == 0) {
             if (iy == 0x7ff00000) {
-                if (((ix - 0x3ff00000) | (lx as int)) == 0) { return y - y; }
+                if (((ix - 0x3ff00000) | (lx as int)) == 0) { return 1.0; }
                 if (ix >= 0x3ff00000) {
                     if (hy >= 0) { return y; }
                     return 0.0;
@@ -927,7 +957,7 @@ module Math {
         z = 1.0 - (r - z);
         let uz2 = bits(z);
         j = ((uz2 >> 32) as int);
-        j = j + (n << 20);
+        j = j + n * 0x100000;
         if ((j >> 20) <= 0) {
             z = scalbn(z, n);
         } else {
@@ -1537,7 +1567,7 @@ module Math {
             ((iy | (((ly | (0 - ly)) >> 31) as int)) > 0x7ff00000)) {
             return x + y;
         }
-        if (((hx - 0x3ff00000) | (lx as int)) == 0) { return atan(y); }
+        if (hx == 0x3ff00000 && lx == 0) { return atan(y); }
         m = ((hy >> 31) & 1) | ((hx >> 30) & 2);
 
         if ((iy | (ly as int)) == 0) {
@@ -1625,7 +1655,8 @@ module Math {
         if (ix < 0x40862E42) { return 0.5 * exp(fabs(x)); }
         if (ix <= 0x408633CE) {
             w = exp(0.5 * fabs(x));
-            return w * w * 0.5;
+            t = 0.5 * w;
+            return t * w;
         }
         return 1.0e+300 * 1.0e+300;
     }
@@ -1665,7 +1696,7 @@ module Math {
             if (1.0e+300 + x > 1.0) { return x; }
         }
         if (ix > 0x41b00000) {
-            w = log(fabs(x)) + k_ln2hi();
+            w = log(fabs(x)) + k_ln2();
         } else {
             if (ix > 0x40000000) {
                 t = fabs(x);
@@ -1688,7 +1719,7 @@ module Math {
         else {
             if (hx >= 0x41b00000) {
                 if (hx >= 0x7ff00000) { return x + x; }
-                return log(x) + k_ln2hi();
+                return log(x) + k_ln2();
             } else {
                 if (((hx - 0x3ff00000) | (lx as int)) == 0) {
                     return 0.0;

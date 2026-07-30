@@ -156,9 +156,13 @@
     static inline void  _env_shutdown(void)    { syscall_poweroff(); }
     static inline void  _env_reboot(void)      { syscall_reboot(); }
     static inline void  _env_dbg(const char* m) {
-        u_debug_write("[USER DEBUG] ", sizeof("[USER DEBUG] ") - 1);
-        u_debug_write(m, strlen(m));
-        u_debug_write("\n", 1);
+        char line[512];
+        size_t n = 0;
+        const char* p = "[USER DEBUG] ";
+        while (*p && n < sizeof(line) - 1) line[n++] = *p++;
+        while (*m && n < sizeof(line) - 1) line[n++] = *m++;
+        line[n++] = '\n';
+        u_debug_write(line, n);
     }
     static inline int64_t _env_time_ns(void) { return (int64_t)syscall_time_ns(); }
 

@@ -492,7 +492,7 @@ class StringBuilder {
 native {
     #define GATA_STRLIT(T, lit) (__extension__({ \
         static const char _gsb[] = lit; \
-        static T _gss = { GATA_OBJ_STATIC, (char*)_gsb, sizeof(_gsb) - 1 }; \
-        &_gss; \
+        static const T _gss = { GATA_OBJ_STATIC, (char*)_gsb, sizeof(_gsb) - 1 }; \
+        (T*)&_gss; \
     }))
 }

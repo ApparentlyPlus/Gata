@@ -43,7 +43,8 @@ native {
  */
 @intrinsic(retain)
 void* func retain(void* p) native {
-    if (p && ((gata_obj*)p)->__rc != GATA_RC_STATIC) ((gata_obj*)p)->__rc++;
+    if (p && ((gata_obj*)p)->__rc != GATA_RC_STATIC)
+        __atomic_add_fetch(&((gata_obj*)p)->__rc, 1, __ATOMIC_RELAXED);
     return p;
 }
 
@@ -54,8 +55,9 @@ void* func retain(void* p) native {
 void func release(void* p) native {
     if (!p) return;
     gata_obj* o = (gata_obj*)p;
-    if (o->__rc == GATA_RC_STATIC) return;   // static object: never reaped
-    if (o->__rc != 0 && --o->__rc == 0) {
+    if (o->__rc == GATA_RC_STATIC) return;
+    if (o->__rc == 0) return;
+    if (__atomic_sub_fetch(&o->__rc, 1, __ATOMIC_ACQ_REL) == 0) {
         if (o->__dtor) o->__dtor(p);
         _env_free(p);
     }

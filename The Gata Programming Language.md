@@ -1727,6 +1727,7 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G096 | CharArithmetic | *(warning)* `+` on two `char` values, which adds their codepoints rather than joining them into text. Convert a side with `as String` to concatenate (Ch. 5). |
 | G097 | ExplicitTypeArgs | Explicit type arguments on a call, `f[T](x)`. A function is not a generic type; its type parameters are inferred from the argument types. |
 | G098 | UseBeforeAssignment | A primitive local declared without an initialiser and read before any store to it can have happened. Managed locals start as `null` and are exempt (Ch. 5). |
+| G099 | DiscardedRetain | A call to the `retain` intrinsic whose result is thrown away. `retain` returns the reference it counted rather than marking an object in place, so as a statement it counts a temporary the same scope releases again and compiles to nothing. Store what it returns. |
 
 
 ## 30. Appendix: Keyword List & Operator Precedence

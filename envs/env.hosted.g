@@ -27,10 +27,10 @@
 
     /* GatOS userspace surface referenced by Console/Sys (unused on the host). */
     enum { TTY_CTRL_CLEAR = 0, TTY_CTRL_CURSOR = 1, TTY_CTRL_GET_DIMS = 2, TTY_CTRL_SET_COLOR = 3 };
-    uint64_t syscall_tty_ctrl();
-    void     syscall_exit();
-    void     syscall_sleep();
-    void     syscall_yield();
+    uint64_t syscall_tty_ctrl(uint64_t cmd, uint64_t arg);
+    void syscall_exit(void);
+    void syscall_sleep(uint64_t ms);
+    void syscall_yield(void);
 
     static inline int _env_format(char* buf, size_t n, char* fmt, int kind, uint64_t bits) {
         union { uint64_t u; double d; } x; x.u = bits;
