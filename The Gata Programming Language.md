@@ -490,7 +490,7 @@ void func sayBye(){
 
 There's exactly one place a return type can go: right before `func`. You can omit it entirely for a `void`-returning function as a special case. 
 
-A function can also be marked `public` or `private`. For a free function specifically, `public` is a no-op (a free function is already maximally visible) and `private` is file-scoped name mangling. Two different files may each declare a `private func Helper()`, and neither collides with nor sees the other:
+A free function can be marked `private`, which is file-scoped name mangling. It cannot be marked `public`: a free function is already visible to every file that imports the one declaring it, so the modifier would state a decision that was never made, and writing it on some functions and not others reads as if the bare ones were restricted. Spelling it is a hard error, the same treatment `public class C` gets. Two different files may each declare a `private func Helper()`, and neither collides with nor sees the other:
 
 ```go
 private int func Helper() { return 1; }   // file-scoped: a second file's Helper() doesn't collide
@@ -731,7 +731,7 @@ a.balance;        // error: balance is private to Account
 
 One thing is exempt from this check entirely: constructors (`new C(...)`, which never resolve via member access). Operators follow the same private-by-default rule as every other member — see Chapter 12.
 
-Free functions, introduced back in Chapter 6, work under a different, unrelated mechanism worth restating here since it's easy to assume the same rules apply: `public` on a free function is a no-op (already maximally visible), `private` is file-scoped name mangling rather than class-boundary control, and `static` on a free function is a hard error — a free function is never an instance member, so "static" is a category error there, not a redundant spelling.
+Free functions, introduced back in Chapter 6, work under a different, unrelated mechanism worth restating here since it's easy to assume the same rules apply: a free function is visible to every importer with no modifier at all, so `public` on one is a hard error rather than a redundant spelling; `private` is file-scoped name mangling rather than class-boundary control; and `static` is likewise an error — a free function is never an instance member, so "static" is a category error there.
 
 Finally, a symbol's scope is determined by `import`: a name is in scope for a file if and only if it's declared in that file or transitively reachable through that file's imports.
 
@@ -864,6 +864,23 @@ let String s = b.TagWith("x");             // U inferred as String
 ```
 
 What generics don't support: there are no explicit type constraints, meaning no `T : Comparable`-style syntax. Generic code is duck-typed, so a function or method body using `a < b` on a generic `T` simply fails to monomorphize for any concrete `T` lacking `operator <`.
+
+There is one more limit, and it follows from *when* each kind of generic is stamped out. Generic **types** are monomorphized in an early pass over the syntax tree; generic **functions and methods** are stamped later, during resolution, once inference has decided what `T` is. A generic function body may therefore name a generic type over its own parameter — `let Box[T] b = ...` inside `T func Wrap[T](T x)` — and that `Box[Widget]` only becomes concrete after the pass that would have created it has already run:
+
+```go
+T func Wrap[T](T x) {
+    let Box[T] b = new Box[T](x);   // error[G007]: 'Box[Widget]' is never instantiated
+    return b.v;
+}
+```
+
+Name the instantiation once anywhere outside a generic function and it is created normally, after which the generic body finds it:
+
+```go
+let Box[Widget] seed = new Box[Widget](new Widget());   // now Wrap(new Widget()) compiles
+```
+
+The same body inside a generic *class* has no such problem, because both stampers are then the early one. In practice this bites when writing a generic helper that uses a container internally; the seeding line is the workaround, and giving the helper a concrete parameter type is the other.
 
 This distinction — a method's *own* generic parameters vs. the *class's* generic parameters — matters for one specific risk: every member of a generic *class* is stamped unconditionally for every instantiation of the class's own type parameter, so giving `List[T]` a method that used `<` directly on that class's own `T` would break `List[List[int]]` (no `<` on `List[int]`) and any other non-comparable `T`, even if that method is never called. A method's own, independently-generic parameters don't have this problem, since they monomorphize lazily per call site, exactly like a free function. `libgata`'s sorting and searching algorithms (Chapter 26) still live in their own `Algorithms` module rather than directly on `List[T]`, but that's about keeping general-purpose, `T`-agnostic algorithms decoupled from any one container's own type parameter — not because generic methods themselves were unsupported.
 
@@ -1293,63 +1310,91 @@ Threads in one process share an address space, and the scheduler preempts them o
 
 `libgata`'s `Sync` module (Chapter 26) is the floor for both problems: `AtomicInt`, a 64-bit counter whose every operation is a single indivisible instruction, and `SpinLock`, a test-and-set lock that yields the CPU between failed attempts so a contended lock doesn't starve its holder on a single core.
 
-That leaves one structural question: threads' entry functions take no parameters, and Gata deliberately has no global variables — so how do two threads reach the *same* `AtomicInt`? The idiomatic answer is a small native-static bridge (Chapter 24's `native { }` at the realm's top level): one thread creates the objects and publishes their pointers into file-scope C statics, the others read them back.
+That leaves one structural question: threads' entry functions take no parameters, and Gata has no global variables — so how do two threads reach the *same* `AtomicInt`?
+
+**Process variables** are the answer. A `let` written directly inside a `process` block declares one variable belonging to the process rather than to a scope inside it: a single instance, shared by every thread of that process, initialised once before any of them is spawned, and never released.
 
 ```go
 realm userspace {
-    // The bridge: file-scope statics in this realm's translation unit. The
-    // release/acquire pair on g_ready makes the publication itself race-free —
-    // a thread that sees g_ready == 1 is guaranteed to see the pointers too.
-    native {
-        static void* g_hits;
-        static void* g_lk;
-        static volatile int g_ready;
-    }
-
-    void func Publish(AtomicInt hits, SpinLock lk) native {
-        g_hits = hits;
-        g_lk = lk;
-        __atomic_store_n(&g_ready, 1, __ATOMIC_RELEASE);
-    }
-    bool func Ready() native {
-        return __atomic_load_n(&g_ready, __ATOMIC_ACQUIRE) != 0;
-    }
-    AtomicInt func SharedHits() native { return g_hits; }
-    SpinLock func SharedLock() native { return g_lk; }
-
     foreground process Demo {
+        // One of each, shared by both threads below. Reference counted like any
+        // other value - these are ordinary Gata objects, not raw pointers.
+        let AtomicInt hits = new AtomicInt();
+        let SpinLock  lk   = new SpinLock();
+        let int       half = 100000;
+
         thread Boss {
             entry func Run() {
-                let AtomicInt hits = new AtomicInt();
-                let SpinLock lk = new SpinLock();
-                Publish(hits, lk);
-
-                // Boss's half of the count, racing the worker's half.
-                for (let int i = 0; i < 100000; i = i + 1) { hits.Increment(); }
-                while (hits.Get() < (200000 as int64)) { Sys.Yield(); }
-                Console.PrintLong(hits.Get());   // exactly 200000 — no lost updates
+                for (let int i = 0; i < half; i = i + 1) { hits.Increment(); }
+                while (hits.Get() < ((half * 2) as int64)) { Sys.Yield(); }
+                Console.PrintLong(hits.Get());   // exactly 200000 - no lost updates
                 Console.NewLine();
             }
         }
         thread Worker {
             entry func Run() {
-                while (!Ready()) { Sys.Yield(); }
-                // unsafe = borrow, not own: ARC stays out of this block, and the
-                // Boss's locals keep the shared objects alive for the whole run.
-                unsafe {
-                    let AtomicInt hits = SharedHits();
-                    for (let int i = 0; i < 100000; i = i + 1) { hits.Increment(); }
-                }
+                for (let int i = 0; i < half; i = i + 1) { hits.Increment(); }
             }
         }
     }
 }
 ```
 
+Six rules govern them:
+
+- **The initialiser is required** (**G100**). A process variable is read by threads that never ran the line declaring it, so there is no point in the program at which a later assignment could be known to have happened first. Definite assignment, which catches an uninitialised *local* (**G098**), cannot be established here at all — so the declaration has to carry the value.
+- **An initialiser may only read the variables above it** (**G098**). The initialisers run in declaration order, as one generated function, so a variable further down still holds nothing — zero for a primitive, `null` for a class. Reading one is an ordering mistake rather than a scope error: the name resolves, it just has no value yet. Reading the variable being declared is the same rule and says so specifically.
+
+  ```go
+  background process P {
+      let int a = b + 1;   // error[G098]: process variable 'b' is read before it is initialised
+      let int b = 2;
+      let int c = c;       // error[G098]: process variable 'c' is read by its own initialiser
+  }
+  ```
+- **A `catch` handler on one must end in `assign`** (**G100**). A throwing initialiser is allowed with a handler, under the same "every path supplies a value" rule a local declaration gets (**G082**). What a handler here may *not* do is `return`: the only function to return from is the generated initialiser, so it would abandon this variable *and every one declared below it* while the gate still publishes the state as ready. `break`, `continue` and `throw` are rejected by the rules that already cover them.
+- **They belong to their process.** Code outside cannot see one, and naming the path explicitly does not help: `kernel.P.n` is **G089**, because a qualifier disambiguates between *enclosing* scopes and a process is not one of those from outside it. Everything inside can see it — the threads, and any function the process declares.
+- **Each process gets its own.** Two processes may use the same name; they are separate storage.
+- **They are never released.** A process variable holds its value for the life of the image; nothing runs a destructor on one. That is what makes it safe to read from any thread at any time, and it means a managed process variable is a deliberate, permanent allocation rather than something to churn.
+- **A local of the same name shadows it, and warns** (**G070**). That direction is the dangerous one: without the warning a thread would read and write its own copy while believing it shared one.
+
+A process variable is the only storage in Gata that outlives a scope, and that is deliberate. A process is the one construct where "one of these, shared by everything inside it" has an unambiguous meaning: its threads already share an address space, and the scope tree already makes its declarations visible to exactly them. A module-level or `static` class variable would have no such boundary — it would be a global with extra steps, and both are rejected.
+
+Underneath, each variable becomes a file-scope static in its realm's translation unit, and the initialisers become one generated function. Every thread of the process calls a gate before its own first statement; exactly one thread runs the initialiser and the rest wait for it, so "initialised before first read" holds by construction rather than by scheduling luck.
+
+#### Sharing across processes
+
+Process variables stop at the process boundary, which is the right default — two userspace processes have separate address spaces, so a shared instance between them is not a thing that can exist. When you do need a bridge *within one realm* (kernel-realm processes share the kernel's address space), the fallback is a native static (Chapter 24's `native { }`), published once with release/acquire ordering:
+
+```go
+realm kernel {
+    native {
+        static void* g_hits;
+        static volatile int g_ready;
+    }
+
+    void func Publish(AtomicInt hits) native {
+        // Counted by hand: the slot is a raw pointer reference counting cannot see,
+        // so without this the object dies with the scope that made it.
+        __atomic_add_fetch(&((gata_obj*)hits)->__rc, 1, __ATOMIC_RELAXED);
+        g_hits = hits;
+        __atomic_store_n(&g_ready, 1, __ATOMIC_RELEASE);
+    }
+    AtomicInt func SharedHits() native {
+        void* p = g_hits;
+        if (p) __atomic_add_fetch(&((gata_obj*)p)->__rc, 1, __ATOMIC_RELAXED);
+        return p;   // returned at +1: the caller's scope will release it
+    }
+    bool func Ready() native { return __atomic_load_n(&g_ready, __ATOMIC_ACQUIRE) != 0; }
+}
+```
+
+Two things about that accessor are easy to get wrong. A native body handing back a managed reference must return it at **+1**, because the caller's scope releases what it was given — return it at +0 and every call quietly decrements the count until the object is freed out from under its users. And `retain(x);` as a *statement* is not the way to pin the slot: `retain` returns the reference it counted rather than marking an object in place, so discarding that result is a no-op the compiler rejects outright (**G099**).
+
 Both threads hammer the counter 100,000 times concurrently, and the printed total is exactly `200000` — with a plain `int`, preemption would eat some of those updates and the count would come up short. Three idioms in this shape are worth internalizing, because every threaded Gata program ends up using them:
 
-- **The publish/`Ready()` handshake.** The `__ATOMIC_RELEASE` store and `__ATOMIC_ACQUIRE` load pair guarantees a thread that observes the flag also observes everything written before it. Publish once, then never write the statics again.
-- **`unsafe` as borrow semantics.** The consuming thread reads the shared pointers back inside `unsafe`, which keeps the ownership pass (Chapter 17) from inserting retain/release for references it doesn't own — the publishing thread's locals hold the objects alive. Without this, the worker's scope exit would release a reference it never took.
+- **Reach for a process variable first.** It is checked, reference counted, and scoped to exactly the threads that should see it. The native bridge is for crossing a process boundary, not for ordinary sharing.
+- **A native slot is hand-counted.** Reference counting cannot see a raw pointer, so anything stored in one has to be counted by hand on the way in and handed back at +1 on the way out.
 - **Atomics coordinate phases; locks protect invariants.** An `AtomicInt` is right for counters and done-flags — single-word facts. A `SpinLock` is right when a *multi-step* mutation has to appear indivisible: appending to a shared `List[T]`, for instance, is a length check, a possible grow, a store, and a length bump, and no atomic can cover all four — wrap it in `lk.Lock()` / `lk.Unlock()` instead.
 
 The same `Sync` types work in kernel-realm processes and on Hosted unchanged; only the yield underneath them differs (scheduler call, syscall, or host yield — Chapter 23's `_env_yield`).
@@ -1726,8 +1771,9 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G095 | MixedSignedness | `/`, `%`, `<`, `<=`, `>` or `>=` mixing a signed operand with an unsigned one, where converting one into the other's type would change what it means (Ch. 5). |
 | G096 | CharArithmetic | *(warning)* `+` on two `char` values, which adds their codepoints rather than joining them into text. Convert a side with `as String` to concatenate (Ch. 5). |
 | G097 | ExplicitTypeArgs | Explicit type arguments on a call, `f[T](x)`. A function is not a generic type; its type parameters are inferred from the argument types. |
-| G098 | UseBeforeAssignment | A primitive local declared without an initialiser and read before any store to it can have happened. Managed locals start as `null` and are exempt (Ch. 5). |
+| G098 | UseBeforeAssignment | A primitive local declared without an initialiser and read before any store to it can have happened. Managed locals start as `null` and are exempt (Ch. 5). Also a process variable's initialiser reading itself or one declared below it, which run in declaration order (Ch. 22). |
 | G099 | DiscardedRetain | A call to the `retain` intrinsic whose result is thrown away. `retain` returns the reference it counted rather than marking an object in place, so as a statement it counts a temporary the same scope releases again and compiles to nothing. Store what it returns. |
+| G100 | UninitialisedProcessVar | A process variable declared without an initial value. Every thread of the process shares the one variable, so no later assignment can be known to have run before another thread's first read. Also a `catch` handler on one that ends in `return`, which leaves that variable and every one below it unfilled while the gate still reports the state ready (Ch. 22). |
 
 
 ## 30. Appendix: Keyword List & Operator Precedence

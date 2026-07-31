@@ -11,7 +11,7 @@ union Optional[V] { Some(V v), None }
 /*
  * IsSome - True when a value is present
  */
-public bool func IsSome[V](Optional[V] m) {
+bool func IsSome[V](Optional[V] m) {
     match (m) {
         case Some(v) { return true; }
         case None { return false; }
@@ -21,7 +21,7 @@ public bool func IsSome[V](Optional[V] m) {
 /*
  * IsNone - True when no value is present
  */
-public bool func IsNone[V](Optional[V] m) {
+bool func IsNone[V](Optional[V] m) {
     match (m) {
         case Some(v) { return false; }
         case None { return true; }
@@ -31,7 +31,7 @@ public bool func IsNone[V](Optional[V] m) {
 /*
  * ValueOr - The value if present, otherwise fallback
  */
-public V func ValueOr[V](Optional[V] m, V fallback) {
+V func ValueOr[V](Optional[V] m, V fallback) {
     match (m) {
         case Some(v) { return v; }
         case None { return fallback; }
