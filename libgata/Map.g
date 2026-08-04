@@ -59,7 +59,7 @@ class Map[K, V] {
      * Put - Insert or overwrite the value for key
      */
     public void func Put(K key, V value) {
-        if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
+        if (self.cap == 0) { self.Grow(1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
             let h = Hash.Mix(key as usize) & mask;
@@ -70,6 +70,13 @@ class Map[K, V] {
                     return;
                 }
                 h = (h + (1 as usize)) & mask;
+            }
+
+            if (self.count * 10 >= self.cap * 7) {
+                self.Grow(self.cap + 1);
+                mask = (self.cap - 1) as usize;
+                h = Hash.Mix(key as usize) & mask;
+                while (self.used[h] != 0) { h = (h + (1 as usize)) & mask; }
             }
             self.keys[h] = retain(key);
             self.vals[h] = retain(value);
@@ -365,7 +372,7 @@ class StringMap[V] {
      */
     public void func Put(String key, V value) {
         if (key == null) { return; }
-        if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
+        if (self.cap == 0) { self.Grow(1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
             let h = Hash.HashString(key) & mask;
@@ -376,6 +383,13 @@ class StringMap[V] {
                     return;
                 }
                 h = (h + (1 as usize)) & mask;
+            }
+            
+            if (self.count * 10 >= self.cap * 7) {
+                self.Grow(self.cap + 1);
+                mask = (self.cap - 1) as usize;
+                h = Hash.HashString(key) & mask;
+                while (self.used[h] != 0) { h = (h + (1 as usize)) & mask; }
             }
             self.keys[h] = retain(key);
             self.vals[h] = retain(value);

@@ -58,13 +58,20 @@ class Set[T] {
      * AddNew - Insert item, returning false if it was already there; one probe, not Has then Add
      */
     public bool func AddNew(T item) {
-        if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
+        if (self.cap == 0) { self.Grow(1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
             let h = Hash.Mix(item as usize) & mask;
             while (self.used[h] != 0) {
                 if (self.keys[h] == item) { return false; }
                 h = (h + (1 as usize)) & mask;
+            }
+
+            if (self.count * 10 >= self.cap * 7) {
+                self.Grow(self.cap + 1);
+                mask = (self.cap - 1) as usize;
+                h = Hash.Mix(item as usize) & mask;
+                while (self.used[h] != 0) { h = (h + (1 as usize)) & mask; }
             }
             self.keys[h] = retain(item);
             self.used[h] = 1;
@@ -282,13 +289,20 @@ class StringSet {
      */
     public bool func AddNew(String item) {
         if (item == null) { return false; }
-        if (self.cap == 0 || self.count * 10 >= self.cap * 7) { self.Grow(self.cap + 1); }
+        if (self.cap == 0) { self.Grow(1); }
         unsafe {
             let mask = (self.cap - 1) as usize;
             let h = Hash.HashString(item) & mask;
             while (self.used[h] != 0) {
                 if (self.keys[h].Equals(item)) { return false; }
                 h = (h + (1 as usize)) & mask;
+            }
+            
+            if (self.count * 10 >= self.cap * 7) {
+                self.Grow(self.cap + 1);
+                mask = (self.cap - 1) as usize;
+                h = Hash.HashString(item) & mask;
+                while (self.used[h] != 0) { h = (h + (1 as usize)) & mask; }
             }
             self.keys[h] = retain(item);
             self.used[h] = 1;

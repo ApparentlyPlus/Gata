@@ -996,6 +996,13 @@ You never call `retain`/`release` yourself. The compiler's ownership pass walks 
 
 A static value, like a string literal, carries a sentinel refcount and is never retained, released, or freed. The runtime checks for that sentinel and skips it. None of this is something you write, It's entirely compiler-generated and invisible at the Gata source level. You can see it directly in the emitted C by building with `appa build --pure-transpile` (Chapter 27).
 
+>[!IMPORTANT]
+> **`new` assumes allocation succeeds.** Allocation failure is not a condition the language models: `new` is not `throws`, does not return an `Optional[T]`, and there is no syntax for handling it. The emitted allocator initialises the object unconditionally, so a failed allocation faults *there* — at the allocation that failed, which is the one place a backtrace is worth having.
+>
+> That is a deliberate choice over the alternative. The allocator could guard each step with a null check and return the null pointer instead; it did once. But the caller has no way to ask, so it dereferences that pointer at the first field access anyway — the same crash, moved further from its cause, paid for with a branch per field on every construction in the program.
+>
+> The practical consequence is that your environment's `_env_alloc` is the only place a policy can live. On a hosted build it is `malloc`, and running out of memory ends the process. On a kernel, wire it to panic — an allocator that returns null to a language with no way to ask is strictly worse than one that stops.
+
 ## 18. `ref` Parameters
 
 Passing a large value by copy is wasteful, and passing a managed value normally still means the callee gets its own reference, with the retain/release overhead from Chapter 17 to match. `ref` is the answer for "let the callee read and write my variable directly, with no copy and no extra reference-counting churn", without resorting to a raw pointer and the `unsafe` block that would otherwise require.
@@ -1525,6 +1532,15 @@ native {
 ```
 *(Note: `Process` and `Thread` are ordinary type names, not reserved words - they resolve to opaque handle types that compile to `void*` under the hood because `libgata`'s `Sys.g` declares them with `@builtin(Process)`/`@builtin(Thread)`, the same mechanism `@intrinsic` uses for compiler roles, just for types instead of functions).*
 
+**Where the C declaration comes from — you.** An `@extern` tells *Gata* about a function. It emits no C, so the *C* compiler still needs its own declaration, and the build has to supply it: a `native { }` block that defines the function, or one that `#include`s the header declaring it. Without either, the emitted call has no prototype, and a C compiler defaulting to C23 rejects it as an implicit declaration. `appa` does not write the prototype for you — it cannot state one truthfully, since Gata has no `const` and a generated `int puts(char*)` contradicts the `int puts(const char*)` in the header. **This is an unchecked boundary in both directions:** nothing verifies that the signature you write here matches the function you linked against, exactly as nothing verifies the contents of a `native { }` block.
+
+```go
+native { void* lookup_handle(const char* name); }   // the declaration C needs
+@extern Process func lookup_handle(char* name);     // the declaration Gata needs
+```
+
+**Declaring one twice.** Each file that uses an `@extern` may declare it, and two files declaring the same one is not an overload — an `@extern` names a single C symbol, and every declaration of it resolves to that symbol. Two declarations of one name that *disagree* are `G003`: they describe the same C function two different ways, and only the author knows which is right.
+
 ### Binding Compiler Intrinsic Roles (`@intrinsic`)
 The compiler generates code that relies on standard operations (such as reference counting or string interpolation formatting) but does not hardcode their names. The `@intrinsic(role)` attribute allows the standard library (`libgata`) to bind standard functions to compiler-internal roles:
 
@@ -1660,6 +1676,8 @@ Every error and warning `appa` produces carries a stable code, so you can search
 
 Severity is a property of the diagnostic, not of its code range: `G023`–`G026`, `G070`–`G074`, `G076`–`G078`, and `G080` are warnings, everything else is an error. Warnings never stop a build on their own; pass `--werror` to `appa check` to treat them as failures.
 
+Warnings are reported only for files you wrote. A diagnostic landing inside `libgata` is neither printed nor promoted by `--werror`, the way a C compiler leaves its system headers alone — because you cannot act on it, and because putting one of your own types into a container drags the library's internals into analyses aimed at your code: `List[MyUnion]` otherwise reports `G093` against every `retain` into `List`'s raw storage, which is the standard library's own correct idiom, and `G083` against its generated `==`, at lines in a file you do not own. Errors inside `libgata` are still reported in full — an error there is a real failure, and when your own file has one too, that one is shown first.
+
 Suggestions are never folded into the message text. A diagnostic carries zero or more *hints*, and the renderer prints each on its own `= help:` line beneath the source snippet, after the caret:
 
 ```
@@ -1676,7 +1694,7 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G000 | File | Generic structural/parse-level error: misplaced annotation, malformed generic parameter list, a field preceded by `entry`/`throws`, etc. |
 | G001 | DuplicateContext | More than one `realm kernel { }` block in the program. Multiple `realm userspace { }` blocks are allowed and don't trigger this (Ch. 22). |
 | G002 | MissingEntryPoint | No `entry func Main()` (kernel) or equivalent reachable entry point found (Ch. 3). |
-| G003 | DuplicateName | A name is redeclared in a scope where it already exists (Ch. 4). Also fires when two declarations would be emitted under one C name: readable C names join their parts with `_`, which is legal inside each part, so `class A_B { M }` and `class A { B_M }` both spell `gata_A_B_M`. |
+| G003 | DuplicateName | A name is redeclared in a scope where it already exists (Ch. 4). Also fires when two declarations would be emitted under one C name: readable C names join their parts with `_`, which is legal inside each part, so `class A_B { M }` and `class A { B_M }` both spell `gata_A_B_M`. And when two files declare the same `@extern` with different signatures - redeclaring it identically is fine, since it names one C symbol (Ch. 13). |
 | G004 | TypeMismatch | Incompatible types in an expression/statement position. |
 | G005 | UndefinedVariable | Reference to a name that doesn't resolve (Ch. 4). |
 | G006 | UndefinedMethod | Call to a method that doesn't exist on the receiver's type. |
@@ -1774,6 +1792,7 @@ warn.g:15:20: error[G075]: integer division by a literal zero
 | G098 | UseBeforeAssignment | A primitive local declared without an initialiser and read before any store to it can have happened. Managed locals start as `null` and are exempt (Ch. 5). Also a process variable's initialiser reading itself or one declared below it, which run in declaration order (Ch. 22). |
 | G099 | DiscardedRetain | A call to the `retain` intrinsic whose result is thrown away. `retain` returns the reference it counted rather than marking an object in place, so as a statement it counts a temporary the same scope releases again and compiles to nothing. Store what it returns. |
 | G100 | UninitialisedProcessVar | A process variable declared without an initial value. Every thread of the process shares the one variable, so no later assignment can be known to have run before another thread's first read. Also a `catch` handler on one that ends in `return`, which leaves that variable and every one below it unfilled while the gate still reports the state ready (Ch. 22). |
+| G101 | ReferenceCycle | A set of classes whose managed fields reach one another in a loop — or a class holding a reference to itself. Each object keeps the next one's count above zero, so none reaches zero and none is destroyed. Reported against a declaration in your own source where the cycle has one, and promoted by `--werror` like any other warning. Break it with a raw pointer field inside `unsafe`, which counts nothing, or restructure so ownership runs one way. |
 
 
 ## 30. Appendix: Keyword List & Operator Precedence

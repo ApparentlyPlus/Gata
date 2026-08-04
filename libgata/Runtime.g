@@ -39,12 +39,25 @@ native {
 }
 
 /*
+ * The two count operations, atomic or not.
+ */
+native {
+    #if !defined(GATA_RC_ATOMIC) || GATA_RC_ATOMIC
+    #define GATA_RC_INC(o)      __atomic_add_fetch(&(o)->__rc, 1, __ATOMIC_RELAXED)
+    #define GATA_RC_DEC(o)      __atomic_sub_fetch(&(o)->__rc, 1, __ATOMIC_ACQ_REL)
+    #else
+    #define GATA_RC_INC(o)      (++(o)->__rc)
+    #define GATA_RC_DEC(o)      (--(o)->__rc)
+    #endif
+}
+
+/*
  * retain - +1 a reference (static objects are left untouched)
  */
 @intrinsic(retain)
 void* func retain(void* p) native {
     if (p && ((gata_obj*)p)->__rc != GATA_RC_STATIC)
-        __atomic_add_fetch(&((gata_obj*)p)->__rc, 1, __ATOMIC_RELAXED);
+        GATA_RC_INC((gata_obj*)p);
     return p;
 }
 
@@ -57,7 +70,7 @@ void func release(void* p) native {
     gata_obj* o = (gata_obj*)p;
     if (o->__rc == GATA_RC_STATIC) return;
     if (o->__rc == 0) return;
-    if (__atomic_sub_fetch(&o->__rc, 1, __ATOMIC_ACQ_REL) == 0) {
+    if (GATA_RC_DEC(o) == 0) {
         if (o->__dtor) o->__dtor(p);
         _env_free(p);
     }
