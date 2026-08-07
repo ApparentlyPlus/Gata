@@ -79,6 +79,24 @@
         while (i < max - 1) { ch = _getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
         buf[i] = '\0'; return (i == 0 && ch < 0) ? -1 : i;
     }
+    #if defined(GATA_OUTPUT_SERIAL)
+
+    static inline void  _env_tty_clear(void)   { serial_write_port(SERIAL_COM1, "\x1b[2J\x1b[H"); }
+    static inline void  _env_tty_cursor(int v) { serial_write_port(SERIAL_COM1, v ? "\x1b[?25h" : "\x1b[?25l"); }
+    static inline long  _env_tty_dims(void)    { return ((long)24 << 32) | (long)80; }
+
+    static inline void  _env_tty_color(int fg, int bg) {
+        static const int a[8] = { 0, 4, 2, 6, 1, 5, 3, 7 };
+        char seq[24];
+        int f = fg & 0xF, b = bg & 0xF;
+        int fc = (f & 8) ? 90 + a[f & 7] : 30 + a[f & 7];
+        int bc = (b & 8) ? 100 + a[b & 7] : 40 + a[b & 7];
+        ksnprintf(seq, sizeof(seq), "\x1b[%d;%dm", fc, bc);
+        serial_write_port(SERIAL_COM1, seq);
+    }
+
+    #else
+
     static inline void  _env_tty_clear(void)   { console_clear(CONSOLE_COLOR_BLACK); }
     static inline void  _env_tty_cursor(int v) { console_enable_cursor(v); }
     static inline long  _env_tty_dims(void) {
@@ -90,6 +108,8 @@
         return ((long)(console_get_height() - header_rows) << 32) | (long)console_get_width();
     }
     static inline void  _env_tty_color(int fg, int bg) { console_set_color((uint8_t)fg, (uint8_t)bg); }
+
+    #endif
     static inline void  _env_yield(void)       { sched_yield(); }
     static inline void  _env_sleep(int ms)     { sched_sleep((uint64_t)(ms < 0 ? 0 : ms)); }
     static inline void  _env_exit(void)        { }
