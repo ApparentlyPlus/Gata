@@ -49,7 +49,7 @@
     }
     static inline void  _env_tty_clear(void)   { syscall_tty_ctrl(TTY_CTRL_CLEAR, 0); }
     static inline void  _env_tty_cursor(int v) { syscall_tty_ctrl(TTY_CTRL_CURSOR, v ? 1 : 0); }
-    static inline long  _env_tty_dims(void)    { return (long)syscall_tty_ctrl(TTY_CTRL_GET_DIMS, 0); }
+    static inline int64_t _env_tty_dims(void)  { return (int64_t)syscall_tty_ctrl(TTY_CTRL_GET_DIMS, 0); }
     static inline void  _env_tty_color(int fg, int bg) { syscall_tty_ctrl(TTY_CTRL_SET_COLOR, ((uint64_t)(uint8_t)bg << 8) | (uint64_t)(uint8_t)fg); }
     static inline void  _env_yield(void)       { }
     static inline void  _env_sleep(int ms)     { (void)ms; }

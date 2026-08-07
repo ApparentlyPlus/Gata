@@ -83,7 +83,7 @@
 
     static inline void  _env_tty_clear(void)   { serial_write_port(SERIAL_COM1, "\x1b[2J\x1b[H"); }
     static inline void  _env_tty_cursor(int v) { serial_write_port(SERIAL_COM1, v ? "\x1b[?25h" : "\x1b[?25l"); }
-    static inline long  _env_tty_dims(void)    { return ((long)24 << 32) | (long)80; }
+    static inline int64_t _env_tty_dims(void)  { return ((int64_t)24 << 32) | (int64_t)80; }
 
     static inline void  _env_tty_color(int fg, int bg) {
         static const int a[8] = { 0, 4, 2, 6, 1, 5, 3, 7 };
@@ -99,13 +99,13 @@
 
     static inline void  _env_tty_clear(void)   { console_clear(CONSOLE_COLOR_BLACK); }
     static inline void  _env_tty_cursor(int v) { console_enable_cursor(v); }
-    static inline long  _env_tty_dims(void) {
+    static inline int64_t _env_tty_dims(void) {
         size_t header_rows = 0;
         #ifdef GATA_CAP_THREADS
         extern tty_t* volatile active_tty;
         if (active_tty && active_tty->console) header_rows = active_tty->console->header_rows;
         #endif
-        return ((long)(console_get_height() - header_rows) << 32) | (long)console_get_width();
+        return ((int64_t)(console_get_height() - header_rows) << 32) | (int64_t)console_get_width();
     }
     static inline void  _env_tty_color(int fg, int bg) { console_set_color((uint8_t)fg, (uint8_t)bg); }
 
@@ -166,7 +166,7 @@
     }
     static inline void  _env_tty_clear(void)   { syscall_tty_ctrl(TTY_CTRL_CLEAR, 0); }
     static inline void  _env_tty_cursor(int v) { syscall_tty_ctrl(TTY_CTRL_CURSOR, v ? 1 : 0); }
-    static inline long  _env_tty_dims(void)    { return (long)syscall_tty_ctrl(TTY_CTRL_GET_DIMS, 0); }
+    static inline int64_t _env_tty_dims(void)  { return (int64_t)syscall_tty_ctrl(TTY_CTRL_GET_DIMS, 0); }
     static inline void  _env_tty_color(int fg, int bg) {
         syscall_tty_ctrl(TTY_CTRL_SET_COLOR, ((uint64_t)(uint8_t)bg << 8) | (uint64_t)(uint8_t)fg);
     }
