@@ -1,5 +1,35 @@
 # The Gata Programming Language
 
+## Foreword
+
+Welcome to Gata!
+
+I built this language because the road to a working kernel is messy, full of rabbit holes, and rarely well-documented — and almost none of that mess is the part you actually wanted to write. Before you get to a scheduler, or a memory manager, or whatever idea sent you down this path in the first place, you owe the machine a cross-compiler, a linker script, a boot sequence and a build system. By the time the screen prints a character, you have mostly been maintaining a build.
+
+So the question that turned into PawStack was: what if all of that were somebody else's problem? What if you could open a file, write the thing you meant to write, and get a bootable image at the end of it?
+
+That is what this is. You write a program, Appa reads it and works out which parts of GatOS it genuinely needs, and you get an ISO with a kernel built around exactly those parts and nothing else. No configuration step, no subsystem list, no build system to maintain. Your program ***is*** the operating system.
+
+Gata itself is meant to feel like a language you already know. Classes, generics, tagged unions, operator overloading, real error handling, automatic memory management — all the things I kept wanting while writing kernel C and could not have. What it does *not* do is quietly hand you things a kernel cannot pay for: there is no garbage collector, no exceptions unwinding through arbitrary frames, no hidden virtual dispatch, and nothing allocating behind your back. Every convenience in here had to survive the question "can this run at boot, on a machine with no operating system underneath it?"
+
+The result is a language that is smaller than you might expect. I have tried, throughout this book, to explain the reasoning wherever something is missing or behaves differently from the language you came from, because "that seems like an oversight" and "that is load-bearing" look identical from the outside.
+
+A few honest notes before you start.
+
+This is a student project. It is part of my undergraduate thesis at the [University of Macedonia](https://www.uom.gr/en/dai), written solo, so expect the occasional rough edge and the odd bug. That said, the compiler has a real frontend, a real IR and a real backend, the kernel underneath it is feature complete, and I believe it is as close to production ready as it can be for its scope. Deploy it, break it, tell me what happened.
+
+It is also genuinely small in places, and I would rather you hear that from me now than discover it three hours in. There is no networking and no filesystem, because GatOS does not implement them. That gap is structural rather than an oversight, and the section [What you should know going in](#what-you-should-know-going-in) explains exactly why a library cannot paper over it. I am but a student, after all.
+
+And on the names: **GatOS** is a pun on the Greek *gatos*, "male cat". **Gata** is Greek for "female cat", which felt right for the language you actually talk to. **Appa** is the flying bison from *Avatar: The Last Airbender*, and the "bison" part is a deliberate nod to GNU Bison. **PawStack** is what you get when you let that theme run unsupervised.
+
+Think of this book as part reference, part guided tour. It is the book I wanted when I started, and if something in it does not make sense, feel free to reach out — I don't bite.
+
+Now go build an operating system.
+
+— u/ApparentlyPlus
+
+---
+
 Gata is a statically typed systems language whose compiler, `appa`, produces a bootable operating system image instead of an executable.
 
 That sentence is the whole idea. You write a program; the toolchain works out which kernel services it needs, builds a kernel around exactly those, and hands you an ISO. There is no kernel configuration step, no build system to maintain, and no subsystem list to prune.
