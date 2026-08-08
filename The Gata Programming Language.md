@@ -20,9 +20,50 @@ You do not need to have written an operating system. The kernel-specific ideas a
 
 ## What you should know going in
 
-GatOS has no networking and no filesystem, so `libgata` has no APIs for either. That is the largest gap you will notice. Everything else described in this book works.
-
 `appa` is a transpiler. Your Gata compiles to plain C, which is wired into the GatOS source and handed to GCC. You can read that C at any point (Chapter 3), and doing so once is worth the ten minutes.
+
+The other thing to know up front is what Gata can and cannot reach — because the answer is structural, and it explains a gap you will hit early.
+
+**GatOS has no networking and no filesystem. So `libgata` has no APIs for either, and no amount of library code could add them.**
+
+That second half is the part worth understanding, because "the standard library is missing a module" and "the capability does not exist" are very different problems, and this is the second one.
+
+### Why a library cannot add what the kernel lacks
+
+Gata is a frontend. It has no runtime of its own — no allocator, no scheduler, no I/O, nothing that talks to hardware. Everything that touches the machine goes through four layers, and each one can only expose what the layer below it provides:
+
+```text
+your program
+     │  calls
+libgata              ordinary Gata, no privileges of its own
+     │  calls
+the floor            a fixed set of plain C functions: _env_alloc, _env_write, ...
+     │  implemented by
+the environment      env.g — raw C, one file, chosen per target
+     │  calls
+GatOS  or  libc      the thing that actually does the work
+```
+
+`Console.PrintLine` is a thin Gata wrapper that eventually calls `_env_write`. On a hosted build, the environment implements `_env_write` by calling libc. On GatOS, it implements it by calling into the kernel's TTY subsystem. The language never knows which.
+
+Now trace a hypothetical `Socket.Connect` down that same stack. It would need a `libgata` module, which would need a floor function like `_env_socket_connect`, which the environment would have to implement by calling *something* — and on GatOS there is nothing there. No network driver, no protocol stack, no buffers, no interrupt handling for a NIC. The chain has no bottom.
+
+You cannot write around this in Gata, because Gata cannot do anything the floor does not expose. You cannot write around it in the environment either, because the environment is glue: its job is to call the kernel, not to be one. A network stack in Gata would mean writing a network stack *in GatOS*, in C, as a kernel subsystem — at which point the Gata side is a hundred-line wrapper and the work was all underneath.
+
+So the honest framing is: **this is a GatOS scope limitation that surfaces as a Gata one.** The language is not missing a feature; the platform is missing a subsystem, and the language is faithfully reporting that.
+
+### The flip side
+
+The same layering is what makes Chapter 2's headline work. Because every platform capability enters through a named floor function, `appa` can see exactly which ones your program reaches, and build a kernel containing only the matching subsystems. Strict layering is what buys you a 70 KB operating system; the cost is that the layers are real, and you cannot reach past one that is empty.
+
+### What you *can* reach
+
+Two escape hatches, with different reach:
+
+- **On a hosted build**, native interop (Chapter 19) can call anything you are able to link against. libc's sockets and file APIs are ordinary C functions, so a `native { }` block plus an `@extern` declaration reaches them today. If you are prototyping logic that needs a file, do it hosted.
+- **On GatOS**, native interop can call anything GatOS implements — which is the same set the floor already covers, plus whatever you add to GatOS yourself. It is a kernel with source; adding a subsystem is a real option, just not a Gata-side one.
+
+Everything else described in this book works on both targets.
 
 ## How this book is organised
 
@@ -193,7 +234,11 @@ You can watch this happen. Build the two-realm starter project and note the ISO 
 
 Taken to the limit, a full GatOS build with every subsystem is around 200 KB; a hello-world image is around 70 KB. Both numbers are small. The point is not the absolute size but that you did not configure anything to get there.
 
-This has one consequence you should know about now: **if you call into a GatOS subsystem from raw C**, the walk cannot see it, because it does not parse C. Chapter 19 covers the escape valve.
+The table above is short, and that is not an abbreviation — it is close to the whole list. Every platform capability enters your program through one of a small, fixed set of named C functions called the floor (Chapter 21), which is precisely what makes this walk possible: `appa` is not guessing at what your program does, it is checking which of a dozen or so specific symbols are reachable.
+
+That cuts both ways, and it is the mechanism behind the limitation in the front matter. A capability with no floor function is not merely unimplemented in the standard library — it is unreachable from Gata entirely, because there is no symbol for the walk to find and nothing beneath it to call. Networking is the case you will notice.
+
+One more consequence to know now: **if you call into a GatOS subsystem from raw C**, the walk cannot see it, because it does not parse C — so the subsystem gets stripped and you link against nothing. Chapter 19 covers the escape valve.
 
 ### The two targets
 
@@ -1590,6 +1635,13 @@ There are no runtime null checks anywhere, so a null dereference is a real possi
 
 Gata compiles to C, and building an OS means occasionally leaving the language: a hardware register, an ABI-compatible struct, a function the scheduler calls by raw pointer.
 
+This is also the answer to "the floor has no row for what I need" (Chapter 21). Native interop is not restricted to the floor's fixed list — it reaches whatever the build can link against. How much that gets you depends on the target, and the difference is worth stating plainly:
+
+- **Hosted**, you are linking against libc, so native interop reaches all of it. Sockets, files, `getenv` — ordinary C functions, reachable with a `native { }` block and an `@extern`. If you are prototyping logic that needs a filesystem, do it here.
+- **GatOS**, you are linking against GatOS, so native interop reaches what GatOS implements. That is a much smaller set, and it is why the front matter's networking gap is not something this chapter can route around. There is no socket function to call.
+
+Extending what GatOS itself provides is a real option — it is a kernel with source — but it is C work in the kernel, not Gata work here.
+
 There are five ways down, and picking the wrong one is the usual mistake.
 
 ### A block of C
@@ -1922,6 +1974,19 @@ Missing one your program needs is a build error naming it, not a linker error.
 Not every environment needs all of them. `_env_panic` and the process/thread trio are kernel-only, so a hosted environment simply does not define them.
 
 These are also what capability discovery watches (Chapter 2): reaching `_env_alloc` pulls in memory management, `_env_read` the input stack, the process trio the scheduler, `_env_time_ns` the timers. Constructing a `new Random()` seeds from the clock, so it pulls in timers — that is the kind of connection the walk finds for you.
+
+### The floor is also the ceiling
+
+That table is the complete list of ways a Gata program touches the machine. Not a summary of the common ones — the list.
+
+Which means it is also the boundary of what the standard library can ever offer. `libgata` is ordinary Gata (Appendix E); it has no privileges the language does not have, so anything it does eventually bottoms out in one of those calls. A module cannot invent a capability, because there is no call for it to make.
+
+This is why GatOS having no network stack is a Gata-visible fact rather than a library to-do. Adding sockets means adding a row to that table, which means the environment has to implement `_env_socket_*` by calling something, which means GatOS needs a NIC driver, a protocol stack, and buffer management first. The Gata-side wrapper is the last and smallest part of that work. Same for a filesystem.
+
+Two smaller consequences of the same design worth noting:
+
+- **Not every environment implements every row**, and that is normal rather than an error. `_env_panic` and the process/thread trio are kernel-only. A capability whose floor function this environment does not define is simply absent for this target, and a program that reaches it fails at build time with the name of the missing symbol.
+- **The floor is small on purpose.** Every row is a function the environment author has to write correctly for a new platform, so each addition is a tax on every port. Chapter 19's native interop exists so that one-off C calls do not need a floor row — the floor is for capabilities the *standard library* depends on, not for everything you might want to call.
 
 ### Porting
 
