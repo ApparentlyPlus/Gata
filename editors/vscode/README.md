@@ -1,9 +1,13 @@
+<p align="center">
+  <img src="assets/gata-full.png" alt="Gata" width="700">
+</p>
+
 <h1 align="center">Gata for VS Code</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/extension-v2.0.0-e0b34d" alt="Extension v2.0.0">
+  <img src="https://img.shields.io/badge/extension-v2.0.0-00e676" alt="Extension v2.0.0">
   <img src="https://img.shields.io/badge/vscode-%5E1.75.0-1263cf" alt="VS Code ^1.75.0">
-  <img src="https://img.shields.io/badge/languages-.g%20%7C%20.gconf-7fc4b8" alt="Languages">
+  <img src="https://img.shields.io/badge/languages-.g%20%7C%20.gconf-e0b34d" alt="Languages">
 </p>
 
 Editor support for [The Gata Programming Language](https://github.com/ApparentlyPlus/Gata) and its project manifests. It colors a file from what the code actually declares rather than from what the identifiers look like, reports syntax errors as you type using a port of [Appa](https://github.com/ApparentlyPlus/Appa)'s own lexer and parser, and hands the file to the real compiler on save for everything a parser cannot know.
@@ -49,8 +53,8 @@ code --install-extension gata-highlighting-2.0.0.vsix
 For development against a checkout, link it into your extensions folder and build the server once:
 
 ```bash
-cp -r editors/vscode ~/.vscode/extensions/gata-lang
-cd ~/.vscode/extensions/gata-lang
+cp -r editors/vscode ~/.vscode/extensions/gata
+cd ~/.vscode/extensions/gata
 npm install          # the language client, used by extension.js
 npm run compile      # installs and bundles the server into server/dist/server.js
 ```
@@ -193,6 +197,7 @@ An XSD ships in `schemas/gconf.xsd` for anyone who would rather point the Red Ha
 editors/vscode/
 ├── extension.js                     Activation, the color overlay, the language client
 ├── package.json                     Contributions and settings
+├── assets/                          The extension icon, the file icon, the wordmark
 ├── gata-config.json                 Comments, brackets, auto-closing pairs for .g
 ├── gconf-config.json                The same for .gconf
 ├── syntaxes/

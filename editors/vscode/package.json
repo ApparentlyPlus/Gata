@@ -3,7 +3,7 @@
   "displayName": "Gata",
   "description": "Language support for Gata (.g) and its project manifests (.gconf): semantic highlighting, hovers, an outline, completion, live syntax diagnostics, and on-save semantic diagnostics from the real appa compiler.",
   "version": "2.0.0",
-  "publisher": "gata-lang",
+  "publisher": "ApparentlyPlus",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -27,6 +27,11 @@
   "bugs": {
     "url": "https://github.com/ApparentlyPlus/Gata/issues"
   },
+  "icon": "assets/gata-ext.png",
+  "galleryBanner": {
+    "color": "#14151a",
+    "theme": "dark"
+  },
   "main": "./extension.js",
   "activationEvents": [
     "onLanguage:gata",
@@ -35,7 +40,7 @@
   "scripts": {
     "compile": "npm --prefix server install && npm --prefix server run build",
     "vscode:prepublish": "npm run compile",
-    "package": "npx --yes @vscode/vsce package"
+    "package": "npx --yes @vscode/vsce package --baseContentUrl https://github.com/ApparentlyPlus/Gata/raw/HEAD/editors/vscode --baseImagesUrl https://github.com/ApparentlyPlus/Gata/raw/HEAD/editors/vscode"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -51,6 +56,10 @@
         "extensions": [
           ".g"
         ],
+        "icon": {
+          "light": "./assets/gata-mini.svg",
+          "dark": "./assets/gata-mini.svg"
+        },
         "configuration": "./gata-config.json"
       },
       {
@@ -62,6 +71,10 @@
         "extensions": [
           ".gconf"
         ],
+        "icon": {
+          "light": "./assets/gata-mini.svg",
+          "dark": "./assets/gata-mini.svg"
+        },
         "configuration": "./gconf-config.json"
       }
     ],
