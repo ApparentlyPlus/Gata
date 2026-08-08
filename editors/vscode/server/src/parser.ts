@@ -1,9 +1,3 @@
-// Direct port of Appa/src/Syntax/Parser.cs's control flow and diagnostics. This is a
-// diagnostics-only parser: it walks the token stream exactly like the real recursive
-// descent parser (same grammar, same order of checks, same error codes/messages/hints)
-// but does not build a retained AST, since the language server only needs to know
-// *whether and where* a file fails to parse, not to re-emit or transform it. Where the
-// real parser returns an AST node, this returns void and simply keeps advancing.
 import { Codes, ParseError, Span } from './codes';
 import { TK, Token } from './token';
 
@@ -23,6 +17,10 @@ const PRIM_KINDS = new Set<TK>([
   TK.TBool, TK.TInt, TK.TChar, TK.TFloat, TK.TDouble, TK.TShort, TK.TVoid, TK.TPrim,
 ]);
 
+const ANNOTATION_KINDS = new Set<TK>([
+  TK.AtIntrinsic, TK.AtPreamble, TK.AtKeep, TK.AtBuiltin, TK.AtShadows,
+]);
+
 const KIND_NAMES: Partial<Record<TK, string>> = {
   [TK.Ident]: 'an identifier',
   [TK.IntLit]: 'an integer literal',
@@ -33,11 +31,41 @@ const KIND_NAMES: Partial<Record<TK, string>> = {
   [TK.LBrace]: "'{'", [TK.RBrace]: "'}'",
   [TK.LBrack]: "'['", [TK.RBrack]: "']'",
   [TK.Semi]: "';'", [TK.Comma]: "','", [TK.Colon]: "':'",
+  [TK.ColonColon]: "'::'",
   [TK.Dot]: "'.'", [TK.Eq]: "'='", [TK.Arrow]: "'->'",
   [TK.EOF]: 'end of file',
 };
 
 const MAX_DEPTH = 200;
+
+function distance(a: string, b: string): number {
+  const prev = new Array<number>(b.length + 1);
+  const cur = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = cur[j];
+  }
+  return prev[b.length];
+}
+
+function suggest(typed: string, candidates: readonly string[]): string[] {
+  let best: string | undefined;
+  let bestDist = Number.MAX_SAFE_INTEGER;
+  const maxAllowed = Math.max(1, Math.floor(typed.length / 2));
+  for (const c of candidates) {
+    if (Math.abs(c.length - typed.length) > maxAllowed) continue;
+    const d = distance(typed, c);
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return bestDist <= maxAllowed && best ? [`did you mean '${best}'?`] : [];
+}
+
+interface Snapshot { pos: number; end: number; depth: number; }
 
 export class Parser {
   private readonly tokens: Token[];
@@ -48,8 +76,6 @@ export class Parser {
   constructor(tokens: Token[]) {
     this.tokens = tokens;
   }
-
-  // #region Core stream helpers
 
   private get cur(): Token {
     return this.tokens[this.pp];
@@ -78,6 +104,9 @@ export class Parser {
   }
   private at(k: TK): boolean {
     return this.cur.kind === k;
+  }
+  private atValue(word: string): boolean {
+    return this.cur.kind === TK.Ident && this.cur.value === word;
   }
   private try_(k: TK): boolean {
     if (this.at(k)) { this.advance(); return true; }
@@ -109,46 +138,95 @@ export class Parser {
   private exitDepth(): void {
     this.depth--;
   }
-
-  // #endregion
-
-  // #region Annotations
-
-  private parseAnnotations(): void {
-    while (true) {
-      if (this.at(TK.AtIntrinsic)) { this.advance(); }
-      else if (this.at(TK.AtPreamble)) { this.advance(); }
-      else if (this.at(TK.AtKeep)) { this.advance(); }
-      else if (this.at(TK.AtBuiltin)) { this.advance(); }
-      else break;
-    }
+  private mark(): Snapshot {
+    return { pos: this.pp, end: this.pe, depth: this.depth };
+  }
+  private rewind(m: Snapshot): void {
+    this.pp = m.pos;
+    this.pe = m.end;
+    this.depth = m.depth;
+  }
+  private parseAnnotations(): { count: number; span: Span } {
+    const start = this.cur.span.start;
+    let count = 0;
+    while (ANNOTATION_KINDS.has(this.cur.kind)) { this.advance(); count++; }
+    return { count, span: this.to(start) };
   }
 
-  private rejectAnnsCount(count: number, what: string, span: Span): void {
-    if (count > 0) this.failAt(span, `annotations have no effect on ${what}`, Codes.BadAnnotation);
+  private rejectAnns(anns: { count: number; span: Span }, what: string): void {
+    if (anns.count > 0) this.failAt(anns.span, `annotations have no effect on ${what}`, Codes.BadAnnotation);
   }
-
-  // #endregion
-
-  // #region Top-level declarations
 
   parseProgram(): void {
     while (!this.at(TK.EOF)) this.parseTopLevel();
   }
 
+  private parseTopLevel(): void {
+    if (this.at(TK.Import)) { this.parseImport(); return; }
+    if (this.at(TK.AtEnvironment)) { this.advance(); return; }
+    const anns = this.parseAnnotations();
+    if (this.at(TK.Import)) this.rejectAnns(anns, 'an import');
+    if (this.at(TK.NativeContent)) { this.advance(); return; }
+    if (this.at(TK.NativeTypeDecl)) { this.advance(); return; }
+    if (this.at(TK.Enum)) { this.rejectAnns(anns, 'an enum'); this.parseEnumDecl(); return; }
+    if (this.at(TK.Union)) { this.parseUnionDecl(); return; }
+    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
+    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
+    if (this.at(TK.Realm)) { this.rejectAnns(anns, 'a realm'); this.parseRealmDecl(); return; }
+    if (this.at(TK.Kernel)) this.requireRealmKeyword();
+    if (this.atProcessStart())
+      this.fail("a 'process' must be declared inside a 'realm' block", Codes.TopologyOutsideRealm,
+        ["wrap it in 'realm kernel { ... }' or 'realm userspace { ... }'"]);
+    this.rejectStrayThread();
+    this.rejectModifierOnType();
+    if (this.at(TK.AtExtern)) { this.parseExternDecl(); return; }
+    this.parseFreeFuncDecl();
+  }
+
+  private rejectModifierOnType(): void {
+    if (this.cur.kind !== TK.Public && this.cur.kind !== TK.Private && this.cur.kind !== TK.Static) return;
+    const what =
+      this.peek().kind === TK.Class ? 'a class' :
+      this.peek().kind === TK.Module ? 'a module' :
+      this.peek().kind === TK.Enum ? 'an enum' :
+      this.peek().kind === TK.Union ? 'a union' :
+      this.peek().kind === TK.NativeTypeDecl ? 'a native type' : '';
+    if (what.length === 0) return;
+    const mod = this.cur.value;
+    this.failAt(this.cur.span, `'${mod}' has no meaning on ${what}`, Codes.BadDeclHeader, [
+      mod === 'private'
+        ? 'a top-level type is visible to every file that imports this one; there is no file-local type'
+        : `remove '${mod}'; only a free function takes 'private' here`,
+    ]);
+  }
+
   private parseFreeFuncDecl(): void {
-    this.parseMods();
-    this.try_(TK.Entry);
+    const modSpan = this.cur.span;
+    const mods = this.parseMods();
+    this.rejectPublicOnFreeFunc(mods, modSpan);
+    let isEntry = this.try_(TK.Entry);
     this.try_(TK.Throws);
+    if (!isEntry) isEntry = this.try_(TK.Entry);
     const ret = this.parseOptionalReturnType();
     if (ret && this.at(TK.LBrace))
-      this.fail(`expected 'func', found '{' -- did you forget 'process' before it?`, Codes.BadDeclHeader);
+      this.fail("expected 'func', found '{'", Codes.BadDeclHeader, [
+        "did you forget 'process' before it?",
+        "e.g. 'foreground process Name { ... }'",
+      ]);
     this.expect(TK.Func);
     const name = this.expect(TK.Ident).value;
     this.parseGenericParamList();
     this.expect(TK.LParen); this.parseParamList(); this.expect(TK.RParen);
     if (this.at(TK.Arrow)) this.fail(`'${name}': return type goes before 'func', not after the parameter list`, Codes.BadDeclHeader);
     this.parseMethodBody();
+  }
+
+  private rejectPublicOnFreeFunc(mods: number, span: Span): void {
+    if ((mods & Modifiers.Public) === 0) return;
+    this.failAt(span, "'public' has no meaning on a free function", Codes.BadDeclHeader, [
+      'a free function is already visible to every file that imports this one',
+      "remove it, or write 'private' to scope the function to this file",
+    ]);
   }
 
   private parseGenericParamList(): void {
@@ -159,33 +237,6 @@ export class Parser {
     this.expect(TK.RBrack);
   }
 
-  private parseTopLevel(): void {
-    if (this.at(TK.Import)) { this.parseImport(); return; }
-    if (this.at(TK.AtEnvironment)) { this.advance(); return; }
-    const s = this.cur.span.start;
-    let annCount = 0;
-    while (this.at(TK.AtIntrinsic) || this.at(TK.AtPreamble) || this.at(TK.AtKeep) || this.at(TK.AtBuiltin)) {
-      this.advance();
-      annCount++;
-    }
-    if (this.at(TK.NativeContent)) { this.advance(); return; }
-    if (this.at(TK.NativeTypeDecl)) { this.parseNativeType(); return; }
-
-    if (this.at(TK.Enum)) { this.rejectAnnsCount(annCount, 'an enum', this.to(s)); this.parseEnumDecl(); return; }
-    if (this.at(TK.Union)) { this.rejectAnnsCount(annCount, 'a union', this.to(s)); this.parseUnionDecl(); return; }
-    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
-    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
-    if (this.at(TK.Kernel)) { this.rejectAnnsCount(annCount, 'kernel', this.to(s)); this.parseContextDecl(); return; }
-    if (this.at(TK.User)) { this.rejectAnnsCount(annCount, 'user', this.to(s)); this.parseContextDecl(); return; }
-    if (this.at(TK.Process) || this.at(TK.Foreground) || this.at(TK.Background)) {
-      this.rejectAnnsCount(annCount, 'a process', this.to(s));
-      this.parseProcessDeclTop();
-      return;
-    }
-    if (this.at(TK.AtExtern)) { this.parseExternDecl(); return; }
-    this.parseFreeFuncDecl();
-  }
-
   private parseImport(): void {
     this.expect(TK.Import);
     if (this.at(TK.StrLit)) { this.advance(); this.expect(TK.Semi); return; }
@@ -193,12 +244,8 @@ export class Parser {
     this.expect(TK.Semi);
   }
 
-  private parseNativeType(): void {
-    this.advance();
-  }
-
   private parseExternDecl(): void {
-    this.advance(); // @extern
+    this.advance();
     this.parseOptionalReturnType();
     this.expect(TK.Func);
     const name = this.expect(TK.Ident).value;
@@ -207,39 +254,41 @@ export class Parser {
     this.expect(TK.Semi);
   }
 
-  private parseContextDecl(): void {
+  private parseRealmDecl(): void {
     this.advance();
+    if (this.at(TK.Kernel) || this.at(TK.Userspace)) this.advance();
+    else
+      this.fail(`unknown realm ${this.found()}; the only realms are 'kernel' and 'userspace'`,
+        Codes.UnknownRealm,
+        this.at(TK.Ident) ? suggest(this.cur.value, ['kernel', 'userspace']) : []);
     this.expect(TK.LBrace);
-    while (!this.at(TK.RBrace) && !this.at(TK.EOF)) this.parseContextItem();
+    while (!this.at(TK.RBrace) && !this.at(TK.EOF)) this.parseRealmItem();
     this.expect(TK.RBrace);
   }
 
-  private parseContextItem(): void {
-    if (this.at(TK.Kernel) || this.at(TK.User)) this.fail('contexts cannot be nested', Codes.InvalidNesting);
-    const s = this.cur.span.start;
-    let annCount = 0;
-    while (this.at(TK.AtIntrinsic) || this.at(TK.AtPreamble) || this.at(TK.AtKeep) || this.at(TK.AtBuiltin)) {
-      this.advance();
-      annCount++;
-    }
-    if (this.at(TK.NativeContent)) { this.advance(); return; }
-    if (this.at(TK.NativeTypeDecl)) { this.parseNativeType(); return; }
-    if (this.at(TK.AtExtern)) { this.parseExternDecl(); return; }
-    if (this.at(TK.Enum)) { this.rejectAnnsCount(annCount, 'an enum', this.to(s)); this.parseEnumDecl(); return; }
-    if (this.at(TK.Union)) { this.rejectAnnsCount(annCount, 'a union', this.to(s)); this.parseUnionDecl(); return; }
-    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
-    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
-    if (this.at(TK.Process) || this.at(TK.Foreground) || this.at(TK.Background)) {
-      this.rejectAnnsCount(annCount, 'a process', this.to(s));
-      this.parseProcessDeclTop();
-      return;
-    }
-    this.parseFreeFuncDecl();
+  private requireRealmKeyword(): never {
+    this.fail("expected 'realm' before 'kernel'", Codes.MissingRealmKeyword, ["write 'realm kernel { ... }'"]);
   }
 
-  // #endregion
-
-  // #region Class and module
+  private parseRealmItem(): void {
+    if (this.at(TK.Realm)) this.fail("a 'realm' block cannot be nested inside another", Codes.InvalidNesting);
+    if (this.at(TK.Kernel)) this.requireRealmKeyword();
+    this.rejectStrayImport();
+    this.rejectStrayThread();
+    if (this.at(TK.AtEnvironment)) { this.advance(); return; }
+    const anns = this.parseAnnotations();
+    this.rejectStrayImport();
+    this.rejectStrayThread();
+    if (this.at(TK.NativeContent)) { this.advance(); return; }
+    if (this.at(TK.NativeTypeDecl)) { this.advance(); return; }
+    if (this.at(TK.AtExtern)) { this.parseExternDecl(); return; }
+    if (this.at(TK.Enum)) { this.rejectAnns(anns, 'an enum'); this.parseEnumDecl(); return; }
+    if (this.at(TK.Union)) { this.parseUnionDecl(); return; }
+    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
+    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
+    if (this.atProcessStart()) { this.rejectAnns(anns, 'a process'); this.parseProcessDeclTop(); return; }
+    this.parseFreeFuncDecl();
+  }
 
   private parseClassDecl(): void {
     this.expect(TK.Class);
@@ -270,10 +319,6 @@ export class Parser {
     this.expect(TK.RBrace);
   }
 
-  // #endregion
-
-  // #region Enum and union
-
   private parseEnumDecl(): void {
     this.expect(TK.Enum);
     this.expect(TK.Ident);
@@ -282,7 +327,7 @@ export class Parser {
       this.expect(TK.Ident);
       if (this.try_(TK.Eq)) this.parseExpr();
       while (this.try_(TK.Comma)) {
-        if (this.at(TK.RBrace)) this.fail("trailing comma not allowed after the last enum member; remove it", Codes.TrailingComma);
+        if (this.at(TK.RBrace)) this.fail('trailing comma not allowed after the last enum member; remove it', Codes.TrailingComma);
         this.expect(TK.Ident);
         if (this.try_(TK.Eq)) this.parseExpr();
       }
@@ -293,12 +338,18 @@ export class Parser {
   private parseUnionDecl(): void {
     this.expect(TK.Union);
     this.expect(TK.Ident);
+    if (this.at(TK.LBrack)) {
+      this.advance();
+      this.expectBareGenericParam();
+      while (this.try_(TK.Comma)) this.expectBareGenericParam();
+      this.expect(TK.RBrack);
+    }
     this.expect(TK.LBrace);
     if (!this.at(TK.RBrace) && !this.at(TK.EOF)) {
       this.expect(TK.Ident);
       if (this.at(TK.LParen)) this.parseUnionFieldList();
       while (this.try_(TK.Comma)) {
-        if (this.at(TK.RBrace)) this.fail("trailing comma not allowed after the last union variant; remove it", Codes.TrailingComma);
+        if (this.at(TK.RBrace)) this.fail('trailing comma not allowed after the last union variant; remove it', Codes.TrailingComma);
         this.expect(TK.Ident);
         if (this.at(TK.LParen)) this.parseUnionFieldList();
       }
@@ -311,15 +362,11 @@ export class Parser {
     if (this.at(TK.RParen)) { this.advance(); return; }
     this.parseParam();
     while (this.try_(TK.Comma)) {
-      if (this.at(TK.RParen)) this.fail("trailing comma not allowed after the last field; remove it", Codes.TrailingComma);
+      if (this.at(TK.RParen)) this.fail('trailing comma not allowed after the last field; remove it', Codes.TrailingComma);
       this.parseParam();
     }
     this.expect(TK.RParen);
   }
-
-  // #endregion
-
-  // #region Type specs
 
   private parseTypeName(): void {
     this.enterDepth();
@@ -327,7 +374,16 @@ export class Parser {
   }
 
   private parseTypeNameInner(): void {
-    const name = this.parseSimpleTypeName();
+    if (this.parseScopeQualifier()) {
+      this.expectIdent('a scope or type name');
+      while (this.try_(TK.Dot)) this.expectIdent('a scope or type name');
+      this.finishTypeName('the qualified name');
+      return;
+    }
+    this.finishTypeName(this.parseSimpleTypeName());
+  }
+
+  private finishTypeName(name: string): void {
     if (!this.at(TK.LBrack)) return;
     this.advance();
     this.parseTypeName();
@@ -336,9 +392,28 @@ export class Parser {
     this.expect(TK.RBrack);
   }
 
+  private parseScopeQualifier(): boolean {
+    if (this.try_(TK.ColonColon)) return true;
+    if (!this.at(TK.Kernel) && !this.at(TK.Userspace)) return false;
+    if (this.peek().kind !== TK.Dot) return false;
+    this.advance();
+    this.advance();
+    return true;
+  }
+
+  private expectIdent(what: string): string {
+    if (this.at(TK.Ident)) return this.advance().value;
+    this.fail(`expected ${what}, found ${this.found()}`);
+  }
+
   private parseSimpleTypeName(): string {
     if (this.at(TK.Ident)) return this.advance().value;
     if (this.isPrim(this.cur.kind)) return this.primName(this.advance());
+    if (this.at(TK.Let))
+      this.fail('a variable cannot be declared here', Codes.Syntax, [
+        'a variable belongs inside a function, or directly inside a process, where it becomes state its threads share',
+        'types, modules and functions are what a realm or a file can hold',
+      ]);
     this.fail(`expected a type name, found ${this.found()}`);
   }
 
@@ -390,27 +465,20 @@ export class Parser {
     }
   }
 
-  // #endregion
-
-  // #region Class members
-
   private parseClassMember(): void {
     if (this.at(TK.Class) || this.at(TK.Module)) this.fail('classes and modules cannot be nested', Codes.InvalidNesting);
-    if (this.at(TK.Kernel) || this.at(TK.User)) this.fail('context blocks cannot appear inside a class', Codes.InvalidNesting);
+    if (this.at(TK.Realm)) this.fail("a 'realm' block cannot appear inside a class", Codes.InvalidNesting);
 
     if (this.at(TK.Fields)) { this.advance(); return; }
 
-    let annCount = 0;
-    while (this.at(TK.AtIntrinsic) || this.at(TK.AtPreamble) || this.at(TK.AtKeep) || this.at(TK.AtBuiltin)) {
-      this.advance();
-      annCount++;
-    }
+    const anns = this.parseAnnotations();
     const mods = this.parseMods();
-    const isEntry = this.try_(TK.Entry);
+    let isEntry = this.try_(TK.Entry);
     const isThrow = this.try_(TK.Throws);
+    if (!isEntry) isEntry = this.try_(TK.Entry);
 
     if (this.at(TK.Operator)) {
-      if (annCount > 0) this.fail('annotations have no effect on an operator', Codes.BadAnnotation);
+      if (anns.count > 0) this.fail('annotations have no effect on an operator', Codes.BadAnnotation);
       if (isEntry) this.fail("'entry' has no meaning on an operator", Codes.BadDeclHeader);
       if (isThrow) this.fail("'throws' has no meaning on an operator", Codes.BadDeclHeader);
       if ((mods & Modifiers.Static) !== 0) this.fail("'static' has no meaning on an operator", Codes.BadDeclHeader);
@@ -429,6 +497,7 @@ export class Parser {
       this.parseOptionalReturnType();
       this.expect(TK.Func);
       const name = this.expect(TK.Ident).value;
+      this.parseGenericParamList();
       this.expect(TK.LParen); this.parseParamList(); this.expect(TK.RParen);
       if (this.at(TK.Arrow)) this.fail(`'${name}': return type goes before 'func', not after the parameter list`, Codes.BadDeclHeader);
       this.parseMethodBody();
@@ -437,7 +506,7 @@ export class Parser {
 
     if (isEntry) this.fail("'entry' has no meaning on a field", Codes.BadDeclHeader);
     if (isThrow) this.fail("'throws' has no meaning on a field", Codes.BadDeclHeader);
-    if (annCount > 0) this.fail('annotations have no effect on a field', Codes.BadAnnotation);
+    if (anns.count > 0) this.fail('annotations have no effect on a field', Codes.BadAnnotation);
     if ((mods & Modifiers.Static) !== 0) this.fail("'static' has no meaning on a field", Codes.BadDeclHeader);
 
     if (this.at(TK.Ident) && this.peek().kind === TK.Eq) {
@@ -451,7 +520,7 @@ export class Parser {
   }
 
   private parseOperatorSymbol(): string {
-    if (this.atP('+') || this.atP('-') || this.atP('*') || this.atP('/') || this.atP('<') || this.atP('>')) return this.advance().value;
+    if (this.atP('+') || this.atP('-') || this.atP('*') || this.atP('/') || this.atP('%') || this.atP('<') || this.atP('>')) return this.advance().value;
     if (this.at(TK.EqEq) || this.at(TK.NotEq) || this.at(TK.LtEq) || this.at(TK.GtEq)) return this.advance().value;
     if (this.atP('&') || this.atP('|') || this.atP('^') || this.at(TK.Shl) || this.at(TK.Shr)) return this.advance().value;
     if (this.atP('!') || this.atP('~')) return this.advance().value;
@@ -479,7 +548,7 @@ export class Parser {
   }
 
   private parseMods(): number {
-    let mods = Modifiers.None;
+    let mods: number = Modifiers.None;
     while (true) {
       let m: number = Modifiers.None;
       switch (this.cur.kind) {
@@ -497,37 +566,99 @@ export class Parser {
     return mods;
   }
 
-  // #endregion
+  private atProcessStart(): boolean {
+    if (this.at(TK.Foreground) || this.at(TK.Background)) return true;
+    return this.atValue('process') && this.peek().kind === TK.Ident
+      && (this.peek(2).kind === TK.LBrace || this.peek(2).kind === TK.Colon);
+  }
 
-  // #region Process and thread
+  private atThreadStart(): boolean {
+    return this.atValue('thread') || this.at(TK.Foreground) || this.at(TK.Background);
+  }
+
+  private atNestedProcess(): boolean {
+    if (this.at(TK.Foreground) || this.at(TK.Background))
+      return this.peek().kind === TK.Ident && this.peek().value === 'process';
+    return this.atProcessStart();
+  }
+
+  private rejectStrayImport(): void {
+    if (this.at(TK.Import))
+      this.fail("an 'import' must be at the top level of the file", Codes.TopologyOutsideRealm,
+        ['move it above the block; imports apply to the whole file']);
+  }
+
+  private rejectStrayThread(): void {
+    if (this.atValue('thread') && this.peek().kind === TK.Ident && this.peek(2).kind === TK.LBrace)
+      this.fail("a 'thread' must be declared inside a 'process' block", Codes.TopologyOutsideRealm,
+        ["threads are a process's entry points; wrap it in 'foreground process P { ... }'"]);
+  }
 
   private parseProcessDeclTop(): void {
-    let mode = 'foreground';
     let modeExplicit = false;
-    if (this.at(TK.Foreground)) { mode = 'foreground'; modeExplicit = true; this.advance(); }
-    else if (this.at(TK.Background)) { mode = 'background'; modeExplicit = true; this.advance(); }
-    this.expect(TK.Process);
+    if (this.at(TK.Foreground) || this.at(TK.Background)) { modeExplicit = true; this.advance(); }
+    if (!this.atValue('process')) this.fail(`expected 'process', found ${this.found()}`, Codes.BadDeclHeader);
+    this.advance();
     const name = this.expect(TK.Ident).value;
-    if (this.try_(TK.Colon)) {
-      if (modeExplicit) this.fail(`'${name}': mode specified twice`, Codes.BadDeclHeader);
-      if (this.at(TK.Foreground)) { mode = 'foreground'; modeExplicit = true; this.advance(); }
-      else if (this.at(TK.Background)) { mode = 'background'; modeExplicit = true; this.advance(); }
-      else this.fail(`expected 'foreground' or 'background' after ':', found ${this.found()}`, Codes.BadDeclHeader);
-    }
+
+    if (this.at(TK.Colon))
+      this.fail(`'${name}': the deployment mode is written before 'process'`, Codes.MissingProcessMode,
+        [`write 'foreground process ${name} { ... }' or 'background process ${name} { ... }'`]);
+
     if (!modeExplicit)
-      this.fail(
-        `'${name}': process declaration is missing a foreground/background mode -- write 'foreground process ${name}' or 'background process ${name}'`,
-        Codes.MissingProcessMode,
-      );
+      this.fail(`'${name}': process declaration is missing a foreground/background mode`, Codes.MissingProcessMode,
+        [`write 'foreground process ${name}' or 'background process ${name}'`]);
+
     this.expect(TK.LBrace);
-    while (!this.at(TK.RBrace) && !this.at(TK.EOF)) this.parseThreadDecl();
+    while (!this.at(TK.RBrace) && !this.at(TK.EOF)) {
+      if (this.atNestedProcess()) this.fail('a process cannot be nested inside another process', Codes.InvalidNesting);
+      if (this.atThreadStart()) this.parseThreadDecl();
+      else this.parseProcessItem();
+    }
     this.expect(TK.RBrace);
   }
 
+  private parseProcessItem(): void {
+    if (this.at(TK.Realm)) this.fail("a 'realm' block cannot appear inside a process", Codes.InvalidNesting);
+    if (this.at(TK.Kernel)) this.requireRealmKeyword();
+    if (this.atProcessStart()) this.fail('a process cannot be nested inside another process', Codes.InvalidNesting);
+    this.rejectStrayImport();
+
+    if (this.at(TK.AtEnvironment)) { this.advance(); return; }
+    const anns = this.parseAnnotations();
+    this.rejectStrayImport();
+    if (this.atValue('thread')) this.rejectAnns(anns, 'a thread');
+    if (this.at(TK.NativeContent)) { this.advance(); return; }
+    if (this.at(TK.NativeTypeDecl)) { this.advance(); return; }
+    if (this.at(TK.AtExtern)) { this.parseExternDecl(); return; }
+    if (this.at(TK.Enum)) { this.rejectAnns(anns, 'an enum'); this.parseEnumDecl(); return; }
+    if (this.at(TK.Union)) { this.parseUnionDecl(); return; }
+    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
+    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
+    if (this.at(TK.Let)) { this.rejectAnns(anns, 'a process variable'); this.parseProcessVarDecl(); return; }
+    this.parseFreeFuncDecl();
+  }
+
+  private parseProcessVarDecl(): void {
+    this.expect(TK.Let);
+    this.parseTypeSpec();
+    const name = this.expect(TK.Ident).value;
+    if (this.try_(TK.Eq)) this.parseExpr();
+    else
+      this.fail(`process variable '${name}' has no initial value`, Codes.UninitialisedProcessVar, [
+        `write 'let <type> ${name} = <value>;'`,
+        'every thread of the process shares this one variable, so there is no point later in the '
+        + 'program where a first assignment could be known to have run before a read',
+      ]);
+    this.expect(TK.Semi);
+  }
+
   private parseThreadDecl(): void {
-    if (this.at(TK.Foreground)) this.advance();
-    else if (this.at(TK.Background)) this.advance();
-    if (!this.at(TK.Thread)) this.fail("a process body may only contain 'thread' declarations", Codes.BadDeclHeader);
+    let mode: string | null = null;
+    if (this.at(TK.Foreground) || this.at(TK.Background)) { mode = this.advance().value; }
+    if (!this.atValue('thread'))
+      this.fail(`expected 'thread' after '${mode}', found ${this.found()}`, Codes.BadDeclHeader,
+        ['a process body may contain classes, modules, enums, unions, functions, and threads']);
     this.advance();
     this.expect(TK.Ident);
     this.expect(TK.LBrace);
@@ -537,9 +668,15 @@ export class Parser {
   }
 
   private parseThreadEntry(): void {
-    if (this.at(TK.Thread)) this.fail('threads cannot be nested', Codes.InvalidNesting);
+    if (this.atValue('thread')) this.fail('threads cannot be nested', Codes.InvalidNesting);
     const mods = this.parseMods();
+    const throwsFirst = this.try_(TK.Throws);
     if (!this.try_(TK.Entry)) this.fail("a thread body must contain a single 'entry func'", Codes.BadDeclHeader);
+    if (throwsFirst || this.at(TK.Throws))
+      this.fail(
+        "a thread entry cannot be 'throws' - the runtime starts it, so there is no caller to receive the error",
+        Codes.BadEntrySignature,
+        ["handle failure inside the thread: 'let T x = f() catch { assign <fallback>; };'"]);
     const hasRet = !(this.at(TK.Func) && this.peek().kind === TK.Ident);
     if (hasRet) this.parseTypeSpec();
     this.expect(TK.Func);
@@ -551,10 +688,6 @@ export class Parser {
       this.fail('a thread entry takes no parameters; pass state through fields or module data instead', Codes.BadEntrySignature);
     this.parseBlock();
   }
-
-  // #endregion
-
-  // #region Parameters
 
   private parseParamList(): number {
     if (this.at(TK.RParen)) return 0;
@@ -570,10 +703,6 @@ export class Parser {
     this.expect(TK.Ident);
   }
 
-  // #endregion
-
-  // #region Statements
-
   parseBlock(): void {
     this.expect(TK.LBrace);
     while (!this.at(TK.RBrace) && !this.at(TK.EOF)) this.parseStmt();
@@ -586,7 +715,6 @@ export class Parser {
   }
 
   private parseStmtInner(): void {
-    const s = this.cur.span.start;
     if (this.at(TK.NativeContent)) { this.advance(); return; }
     if (this.at(TK.LBrace)) { this.parseBlock(); return; }
     if (this.at(TK.Let)) { this.parseLetStmt(); return; }
@@ -601,9 +729,7 @@ export class Parser {
     if (this.at(TK.Return)) { this.advance(); if (!this.at(TK.Semi)) this.parseExpr(); this.expect(TK.Semi); return; }
     if (this.at(TK.Break)) { this.advance(); this.expect(TK.Semi); return; }
     if (this.at(TK.Continue)) { this.advance(); this.expect(TK.Semi); return; }
-
     if (this.at(TK.Throw)) { this.advance(); this.expect(TK.Semi); return; }
-    // `assign v;` terminates a catch handler. A statement, not an expression - same as throw.
     if (this.at(TK.Assign)) { this.advance(); this.parseExpr(); this.expect(TK.Semi); return; }
     if (this.at(TK.Debug)) {
       this.advance();
@@ -620,7 +746,8 @@ export class Parser {
       return;
     }
     if (this.looksLikeMissingLet())
-      this.fail("expected a statement -- missing 'let'?", Codes.MissingLet, this.at(TK.Ident) ? [`e.g. 'let ${this.cur.value} ...'`] : undefined);
+      this.fail('expected a statement', Codes.MissingLet,
+        this.at(TK.Ident) ? ["missing 'let'?", `e.g. 'let ${this.cur.value} ...'`] : ["missing 'let'?"]);
     this.parseExprOrAssign();
   }
 
@@ -672,8 +799,16 @@ export class Parser {
       if (n < 0) return -1;
     } else if (this.isPrim(this.peek(n).kind)) {
       n++;
-    } else if (this.peek(n).kind === TK.Ident) {
+    } else if (this.peek(n).kind === TK.Ident || this.peek(n).kind === TK.ColonColon
+      || this.peek(n).kind === TK.Kernel || this.peek(n).kind === TK.Userspace) {
+      if (this.peek(n).kind === TK.ColonColon) n++;
+      else if (this.peek(n).kind === TK.Kernel || this.peek(n).kind === TK.Userspace) {
+        if (this.peek(n + 1).kind !== TK.Dot) return -1;
+        n += 2;
+      }
+      if (this.peek(n).kind !== TK.Ident) return -1;
       n++;
+      while (this.peek(n).kind === TK.Dot && this.peek(n + 1).kind === TK.Ident) n += 2;
       if (this.peek(n).kind === TK.LBrack) { n = this.skipBrackets(n); if (n < 0) return -1; }
     } else return -1;
     while (this.peek(n).kind === TK.Punct && this.peek(n).value === '*') n++;
@@ -690,6 +825,8 @@ export class Parser {
     if (this.isPrim(this.cur.kind)) return true;
     if (this.at(TK.Func)) return true;
     if (this.at(TK.LBrack) && this.peek().kind === TK.IntLit && this.peek(2).kind === TK.RBrack) return true;
+    if (this.at(TK.ColonColon)) return true;
+    if (this.at(TK.Kernel) || this.at(TK.Userspace)) return this.peek().kind === TK.Dot;
     if (!this.at(TK.Ident)) return false;
     return (
       this.peek().kind === TK.Ident ||
@@ -722,16 +859,22 @@ export class Parser {
 
   private parseForStmt(): void {
     this.expect(TK.For);
-
     if (this.at(TK.Ident) && this.peek().kind === TK.In) {
       this.advance();
-      this.advance(); // 'in'
+      this.advance();
       this.parseExpr();
       this.parseBlock();
       return;
     }
 
     this.expect(TK.LParen);
+    if ((this.at(TK.Ident) && this.peek().kind === TK.In)
+      || (this.at(TK.Let) && this.peek().kind === TK.Ident && this.peek(2).kind === TK.In))
+      this.fail("a 'for ... in' loop is written without parentheses", Codes.Syntax, [
+        "write 'for x in xs { ... }'",
+        "the parenthesised form is the C-style loop, which takes 'for (init; condition; step)'",
+      ]);
+
     if (!this.at(TK.Semi)) {
       if (this.at(TK.Let)) this.parseLetNoSemi();
       else this.parseForClause();
@@ -780,10 +923,6 @@ export class Parser {
     this.expect(TK.Semi);
   }
 
-  // #endregion
-
-  // #region Expressions
-
   parseExpr(): void {
     this.parseTernary();
   }
@@ -798,6 +937,9 @@ export class Parser {
     if (!this.atP('?')) return;
     this.advance();
     this.parseExpr();
+    if (this.at(TK.ColonColon))
+      this.fail("'::' names the root scope and cannot be the ':' of a conditional", Codes.Syntax,
+        ["put a space after the ':', as in 'c ? a : ::Name'"]);
     this.expect(TK.Colon);
     this.parseTernary();
   }
@@ -853,38 +995,78 @@ export class Parser {
   }
 
   private parseUnaryInner(): void {
-    if (this.atP('!')) { this.advance(); this.parseUnary(); return; }
-    if (this.atP('~')) { this.advance(); this.parseUnary(); return; }
-    if (this.atP('-')) { this.advance(); this.parseUnary(); return; }
-    if (this.atP('&')) { this.advance(); this.parseUnary(); return; }
-    if (this.atP('*')) { this.advance(); this.parseUnary(); return; }
+    if (this.atP('!') || this.atP('~') || this.atP('-') || this.atP('&') || this.atP('*')) {
+      this.advance();
+      this.parseUnary();
+      return;
+    }
     this.parsePostfix();
   }
 
   private parsePostfix(): void {
     this.parsePrimary();
-    // Tracks whether the expression built so far ends in a call, which is the only thing a
-    // `catch` handler may attach to.
     let called = false;
     while (true) {
-      if (this.at(TK.Inc)) { this.advance(); }
-      else if (this.at(TK.Dec)) { this.advance(); }
+      if (this.at(TK.Inc) || this.at(TK.Dec)) { this.advance(); }
       else if (this.at(TK.Dot)) { this.advance(); this.expect(TK.Ident); called = false; }
-      else if (this.at(TK.LBrack)) { this.advance(); this.parseExpr(); this.expect(TK.RBrack); called = false; }
+      else if (this.at(TK.LBrack)) { this.parseBracketed(); called = false; }
       else if (this.at(TK.LParen)) { this.advance(); this.parseArgList(); this.expect(TK.RParen); called = true; }
-      // `f() catch { ... }` - binds to the call it follows, tighter than any binary operator.
-      // Only a call can throw, so anything else in front of it is a syntax error here.
       else if (this.at(TK.Catch)) {
-        if (!called) {
+        if (!called)
           this.fail("'catch' here must follow a call to a 'throws' function", Codes.Syntax,
             ['e.g. let int x = Parse(s) catch { assign 0; };']);
-        }
         this.advance();
         this.parseBlock();
         called = false;
       }
       else break;
     }
+  }
+
+  private parseBracketed(): void {
+    this.rejectExplicitTypeArgs();
+    const start = this.mark();
+
+    let sawTypeArgs = false;
+    try {
+      this.advance();
+      this.parseTypeName();
+      while (this.try_(TK.Comma)) this.parseTypeName();
+      if (this.at(TK.RBrack)) {
+        this.advance();
+        if (this.at(TK.Dot)) sawTypeArgs = true;
+      }
+    } catch (e) {
+      if (!(e instanceof ParseError)) throw e;
+    }
+
+    if (sawTypeArgs) return;
+
+    this.rewind(start);
+    this.advance();
+    this.parseExpr();
+    this.expect(TK.RBrack);
+  }
+
+  private rejectExplicitTypeArgs(): void {
+    let i = 1;
+    let sawPrim = false;
+    let depth = 1;
+    for (; this.pp + i < this.tokens.length; i++) {
+      const k = this.peek(i).kind;
+      if (k === TK.LBrack) depth++;
+      else if (k === TK.RBrack && --depth === 0) break;
+      else if (this.isPrim(k)) sawPrim = true;
+      else if (k === TK.LParen || k === TK.Semi || k === TK.LBrace) return;
+    }
+    if (!sawPrim || this.peek(i).kind !== TK.RBrack) return;
+    if (this.peek(i + 1).kind !== TK.LParen) return;
+
+    this.fail('a function call cannot take explicit type arguments', Codes.ExplicitTypeArgs, [
+      "type parameters are inferred from the argument types, so write 'f(x)' rather than 'f[T](x)'",
+      'if the element at an index is what you meant to call, the index has to be an expression - '
+      + 'a type name is not one',
+    ]);
   }
 
   private parseArgList(): void {
@@ -894,7 +1076,7 @@ export class Parser {
   }
 
   private parseArg(): void {
-    if (this.try_(TK.Ref)) { this.parseExpr(); return; }
+    this.try_(TK.Ref);
     this.parseExpr();
   }
 
@@ -904,21 +1086,24 @@ export class Parser {
   }
 
   private parsePrimaryInner(): void {
-    if (this.at(TK.IntLit)) { this.advance(); return; }
-    if (this.at(TK.FloatLit)) { this.advance(); return; }
-    if (this.at(TK.BoolLit)) { this.advance(); return; }
-    if (this.at(TK.CharLit)) { this.advance(); return; }
-    if (this.at(TK.StrLit)) { this.advance(); return; }
-    if (this.at(TK.Null)) { this.advance(); return; }
-    if (this.at(TK.InterpStrStart)) { this.parseInterpStr(); return; }
-
-    if (this.at(TK.Sizeof)) {
-      this.advance(); this.expect(TK.LParen);
-      this.parseTypeSpec();
-      this.expect(TK.RParen);
+    if (this.parseScopeQualifier()) {
+      this.expectIdent('a scope or declaration name');
+      while (this.at(TK.Dot) && this.peek().kind === TK.Ident) { this.advance(); this.advance(); }
+      if (this.at(TK.LBrack)) {
+        this.advance();
+        this.parseTypeName();
+        while (this.try_(TK.Comma)) this.parseTypeName();
+        this.expect(TK.RBrack);
+        while (this.at(TK.Dot) && this.peek().kind === TK.Ident) { this.advance(); this.advance(); }
+      }
       return;
     }
-    if (this.at(TK.Default)) {
+
+    if (this.at(TK.IntLit) || this.at(TK.FloatLit) || this.at(TK.BoolLit) || this.at(TK.CharLit)
+      || this.at(TK.StrLit) || this.at(TK.Null)) { this.advance(); return; }
+    if (this.at(TK.InterpStrStart)) { this.parseInterpStr(); return; }
+
+    if (this.at(TK.Sizeof) || this.at(TK.Default)) {
       this.advance(); this.expect(TK.LParen);
       this.parseTypeSpec();
       this.expect(TK.RParen);
@@ -988,10 +1173,6 @@ export class Parser {
     this.expect(close);
   }
 
-  // #endregion
-
-  // #region Switch and match
-
   private parseSwitchStmt(): void {
     this.expect(TK.Switch); this.expect(TK.LParen); this.parseExpr(); this.expect(TK.RParen);
     this.expect(TK.LBrace);
@@ -1038,6 +1219,4 @@ export class Parser {
     }
     this.expect(TK.RBrace);
   }
-
-  // #endregion
 }

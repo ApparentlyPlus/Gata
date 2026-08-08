@@ -3,37 +3,62 @@
   "name": "Gata",
   "scopeName": "source.gata",
   "fileTypes": ["g"],
-  "patterns": [
-    { "include": "#comments" },
-    { "include": "#nativeBlocks" },
-    { "include": "#fieldsBlock" },
-    { "include": "#annotations" },
-    { "include": "#strings" },
-    { "include": "#chars" },
-    { "include": "#numbers" },
-    { "include": "#unsafeBlock" },
-    { "include": "#riskKeywords" },
-    { "include": "#storageKeywords" },
-    { "include": "#controlFlowKeywords" },
-    { "include": "#languageConstants" },
-    { "include": "#primitiveTypes" },
-    { "include": "#genericParam" },
-    { "include": "#className" },
-    { "include": "#selfKeyword" },
-    { "include": "#functionName" },
-    { "include": "#operators" },
-    { "include": "#punctuation" },
-    { "include": "#plainIdentifier" }
-  ],
+  "patterns": [{ "include": "#code" }],
   "repository": {
+
+    "code": {
+      "patterns": [
+        { "include": "#common" },
+        { "include": "#braces" }
+      ]
+    },
+
+    "risk-code": {
+      "comment": "Inside unsafe { }, every nested brace pair is claimed by its own region so the block's own closing brace is the first one its end pattern can see.",
+      "patterns": [
+        { "include": "#common" },
+        { "include": "#risk-brace-block" }
+      ]
+    },
+
+    "common": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#native-block" },
+        { "include": "#fields-block" },
+        { "include": "#annotations" },
+        { "include": "#strings" },
+        { "include": "#chars" },
+        { "include": "#numbers" },
+        { "include": "#realm-declaration" },
+        { "include": "#process-declaration" },
+        { "include": "#thread-declaration" },
+        { "include": "#type-declaration" },
+        { "include": "#enum-declaration" },
+        { "include": "#union-declaration" },
+        { "include": "#operator-declaration" },
+        { "include": "#function-declaration" },
+        { "include": "#match-case" },
+        { "include": "#unsafe-block" },
+        { "include": "#scope-qualifier" },
+        { "include": "#member-access" },
+        { "include": "#new-expression" },
+        { "include": "#keywords" },
+        { "include": "#primitive-types" },
+        { "include": "#function-call" },
+        { "include": "#type-reference" },
+        { "include": "#reserved-identifier" },
+        { "include": "#identifier" },
+        { "include": "#operators" },
+        { "include": "#punctuation" }
+      ]
+    },
 
     "comments": {
       "patterns": [
+        { "name": "comment.line.double-slash.gata", "match": "//.*$" },
         {
-          "name": "comment.line.double-slash.gata",
-          "match": "//.*$"
-        },
-        {
+          "comment": "Block comments do not nest; an inner /* is ordinary text.",
           "name": "comment.block.gata",
           "begin": "/\\*",
           "end": "\\*/"
@@ -42,55 +67,92 @@
     },
 
     "annotations": {
-      "comment": "@intrinsic(role) / @preamble(target) / @builtin(name) / @extern / @environment / @keep — the compiler-contract layer, same family as kernel/user/process/thread. Like @extern/@environment, @keep takes no parenthesized argument (it's a bare marker exempting a class/module/free-func from Dce+Densifier), so it follows the same no-args spelling. @builtin, like @intrinsic/@preamble, requires a parenthesized name argument (Lexer.cs's ReadParenArg) — it is a class/module annotation, not a no-args marker.",
       "patterns": [
         {
-          "comment": "The (role) group is wrapped as ONE optional unit, not three independently-optional captures — @extern (no parens) used to let the next word (e.g. 'func') match capture 3 as if it were a role name, since an unparenthesized identifier alone satisfied that capture with no paren in sight.",
-          "match": "(@(?:intrinsic|preamble|builtin|extern|environment|keep))(?:\\s*(\\()([A-Za-z_][A-Za-z0-9_]*)?(\\)))?",
+          "comment": "@intrinsic binds a declaration to a compiler role. The role vocabulary is closed, so anything outside it is a G017.",
+          "match": "(@intrinsic)\\s*(\\()\\s*(alloc|retain|release|obj_header|obj_init|stringify_int|stringify_long|stringify_uint|stringify_float|stringify_char|env_debug|env_panic|env_proc_create|env_proc_hide|env_thread_spawn|env_read|env_alloc|env_time)\\s*(\\))",
           "captures": {
-            "1": { "name": "keyword.other.meta.annotation.gata" },
-            "2": { "name": "punctuation.gata" },
+            "1": { "name": "keyword.other.annotation.gata" },
+            "2": { "name": "punctuation.brackets.gata" },
             "3": { "name": "variable.parameter.annotation.gata" },
-            "4": { "name": "punctuation.gata" }
+            "4": { "name": "punctuation.brackets.gata" }
           }
+        },
+        {
+          "match": "(@intrinsic)\\s*(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)?\\s*(\\))?",
+          "captures": {
+            "1": { "name": "keyword.other.annotation.gata" },
+            "2": { "name": "punctuation.brackets.gata" },
+            "3": { "name": "invalid.illegal.annotation-argument.gata" },
+            "4": { "name": "punctuation.brackets.gata" }
+          }
+        },
+        {
+          "comment": "@preamble takes one of three translation units.",
+          "match": "(@preamble)\\s*(\\()\\s*(boot|kernel|user)\\s*(\\))",
+          "captures": {
+            "1": { "name": "keyword.other.annotation.gata" },
+            "2": { "name": "punctuation.brackets.gata" },
+            "3": { "name": "variable.parameter.annotation.gata" },
+            "4": { "name": "punctuation.brackets.gata" }
+          }
+        },
+        {
+          "match": "(@preamble)\\s*(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)?\\s*(\\))?",
+          "captures": {
+            "1": { "name": "keyword.other.annotation.gata" },
+            "2": { "name": "punctuation.brackets.gata" },
+            "3": { "name": "invalid.illegal.annotation-argument.gata" },
+            "4": { "name": "punctuation.brackets.gata" }
+          }
+        },
+        {
+          "comment": "@builtin binds a declaration to one of four compiler slots.",
+          "match": "(@builtin)\\s*(\\()\\s*(String|StringBuilder|Process|Thread)\\s*(\\))",
+          "captures": {
+            "1": { "name": "keyword.other.annotation.gata" },
+            "2": { "name": "punctuation.brackets.gata" },
+            "3": { "name": "variable.parameter.annotation.gata" },
+            "4": { "name": "punctuation.brackets.gata" }
+          }
+        },
+        {
+          "match": "(@builtin)\\s*(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)?\\s*(\\))?",
+          "captures": {
+            "1": { "name": "keyword.other.annotation.gata" },
+            "2": { "name": "punctuation.brackets.gata" },
+            "3": { "name": "invalid.illegal.annotation-argument.gata" },
+            "4": { "name": "punctuation.brackets.gata" }
+          }
+        },
+        {
+          "comment": "The four bare markers.",
+          "name": "keyword.other.annotation.gata",
+          "match": "@(?:extern|environment|keep|shadows)\\b"
+        },
+        {
+          "comment": "Gata has exactly seven annotations; an eighth is a G048.",
+          "name": "invalid.illegal.annotation.gata",
+          "match": "@[A-Za-z_][A-Za-z0-9_]*"
         }
       ]
     },
 
-    "brackets": {
-      "comment": "Parens and square brackets — shared by every context that has them (top-level code, raw native C bodies, and risk regions alike), so the rule is exactly the same everywhere: yellow, except a literal empty pair '()' (a no-arg call/ctor — nothing to draw attention to), which renders grey instead — UNLESS that empty pair is immediately preceded by ']' (e.g. 'new List[V]()'), where the '()' is completing a generic instantiation rather than standing alone, so it stays yellow like everything else. Square brackets have no empty-pair exception of their own. Order matters: the empty-pair match must be tried before the general single-character one, or it'd never win.",
-      "patterns": [
-        { "name": "punctuation.brackets.empty.gata", "match": "(?<!\\])\\(\\s*\\)" },
-        { "name": "punctuation.brackets.gata", "match": "[\\[\\]()]" }
-      ]
-    },
-
-    "nativeInner": {
-      "comment": "Raw C spliced verbatim by the compiler — greyed out uniformly, NO sub-highlighting at all (not even parens/brackets — this is the one place that's deliberately fully flat, unlike #riskBody). Mirrors the lexer's ReadBalanced brace-counter exactly: a `{`/`}` inside a `//` line comment, a `/* */` block comment, or a \"...\"/'...' string/char literal must NOT be counted as a real brace, or a literal `}` in any of those (e.g. `char* s = \"closing brace }\";`) desyncs the counter and ends the native block early — same hazard the lexer itself was hardened against. Comments and string/char literals are matched FIRST (before the brace-counting alternatives) so they're consumed whole and their internal braces never reach the brace rules at all.",
+    "native-inner": {
+      "comment": "Raw C, kept flat. Comments and literals are consumed first so a brace inside one never moves the depth counter, exactly as the lexer's balanced reader does.",
       "patterns": [
         { "match": "//.*$", "name": "comment.block.native.gata" },
         { "begin": "/\\*", "end": "\\*/", "name": "comment.block.native.gata" },
         { "begin": "\"", "end": "\"", "name": "comment.block.native.gata", "patterns": [{ "match": "\\\\.", "name": "comment.block.native.gata" }] },
         { "begin": "'", "end": "'", "name": "comment.block.native.gata", "patterns": [{ "match": "\\\\.", "name": "comment.block.native.gata" }] },
-        {
-          "begin": "\\{",
-          "end": "\\}",
-          "name": "comment.block.native.gata",
-          "patterns": [{ "include": "#nativeInner" }]
-        },
-        {
-          "match": "[^{}/\"']+",
-          "name": "comment.block.native.gata"
-        },
-        {
-          "match": "[/\"']",
-          "name": "comment.block.native.gata"
-        }
+        { "begin": "\\{", "end": "\\}", "name": "comment.block.native.gata", "patterns": [{ "include": "#native-inner" }] },
+        { "match": "[^{}/\"']+", "name": "comment.block.native.gata" },
+        { "match": "[/\"']", "name": "comment.block.native.gata" }
       ]
     },
 
-    "nativeBlocks": {
-      "comment": "native { ... } and native type Name { ... } — 'native'/'type' and the delimiting braces are all the risk surface (same maroon as unsafe/throws/panic, since this is the C escape hatch); the type name (if any) stays a class name; only the raw C *content* between the braces gets the flat grey treatment.",
+    "native-block": {
+      "comment": "native { }, native type Name { }, and a native method body. The keywords and the delimiting braces are risk surface; the C between them is flat.",
       "begin": "\\b(native)\\b\\s*(?:\\b(type)\\b\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*)?(\\{)",
       "beginCaptures": {
         "1": { "name": "keyword.control.risk.gata" },
@@ -100,218 +162,530 @@
       },
       "end": "\\}",
       "endCaptures": { "0": { "name": "keyword.control.risk.gata" } },
-      "patterns": [{ "include": "#nativeInner" }]
+      "patterns": [{ "include": "#native-inner" }]
     },
 
-    "fieldsBlock": {
-      "comment": "fields { ... } — a raw C struct-field block inside a class; same greyed-out treatment as native{}, braces included.",
+    "fields-block": {
+      "comment": "fields { } injects raw C struct members into the emitted class.",
       "begin": "\\b(fields)\\b\\s*(\\{)",
       "beginCaptures": {
-        "1": { "name": "keyword.other.meta.native.gata" },
-        "2": { "name": "comment.block.native.gata" }
+        "1": { "name": "keyword.control.risk.gata" },
+        "2": { "name": "keyword.control.risk.gata" }
       },
       "end": "\\}",
-      "endCaptures": { "0": { "name": "comment.block.native.gata" } },
-      "patterns": [{ "include": "#nativeInner" }]
+      "endCaptures": { "0": { "name": "keyword.control.risk.gata" } },
+      "patterns": [{ "include": "#native-inner" }]
     },
 
-    "strings": {
+    "realm-declaration": {
       "patterns": [
         {
-          "comment": "Interpolated string: $\"...{expr}...\" — text stays string-colored; each {expr} hole is fully re-highlighted as ordinary code. `{{`/`}}` are literal-brace escapes (mirrors the lexer's ReadInterp) and MUST be matched before the single-`{` hole-begin rule, or e.g. `{{braces}}` would be misread as a hole starting with a stray `{`.",
-          "name": "string.interpolated.gata",
-          "begin": "\\$\"",
-          "end": "\"",
-          "patterns": [
-            {
-              "name": "constant.character.escape.gata",
-              "match": "\\{\\{|\\}\\}"
-            },
-            {
-              "name": "constant.character.escape.gata",
-              "match": "\\\\."
-            },
-            {
-              "begin": "\\{",
-              "beginCaptures": { "0": { "name": "punctuation.gata" } },
-              "end": "\\}",
-              "endCaptures": { "0": { "name": "punctuation.gata" } },
-              "patterns": [{ "include": "$self" }]
-            }
-          ]
+          "match": "\\b(realm)\\s+(kernel|userspace)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.topology.gata" },
+            "2": { "name": "entity.name.namespace.gata" }
+          }
         },
         {
-          "name": "string.quoted.double.gata",
-          "begin": "\"",
-          "end": "\"",
+          "comment": "There are exactly two realms, so any other word here is a G086.",
+          "match": "\\b(realm)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.topology.gata" },
+            "2": { "name": "invalid.illegal.realm-name.gata" }
+          }
+        }
+      ]
+    },
+
+    "process-declaration": {
+      "patterns": [
+        {
+          "match": "\\b(foreground|background)\\s+(process)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.topology.gata" },
+            "2": { "name": "keyword.control.topology.gata" },
+            "3": { "name": "entity.name.namespace.gata" }
+          }
+        },
+        {
+          "comment": "The deployment mode is mandatory and is written before 'process' (G060).",
+          "match": "\\b(process)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=[:{])",
+          "captures": {
+            "1": { "name": "keyword.control.topology.gata" },
+            "2": { "name": "entity.name.namespace.gata" }
+          }
+        }
+      ]
+    },
+
+    "thread-declaration": {
+      "match": "\\b(thread)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\{)",
+      "captures": {
+        "1": { "name": "keyword.control.topology.gata" },
+        "2": { "name": "entity.name.namespace.gata" }
+      }
+    },
+
+    "type-declaration": {
+      "comment": "class/module head, up to the body brace, so a generic parameter list is read as parameters rather than as type arguments.",
+      "begin": "\\b(class|module)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.gata" },
+        "2": { "name": "entity.name.type.class.gata" }
+      },
+      "end": "(?=[{;}])",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#generic-parameters" }
+      ]
+    },
+
+    "generic-parameters": {
+      "comment": "The declaration side of a generic: plain names, never themselves generic (G053).",
+      "begin": "\\[",
+      "beginCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+      "end": "\\]",
+      "endCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+      "patterns": [
+        { "include": "#comments" },
+        { "name": "entity.name.type.parameter.gata", "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b" },
+        { "name": "punctuation.separator.gata", "match": "," }
+      ]
+    },
+
+    "enum-declaration": {
+      "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.gata" },
+        "2": { "name": "entity.name.type.enum.gata" }
+      },
+      "end": "(?<=\\})|(?=;)",
+      "patterns": [
+        { "include": "#comments" },
+        {
+          "begin": "\\{",
+          "beginCaptures": { "0": { "name": "punctuation.braces.gata" } },
+          "end": "\\}",
+          "endCaptures": { "0": { "name": "punctuation.braces.gata" } },
           "patterns": [
-            { "name": "constant.character.escape.gata", "match": "\\\\." }
+            { "include": "#comments" },
+            { "include": "#chars" },
+            { "include": "#numbers" },
+            { "include": "#member-access" },
+            {
+              "comment": "A qualified reference to another enum's member.",
+              "name": "entity.name.type.gata",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\.)"
+            },
+            {
+              "comment": "A member, or an earlier member named by a constant expression. Nothing else can appear here.",
+              "name": "variable.other.enummember.gata",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+            },
+            { "include": "#operators" },
+            { "include": "#punctuation" }
           ]
         }
       ]
     },
 
-    "chars": {
-      "name": "constant.character.gata",
-      "match": "'(\\\\.|[^'\\\\])'"
-    },
-
-    "numbers": {
+    "union-declaration": {
+      "begin": "\\b(union)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.gata" },
+        "2": { "name": "entity.name.type.union.gata" }
+      },
+      "end": "(?<=\\})|(?=;)",
       "patterns": [
+        { "include": "#comments" },
+        { "include": "#generic-parameters" },
         {
-          "comment": "Hex int, with the same u/U/l/L suffix run the lexer accepts.",
-          "name": "constant.numeric.integer.hex.gata",
-          "match": "\\b0[xX][0-9a-fA-F]+[uUlL]*\\b"
-        },
-        {
-          "comment": "Float: decimal point and/or exponent, optional f/F suffix.",
-          "name": "constant.numeric.float.gata",
-          "match": "\\b[0-9]+(\\.[0-9]+([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)[fF]?\\b"
-        },
-        {
-          "name": "constant.numeric.integer.gata",
-          "match": "\\b[0-9]+[uUlL]*\\b"
+          "begin": "\\{",
+          "beginCaptures": { "0": { "name": "punctuation.braces.gata" } },
+          "end": "\\}",
+          "endCaptures": { "0": { "name": "punctuation.braces.gata" } },
+          "patterns": [
+            { "include": "#comments" },
+            {
+              "name": "entity.name.type.variant.gata",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*[(,}])"
+            },
+            { "include": "#parameter-list" },
+            { "name": "punctuation.separator.gata", "match": "," }
+          ]
         }
       ]
     },
 
-    "unsafeBlock": {
-      "comment": "unsafe { ... } — unlike native{}, the body is ordinary Gata code (parsed as a real Block, not raw C), so ONLY the keyword and its OWN top-level delimiting braces get the risk color; the contents fully tokenize like normal code via #riskBody, including parens/brackets, which follow the exact same #brackets rule as everywhere else (not risk red — only the block's own { } are). The end pattern is plain '\\}', which is only safe because every '{' encountered inside #riskBody is intercepted by #riskBraceBlock first (never falls through to a bare brace match) — so by construction the first unescorted '}' this rule's own end can see really is the one that closes THIS block, not some inner if/while body. (A naive version without that interception would prematurely match the first nested '}' it found, e.g. the close of an inner if-block, well before the real end of the unsafe block.)",
+    "operator-declaration": {
+      "comment": "operator [ReturnType] func <symbol> (params). The return type goes after 'operator', never after the parameter list.",
+      "begin": "\\b(operator)\\b",
+      "beginCaptures": { "0": { "name": "keyword.declaration.gata" } },
+      "end": "(?<=\\))|(?=[;{}])",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#parameter-list" },
+        {
+          "match": "\\b(func)\\s*(\\[\\s*\\]\\s*=|\\[\\s*\\]|as|<<|>>|<=|>=|==|!=|\\+\\+|--|[-+*/%<>!~&|^])",
+          "captures": {
+            "1": { "name": "keyword.declaration.gata" },
+            "2": { "name": "entity.name.function.operator.gata" }
+          }
+        },
+        { "include": "#primitive-types" },
+        { "include": "#type-reference" },
+        { "include": "#punctuation" }
+      ]
+    },
+
+    "function-declaration": {
+      "comment": "func Name [generics] (params). A function-pointer type is 'func (' with no name, so it never reaches this rule.",
+      "begin": "\\b(func)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.gata" },
+        "2": { "name": "entity.name.function.gata" }
+      },
+      "end": "(?<=\\))|(?=[;{}])",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#generic-parameters" },
+        { "include": "#parameter-list" }
+      ]
+    },
+
+    "parameter-list": {
+      "begin": "\\(",
+      "beginCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+      "end": "\\)",
+      "endCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+      "patterns": [
+        { "include": "#comments" },
+        { "name": "storage.modifier.gata", "match": "\\bref\\b" },
+        { "include": "#primitive-types" },
+        { "include": "#type-arguments" },
+        {
+          "comment": "The name a parameter binds, always the last identifier before a comma or the closing paren. Type argument lists are claimed above first, so a comma inside one never reaches this.",
+          "name": "variable.parameter.gata",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*[,)])"
+        },
+        { "include": "#scope-qualifier" },
+        { "include": "#keywords" },
+        { "include": "#type-reference" },
+        { "include": "#identifier" },
+        { "include": "#operators" },
+        { "include": "#punctuation" }
+      ]
+    },
+
+    "type-arguments": {
+      "comment": "A generic argument list, or a fixed-array size prefix. Everything inside one is a type.",
+      "begin": "\\[",
+      "beginCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+      "end": "\\]",
+      "endCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#numbers" },
+        { "include": "#primitive-types" },
+        { "include": "#scope-qualifier" },
+        { "include": "#type-reference" },
+        { "include": "#identifier" },
+        { "name": "punctuation.separator.gata", "match": "," }
+      ]
+    },
+
+    "match-case": {
+      "comment": "case Variant(a, b) inside a match. Bindings are positional names, not types.",
+      "patterns": [
+        {
+          "match": "\\b(case)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\{)",
+          "captures": {
+            "1": { "name": "keyword.control.flow.gata" },
+            "2": { "name": "entity.name.type.variant.gata" }
+          }
+        },
+        { "include": "#match-case-payload" }
+      ]
+    },
+
+    "match-case-payload": {
+      "begin": "\\b(case)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.flow.gata" },
+        "2": { "name": "entity.name.type.variant.gata" }
+      },
+      "end": "(?<=\\))",
+      "patterns": [
+        {
+          "begin": "\\(",
+          "beginCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+          "end": "\\)",
+          "endCaptures": { "0": { "name": "punctuation.brackets.gata" } },
+          "patterns": [
+            { "name": "variable.other.binding.gata", "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b" },
+            { "name": "punctuation.separator.gata", "match": "," }
+          ]
+        }
+      ]
+    },
+
+    "unsafe-block": {
+      "comment": "The body is ordinary Gata, so only the keyword and the block's own braces carry the risk color.",
       "begin": "\\b(unsafe)\\b\\s*(\\{)",
       "beginCaptures": {
         "1": { "name": "keyword.control.risk.gata" },
         "2": { "name": "keyword.control.risk.gata" }
       },
-      "end": "(\\})",
-      "endCaptures": { "1": { "name": "keyword.control.risk.gata" } },
-      "patterns": [{ "include": "#riskBody" }]
-    },
-
-    "riskBraceBlock": {
-      "comment": "Any nested `{ ... }` (if/while/for/function body, ...) encountered while already inside a risk region. Recurses through #riskBody for its contents and consumes its own matching '}' here, so the enclosing unsafeBlock's bare '\\}' end pattern never sees this brace at all — that's what makes nesting safe instead of closing the outer block early.",
-      "begin": "\\{",
-      "beginCaptures": { "0": { "name": "punctuation.gata" } },
       "end": "\\}",
-      "endCaptures": { "0": { "name": "punctuation.gata" } },
-      "patterns": [{ "include": "#riskBody" }]
+      "endCaptures": { "0": { "name": "keyword.control.risk.gata" } },
+      "patterns": [{ "include": "#risk-code" }]
     },
 
-    "riskPunctuation": {
-      "comment": "Punctuation while inside a risk region (unsafe{}) — identical to #punctuation, including parens/brackets (#brackets, same rule, same colors, no special-casing for being inside unsafe{}); the only actual difference is that bare '{' is routed through #riskBraceBlock instead of being matched as a flat single character (see #riskBraceBlock for why that distinction matters).",
-      "patterns": [
-        { "name": "punctuation.terminator.gata", "match": ";" },
-        { "include": "#brackets" },
-        { "include": "#riskBraceBlock" },
-        { "name": "punctuation.gata", "match": "[,.]" }
-      ]
+    "risk-brace-block": {
+      "begin": "\\{",
+      "beginCaptures": { "0": { "name": "punctuation.braces.gata" } },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.braces.gata" } },
+      "patterns": [{ "include": "#risk-code" }]
     },
 
-    "riskBody": {
-      "comment": "The same token set as the file's top-level patterns, used inside unsafe{} instead of $self — identical in every way (including recursing into nested unsafe{}/native{}/fields{} normally, and including parens/brackets coloring) except it includes #riskPunctuation instead of #punctuation, so nested braces route through #riskBraceBlock for correct depth tracking instead of being flat single-character matches.",
-      "patterns": [
-        { "include": "#comments" },
-        { "include": "#nativeBlocks" },
-        { "include": "#fieldsBlock" },
-        { "include": "#annotations" },
-        { "include": "#strings" },
-        { "include": "#chars" },
-        { "include": "#numbers" },
-        { "include": "#unsafeBlock" },
-        { "include": "#riskKeywords" },
-        { "include": "#storageKeywords" },
-        { "include": "#controlFlowKeywords" },
-        { "include": "#languageConstants" },
-        { "include": "#primitiveTypes" },
-        { "include": "#genericParam" },
-        { "include": "#className" },
-        { "include": "#selfKeyword" },
-        { "include": "#functionName" },
-        { "include": "#operators" },
-        { "include": "#riskPunctuation" },
-        { "include": "#plainIdentifier" }
-      ]
-    },
-
-    "riskKeywords": {
-      "comment": "Gata's own risk surface: the only language constructs that can break safety/abort the kernel. Deliberately the one keyword category that isn't just 'a keyword color' — it's a warning.",
-      "name": "keyword.control.risk.gata",
-      "match": "\\b(unsafe|defer|throws|throw|panic)\\b"
-    },
-
-    "storageKeywords": {
-      "comment": "Declaration/storage keywords — the same bucket real C# colors for class/struct/static/var (Dark+'s 'storage'/'storage.type' scope): they declare shape, they don't transfer control. Includes the realm/topology and native/fields keywords too — Dark+ has no equivalent category for those.",
-      "name": "keyword.control.gata",
-      "match": "\\b(class|enum|union|module|func|static|public|private|operator|as|ref|sizeof|let|kernel|user|process|thread|foreground|background|entry)\\b"
-    },
-
-    "controlFlowKeywords": {
-      "comment": "Branching/looping/control-transfer — if/else/while/for/switch/case/break/continue/... 'return' and 'default' live here too: 'return' is a control-transfer statement like break/continue, not a declaration; 'default' is overwhelmingly used as a switch/match case label (pairs visually with 'case'), even though it also appears in the rarer 'default(Type)' value-expression form.",
-      "name": "keyword.control.flow.gata",
-      "match": "\\b(import|return|default|if|else|while|for|in|switch|case|break|continue|debug|try|catch|new|match|assign)\\b"
-    },
-
-    "languageConstants": {
-      "patterns": [
-        { "name": "constant.language.boolean.gata", "match": "\\b(true|false)\\b" },
-        { "name": "constant.language.null.gata", "match": "\\bnull\\b" }
-      ]
-    },
-
-    "primitiveTypes": {
-      "name": "storage.type.primitive.gata",
-      "match": "\\b(bool|int|char|float|double|short|void|int64|uint|uint64|ushort|byte|sbyte|usize|uintptr)\\b"
-    },
-
-    "genericParam": {
-      "comment": "A bare single uppercase letter (+ optional digits) — T, K, V, U, T1 — Gata's own convention for a generic parameter, as opposed to a real (multi-letter PascalCase) type name.",
-      "name": "entity.name.type.parameter.gata",
-      "match": "\\b[A-Z][0-9]*\\b"
-    },
-
-    "className": {
-      "comment": "Multi-letter PascalCase — String, List, Console, a user class. Excludes one shape: PascalCaseIdent( with no preceding 'new' — that's a method/function being declared or called (Main(), Console.PrintLine(...)), not a type reference, so it falls through to plainIdentifier (default white) instead. 'new Foo(...)' is exempted from the exclusion since a constructor call is still very much a type reference.",
+    "strings": {
       "patterns": [
         {
-          "match": "(?<=\\bnew\\s+)[A-Z][A-Za-z0-9_]+\\b",
-          "name": "entity.name.type.class.gata"
+          "comment": "$\"...{expr}...\" - the text is a string, every hole is ordinary code again. {{ and }} are literal braces and must be matched before a hole can open.",
+          "name": "string.interpolated.gata",
+          "begin": "\\$\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.gata" } },
+          "end": "\"|(?<!\\\\)$",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.gata" } },
+          "patterns": [
+            { "name": "constant.character.escape.gata", "match": "\\{\\{|\\}\\}" },
+            { "include": "#escapes" },
+            {
+              "begin": "\\{",
+              "beginCaptures": { "0": { "name": "punctuation.section.interpolation.gata" } },
+              "end": "\\}",
+              "endCaptures": { "0": { "name": "punctuation.section.interpolation.gata" } },
+              "patterns": [{ "include": "#code" }]
+            }
+          ]
         },
         {
-          "match": "\\b[A-Z][A-Za-z0-9_]+\\b(?!\\s*\\()",
-          "name": "entity.name.type.class.gata"
+          "comment": "A raw newline never appears in a string literal (G046), so the line end closes the region rather than letting it run on.",
+          "name": "string.quoted.double.gata",
+          "begin": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.gata" } },
+          "end": "\"|(?<!\\\\)$",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.gata" } },
+          "patterns": [{ "include": "#escapes" }]
         }
       ]
     },
 
-    "operators": {
-      "name": "keyword.operator.gata",
-      "match": "(\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=|==|!=|<=|>=|&&|\\|\\||\\+\\+|--|->|<<|>>|[+\\-*/%=<>!~&|^?:])"
+    "escapes": {
+      "patterns": [
+        { "name": "constant.character.escape.gata", "match": "\\\\[nrt0'\"\\\\]" },
+        { "name": "invalid.illegal.escape.gata", "match": "\\\\." }
+      ]
     },
 
-    "selfKeyword": {
-      "comment": "Not a real lexer token (the resolver special-cases the plain identifier 'self'), but it deserves the same treatment most languages give this/self — same family as the storage/control keywords.",
-      "name": "variable.language.self.gata",
-      "match": "\\bself\\b"
+    "chars": {
+      "patterns": [
+        {
+          "name": "constant.character.gata",
+          "match": "'(?:\\\\[nrt0'\"\\\\]|[^'\\\\\\n])'"
+        },
+        {
+          "comment": "Exactly one character or one escape, or it is a G046/G047.",
+          "name": "invalid.illegal.character-literal.gata",
+          "match": "'(?:\\\\.|[^'\\n]{2,}|)'"
+        }
+      ]
     },
 
-    "functionName": {
-      "comment": "Any identifier immediately followed by ( that wasn't already claimed by a keyword (if/while/switch/sizeof/... are matched earlier and win) or by className's 'new Foo(' rule (a constructor call is still a type reference). Covers both declarations (func Name() / entry func Main()) and call sites (Console.PrintLine(), risky()).",
+    "numbers": {
+      "patterns": [
+        {
+          "name": "invalid.illegal.numeric.gata",
+          "match": "\\b0[xX](?![0-9a-fA-F])[A-Za-z0-9_]*"
+        },
+        {
+          "comment": "Hex, with the u/U/l/L suffix run the lexer accepts in any order.",
+          "name": "constant.numeric.integer.hexadecimal.gata",
+          "match": "\\b0[xX][0-9a-fA-F]+[uUlL]*\\b(?![A-Za-z0-9_])"
+        },
+        {
+          "comment": "A '.' only starts a fraction when a digit follows; '1.f' is a member access on 1.",
+          "name": "constant.numeric.float.gata",
+          "match": "\\b[0-9]+(?:\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)[fF]?\\b(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "constant.numeric.integer.gata",
+          "match": "\\b[0-9]+[uUlL]*\\b(?![A-Za-z0-9_])"
+        },
+        {
+          "comment": "A literal that runs into identifier characters is a G049.",
+          "name": "invalid.illegal.numeric.gata",
+          "match": "\\b[0-9][A-Za-z0-9_.]*"
+        }
+      ]
+    },
+
+    "keywords": {
+      "patterns": [
+        {
+          "comment": "The risk surface: the constructs that can break memory safety or halt the machine.",
+          "name": "keyword.control.risk.gata",
+          "match": "\\b(?:unsafe|defer|throws|throw|panic)\\b"
+        },
+        {
+          "comment": "Topology. 'kernel' and 'userspace' are hard keywords so a qualifier is recognisable before anything is resolved; 'process' and 'thread' are contextual and mean nothing outside declaration position.",
+          "name": "keyword.control.topology.gata",
+          "match": "\\b(?:realm|kernel|userspace|foreground|background)\\b"
+        },
+        {
+          "name": "keyword.control.flow.gata",
+          "match": "\\b(?:if|else|while|for|in|switch|case|default|break|continue|return|match|try|catch|assign|debug)\\b"
+        },
+        {
+          "name": "keyword.declaration.gata",
+          "match": "\\b(?:import|class|module|enum|union|func|let|operator|new)\\b"
+        },
+        {
+          "name": "storage.modifier.gata",
+          "match": "\\b(?:public|private|static|entry|ref)\\b"
+        },
+        {
+          "name": "keyword.operator.word.gata",
+          "match": "\\b(?:as|sizeof)\\b"
+        },
+        { "name": "constant.language.boolean.gata", "match": "\\b(?:true|false)\\b" },
+        { "name": "constant.language.null.gata", "match": "\\bnull\\b" },
+        {
+          "comment": "'self' is resolved as a name inside an instance method rather than lexed as a keyword, but it reads as one.",
+          "name": "variable.language.self.gata",
+          "match": "\\bself\\b"
+        }
+      ]
+    },
+
+    "primitive-types": {
+      "name": "storage.type.primitive.gata",
+      "match": "\\b(?:bool|char|sbyte|byte|short|ushort|int|uint|int64|uint64|usize|uintptr|float|double|void)\\b"
+    },
+
+    "scope-qualifier": {
+      "patterns": [
+        {
+          "comment": "::Name reaches the root scope; kernel.Name and userspace.Name reach a realm. A process segment may sit between the realm and the name.",
+          "match": "(::)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.scope.gata" },
+            "2": { "name": "entity.name.type.gata" }
+          }
+        },
+        {
+          "match": "\\b(kernel|userspace)\\s*(\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "entity.name.namespace.gata" },
+            "2": { "name": "punctuation.accessor.gata" },
+            "3": { "name": "entity.name.type.gata" }
+          }
+        }
+      ]
+    },
+
+    "member-access": {
+      "patterns": [
+        {
+          "match": "(\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "punctuation.accessor.gata" },
+            "2": { "name": "entity.name.function.gata" }
+          }
+        },
+        {
+          "match": "(\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.accessor.gata" },
+            "2": { "name": "variable.other.property.gata" }
+          }
+        }
+      ]
+    },
+
+    "new-expression": {
+      "comment": "The name after 'new' is a type even though a constructor call follows it.",
+      "match": "\\b(new)\\s+(?:(::)|\\b(kernel|userspace)(\\.))?([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.gata" },
+        "2": { "name": "keyword.operator.scope.gata" },
+        "3": { "name": "entity.name.namespace.gata" },
+        "4": { "name": "punctuation.accessor.gata" },
+        "5": { "name": "entity.name.type.gata" }
+      }
+    },
+
+    "function-call": {
+      "comment": "Anything called, once the keywords that take parentheses have already been claimed above.",
       "name": "entity.name.function.gata",
       "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\()"
     },
 
-    "plainIdentifier": {
-      "comment": "Any identifier that matched nothing more specific — a variable or parameter. Colored identically to the editor's default foreground, but as an EXPLICIT scope rather than an absence of one: without it, an identifier inside a string.interpolated.gata hole (${...}) would inherit the string's color instead of looking like ordinary code.",
+    "type-reference": {
+      "patterns": [
+        {
+          "comment": "A bare uppercase letter with an optional digit is Gata's convention for a generic parameter. The language server replaces this guess with the real binding.",
+          "name": "entity.name.type.parameter.gata",
+          "match": "\\b[A-Z][0-9]?\\b"
+        },
+        {
+          "name": "entity.name.type.gata",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+
+    "reserved-identifier": {
+      "comment": "Two leading underscores name the compiler's own temporaries and are a G003 anywhere a user writes them.",
+      "name": "invalid.illegal.reserved-name.gata",
+      "match": "\\b__[A-Za-z0-9_]*\\b"
+    },
+
+    "identifier": {
+      "comment": "Scoped rather than left unmatched, so an identifier inside an interpolation hole stops inheriting the string color.",
       "name": "variable.other.gata",
       "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
     },
 
+    "operators": {
+      "patterns": [
+        {
+          "comment": "Gata has no prefix increment or decrement.",
+          "name": "invalid.illegal.prefix-operator.gata",
+          "match": "(?<![A-Za-z0-9_)\\]])(?:\\+\\+|--)(?=\\s*[A-Za-z_(])"
+        },
+        { "name": "keyword.operator.scope.gata", "match": "::" },
+        { "name": "punctuation.accessor.gata", "match": "->" },
+        {
+          "name": "keyword.operator.gata",
+          "match": "\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=|==|!=|<=|>=|&&|\\|\\||\\+\\+|--|<<|>>|[-+*/%=<>!~&|^?:]"
+        }
+      ]
+    },
+
     "punctuation": {
-      "comment": "Semicolons are their own scope (neutral, like operators). Parens/brackets go through #brackets (yellow, grey if an empty pair). Comma/dot/braces share one remaining neutral grey scope.",
       "patterns": [
         { "name": "punctuation.terminator.gata", "match": ";" },
-        { "include": "#brackets" },
-        { "name": "punctuation.gata", "match": "[,.{}]" }
+        { "name": "punctuation.separator.gata", "match": "," },
+        { "name": "punctuation.accessor.gata", "match": "\\." },
+        { "name": "punctuation.brackets.gata", "match": "[\\[\\]()]" }
       ]
+    },
+
+    "braces": {
+      "name": "punctuation.braces.gata",
+      "match": "[{}]"
     }
   }
 }

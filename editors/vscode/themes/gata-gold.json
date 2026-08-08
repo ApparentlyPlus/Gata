@@ -1,0 +1,225 @@
+{
+  "name": "Gata Gold",
+  "type": "dark",
+  "semanticHighlighting": true,
+  "colors": {
+    "editor.background": "#14151a",
+    "editor.foreground": "#cfcbc1",
+    "editorCursor.foreground": "#e8dcb8",
+    "editor.selectionBackground": "#3a3d4a",
+    "editor.selectionHighlightBackground": "#2a2d38",
+    "editor.wordHighlightBackground": "#2a2d38",
+    "editor.lineHighlightBackground": "#1c1d24",
+    "editorLineNumber.foreground": "#4a4d59",
+    "editorLineNumber.activeForeground": "#9aa0ad",
+    "editorIndentGuide.background1": "#24262e",
+    "editorIndentGuide.activeBackground1": "#3c3f4a",
+    "editorBracketMatch.background": "#2a2d38",
+    "editorBracketMatch.border": "#c9c34f",
+    "editorError.foreground": "#ef5350",
+    "editorWarning.foreground": "#e0b34d",
+    "editorInfo.foreground": "#7fc4b8",
+    "editorHoverWidget.background": "#1a1c22",
+    "editorHoverWidget.border": "#3c3f4a",
+    "editorSuggestWidget.background": "#1a1c22",
+    "editorSuggestWidget.border": "#3c3f4a",
+    "editorSuggestWidget.selectedBackground": "#2a2d38",
+    "editorGutter.background": "#14151a"
+  },
+  "tokenColors": [
+    {
+      "name": "Comments",
+      "scope": ["comment.line.double-slash.gata", "comment.block.gata"],
+      "settings": { "foreground": "#6b7280", "fontStyle": "italic" }
+    },
+    {
+      "name": "Raw C inside native and fields blocks",
+      "scope": "comment.block.native.gata",
+      "settings": { "foreground": "#6f7178" }
+    },
+    {
+      "name": "The risk surface: unsafe, defer, throw/throws, panic, native, fields",
+      "scope": "keyword.control.risk.gata",
+      "settings": { "foreground": "#c2504a" }
+    },
+    {
+      "name": "Topology: realm, kernel, userspace, foreground, background, process, thread",
+      "scope": "keyword.control.topology.gata",
+      "settings": { "foreground": "#8f87b0" }
+    },
+    {
+      "name": "Realm, process and thread names, and a scope qualifier",
+      "scope": "entity.name.namespace.gata",
+      "settings": { "foreground": "#b6aed4" }
+    },
+    {
+      "name": "The seven annotations",
+      "scope": "keyword.other.annotation.gata",
+      "settings": { "foreground": "#8f87b0" }
+    },
+    {
+      "name": "An annotation argument: a role, a preamble target, a builtin slot",
+      "scope": "variable.parameter.annotation.gata",
+      "settings": { "foreground": "#b6aed4" }
+    },
+    {
+      "name": "Declaration keywords",
+      "scope": "keyword.declaration.gata",
+      "settings": { "foreground": "#5b84c4" }
+    },
+    {
+      "name": "Modifiers",
+      "scope": "storage.modifier.gata",
+      "settings": { "foreground": "#6f9fd8" }
+    },
+    {
+      "name": "Branching, looping and control transfer",
+      "scope": "keyword.control.flow.gata",
+      "settings": { "foreground": "#8caa6e" }
+    },
+    {
+      "name": "as and sizeof",
+      "scope": "keyword.operator.word.gata",
+      "settings": { "foreground": "#7fa8c9" }
+    },
+    {
+      "name": "self",
+      "scope": "variable.language.self.gata",
+      "settings": { "foreground": "#5b84c4", "fontStyle": "italic" }
+    },
+    {
+      "name": "Functions and methods, declared and called",
+      "scope": ["entity.name.function.gata", "entity.name.function.operator.gata"],
+      "settings": { "foreground": "#7fc4b8" }
+    },
+    {
+      "name": "Variables",
+      "scope": ["variable.other.gata", "variable.other.property.gata", "variable.other.binding.gata"],
+      "settings": { "foreground": "#cfcbc1" }
+    },
+    {
+      "name": "Parameters",
+      "scope": "variable.parameter.gata",
+      "settings": { "foreground": "#cfcbc1", "fontStyle": "italic" }
+    },
+    {
+      "name": "Enum members",
+      "scope": "variable.other.enummember.gata",
+      "settings": { "foreground": "#e6cf94" }
+    },
+    {
+      "name": "true, false, null",
+      "scope": ["constant.language.boolean.gata", "constant.language.null.gata"],
+      "settings": { "foreground": "#e6cf94", "fontStyle": "bold" }
+    },
+    {
+      "name": "Primitive types",
+      "scope": "storage.type.primitive.gata",
+      "settings": { "foreground": "#c9a227" }
+    },
+    {
+      "name": "Declared type names",
+      "scope": [
+        "entity.name.type.class.gata",
+        "entity.name.type.enum.gata",
+        "entity.name.type.union.gata"
+      ],
+      "settings": { "foreground": "#f0c66a" }
+    },
+    {
+      "name": "Type references",
+      "scope": "entity.name.type.gata",
+      "settings": { "foreground": "#e0b34d" }
+    },
+    {
+      "name": "Union variants",
+      "scope": "entity.name.type.variant.gata",
+      "settings": { "foreground": "#d9a05b" }
+    },
+    {
+      "name": "Generic parameters",
+      "scope": "entity.name.type.parameter.gata",
+      "settings": { "foreground": "#a9854f", "fontStyle": "italic" }
+    },
+    {
+      "name": "Strings",
+      "scope": ["string.quoted.double.gata", "constant.character.gata"],
+      "settings": { "foreground": "#d98a4f" }
+    },
+    {
+      "name": "Interpolated strings",
+      "scope": "string.interpolated.gata",
+      "settings": { "foreground": "#e0a468" }
+    },
+    {
+      "name": "String delimiters and interpolation braces",
+      "scope": [
+        "punctuation.definition.string.begin.gata",
+        "punctuation.definition.string.end.gata",
+        "punctuation.section.interpolation.gata"
+      ],
+      "settings": { "foreground": "#b0713f" }
+    },
+    {
+      "name": "Escape sequences",
+      "scope": "constant.character.escape.gata",
+      "settings": { "foreground": "#f0c08a" }
+    },
+    {
+      "name": "Numbers",
+      "scope": [
+        "constant.numeric.integer.gata",
+        "constant.numeric.integer.hexadecimal.gata",
+        "constant.numeric.float.gata"
+      ],
+      "settings": { "foreground": "#cf8c4a" }
+    },
+    {
+      "name": "Operators",
+      "scope": ["keyword.operator.gata", "punctuation.terminator.gata"],
+      "settings": { "foreground": "#c5cad1" }
+    },
+    {
+      "name": "The scope operator",
+      "scope": "keyword.operator.scope.gata",
+      "settings": { "foreground": "#b6aed4" }
+    },
+    {
+      "name": "Parens and brackets, deliberately a cooler yellow than the golds so a generic instantiation does not read as one smear",
+      "scope": "punctuation.brackets.gata",
+      "settings": { "foreground": "#c9c34f" }
+    },
+    {
+      "name": "Braces, commas and accessors",
+      "scope": [
+        "punctuation.braces.gata",
+        "punctuation.separator.gata",
+        "punctuation.accessor.gata"
+      ],
+      "settings": { "foreground": "#8a8f98" }
+    },
+    {
+      "name": "Shapes the compiler rejects outright",
+      "scope": ["invalid.illegal.gata", "invalid.illegal"],
+      "settings": { "foreground": "#ef5350" }
+    }
+  ],
+  "semanticTokenColors": {
+    "namespace:gata": "#b6aed4",
+    "class:gata": "#e0b34d",
+    "class.declaration:gata": { "foreground": "#f0c66a" },
+    "enum:gata": "#e0b34d",
+    "enum.declaration:gata": { "foreground": "#f0c66a" },
+    "struct:gata": "#e0b34d",
+    "struct.declaration:gata": { "foreground": "#f0c66a" },
+    "enumMember:gata": "#e6cf94",
+    "type:gata": "#e0b34d",
+    "typeParameter:gata": { "foreground": "#a9854f", "fontStyle": "italic" },
+    "function:gata": "#7fc4b8",
+    "method:gata": "#7fc4b8",
+    "parameter:gata": { "foreground": "#cfcbc1", "fontStyle": "italic" },
+    "variable:gata": "#cfcbc1",
+    "property:gata": "#cfcbc1",
+    "macro:gata": "#8f87b0"
+  }
+}

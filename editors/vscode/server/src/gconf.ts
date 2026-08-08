@@ -1,15 +1,6 @@
 import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-// Validation for a Gata project manifest (<project>.gconf), mirroring Appa/src/CLI/Manifest.cs.
-//
-// This is a deliberately small scanner rather than a real XML parser: a .gconf is a flat list of
-// leaf elements under a single <appa> root, and appa itself only ever reads element *values* -
-// no attributes, no nesting, no namespaces. Anything structurally stranger than that is left to
-// the compiler to reject at build time, since reporting it here would mean guessing at semantics
-// the compiler does not actually implement.
-
-/** Every element appa reads, with the values it accepts. An empty list means free-form text. */
 const SCHEMA: ReadonlyMap<string, readonly string[]> = new Map([
   ['ProjectName', []],
   ['TargetBackend', ['GatOS', 'Hosted']],
@@ -19,7 +10,6 @@ const SCHEMA: ReadonlyMap<string, readonly string[]> = new Map([
   ['CapabilityDiscovery', ['On', 'Off']],
 ]);
 
-/** Levenshtein distance, used for "did you mean" on a misspelled element or value. */
 function distance(a: string, b: string): number {
   const prev = new Array<number>(b.length + 1);
   const cur = new Array<number>(b.length + 1);
@@ -47,7 +37,6 @@ function closest(typed: string, candidates: readonly string[]): string | undefin
   return bestDist <= maxAllowed ? best : undefined;
 }
 
-/** Blanks out comments and CDATA so their contents can never be read as markup. */
 function mask(text: string): string {
   const blank = (m: string) => m.replace(/[^\n]/g, ' ');
   return text
@@ -71,10 +60,6 @@ function diag(
   };
 }
 
-/**
- * Validates a .gconf manifest. Reports an unknown or misspelled element, a value outside the
- * set appa accepts, a duplicated element, and a missing or wrongly-named root.
- */
 export function validateGconf(doc: TextDocument): Diagnostic[] {
   const raw = doc.getText();
   const text = mask(raw);
@@ -96,8 +81,6 @@ export function validateGconf(doc: TextDocument): Diagnostic[] {
       `a manifest must have an <appa> root, got <${rootMatch[1]}>`, DiagnosticSeverity.Error));
   }
 
-  // Leaf elements. Deliberately only matches <Name>value</Name> on the same line, which is the
-  // shape appa emits and reads; anything else is left alone rather than guessed at.
   const seen = new Map<string, number>();
   const leaf = /<\s*([A-Za-z_][\w.-]*)\s*>([^<]*)<\s*\/\s*\1\s*>/g;
   let m: RegExpExecArray | null;
@@ -134,8 +117,6 @@ export function validateGconf(doc: TextDocument): Diagnostic[] {
       continue;
     }
 
-    // appa parses these case-insensitively, so only the value itself is checked here; a
-    // non-canonical spelling is surfaced as a hint rather than an error.
     const match = allowed.find((a) => a.toLowerCase() === value.toLowerCase());
     if (match === undefined) {
       const valueStart = m.index + full.indexOf('>') + 1 + rawValue.indexOf(value.length ? value : rawValue);

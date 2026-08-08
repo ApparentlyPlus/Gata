@@ -1,8 +1,3 @@
-// Runs the real 'appa check' compiler command (Appa/src/CLI/Program.cs's RunCheck) against
-// whichever Gata project the edited file belongs to, and turns its diagnostic output back
-// into LSP Diagnostics. Deliberately does not reimplement any semantic analysis here - Appa
-// already has SymbolCollector/TypeResolver/etc, and 'check' stops before emission, so this
-// is just a thin process-spawn + text-parse layer over the real compiler's own output.
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,17 +11,11 @@ export interface GataSettings {
 
 export const defaultSettings: GataSettings = { enableSemanticChecks: true };
 
-// Strips ANSI color escapes (DiagnosticBag.Render wraps every label/code in C.RED etc).
 const ANSI = /\x1b\[[0-9;]*m/g;
-
-// DiagnosticBag.Render's header line, with a source span: "{name}:{line}:{col}: error[Gxxx]: {message}".
 const HEADER_WITH_SPAN = /^(.*?):(\d+):(\d+): (error|warning)\[(G\d+)\]: (.*)$/;
-// The no-span form: "{name}: error[Gxxx]: {message}" (name may be "" or "<environment>").
 const HEADER_NO_SPAN = /^(.*?): (error|warning)\[(G\d+)\]: (.*)$/;
+const HELP_LINE = /^\s*=\s*help:\s*(.*)$/;
 
-/// Walks upward from a file looking for a *.gconf (mirrors ManifestReader.Discover in
-/// Appa/src/CLI/Manifest.cs). Returns the .gconf path, or undefined if the file isn't
-/// part of a discoverable project.
 function findGconf(startDir: string): string | undefined {
   let dir = startDir;
   for (let i = 0; i < 64; i++) {
@@ -41,9 +30,6 @@ function findGconf(startDir: string): string | undefined {
   return undefined;
 }
 
-/// Walks upward from startDir looking for a directory matching `predicate`, up to a
-/// reasonable number of levels. Used to auto-detect a sibling Appa/libgata checkout when
-/// gata.appaPath / gata.libgataPath aren't configured.
 function findUpward(startDir: string, predicate: (dir: string) => string | undefined): string | undefined {
   let dir = startDir;
   for (let i = 0; i < 12; i++) {
@@ -73,10 +59,6 @@ function detectLibgata(startDir: string): string | undefined {
   });
 }
 
-/// Resolves the (command, args-prefix) to invoke appa with. gata.appaPath may point at a
-/// .dll (run via 'dotnet'), an .exe/binary (run directly), or be left unset, in which case
-/// this looks for a debug build of the Appa.csproj next to this checkout's own Gata/Appa
-/// siblings, falling back to an 'appa' binary on PATH.
 function resolveAppaInvocation(settings: GataSettings, projectDir: string): { cmd: string; prefixArgs: string[] } | undefined {
   const configured = settings.appaPath;
   if (configured) {
@@ -89,8 +71,6 @@ function resolveAppaInvocation(settings: GataSettings, projectDir: string): { cm
   return { cmd: 'appa', prefixArgs: [] };
 }
 
-/// Builds a basename -> full-path map for every .g file under the project directory, since
-/// DiagnosticBag.Render only ever prints a diagnostic's file as a basename, not a full path.
 function collectGataFiles(projectDir: string): Map<string, string> {
   const map = new Map<string, string>();
   const walk = (dir: string) => {
@@ -116,10 +96,6 @@ function pathToUri(p: string): string {
   return 'file://' + normalized.split('/').map(encodeURIComponent).join('/');
 }
 
-/// Runs 'appa check <project.gconf>' for the project the given file belongs to, and parses
-/// its diagnostic output into a per-file-URI map of LSP Diagnostics. Returns undefined if
-/// the file isn't part of a discoverable project (no *.gconf found upward) - callers should
-/// leave any previously-published semantic diagnostics alone in that case, not clear them.
 export async function checkProject(filePath: string, settings: GataSettings): Promise<Map<string, Diagnostic[]> | undefined> {
   const gconf = findGconf(path.dirname(filePath));
   if (!gconf) return undefined;
@@ -147,8 +123,15 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
     return files.get(base);
   };
 
+  let openDiag: Diagnostic | undefined;
+
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.replace(ANSI, '');
+    const help = HELP_LINE.exec(line);
+    if (help && openDiag) {
+      openDiag.message += `\nhelp: ${help[1]}`;
+      continue;
+    }
     let m = HEADER_WITH_SPAN.exec(line);
     if (m) {
       const [, name, lineStr, colStr, sev, code, message] = m;
@@ -165,6 +148,7 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
       };
       if (!byUri.has(uri)) byUri.set(uri, []);
       byUri.get(uri)!.push(diag);
+      openDiag = diag;
       continue;
     }
     m = HEADER_NO_SPAN.exec(line);
@@ -181,6 +165,7 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
       };
       if (!byUri.has(uri)) byUri.set(uri, []);
       byUri.get(uri)!.push(diag);
+      openDiag = diag;
     }
   }
 

@@ -1,16 +1,32 @@
 {
   "name": "gata-highlighting",
-  "displayName": "Gata-Highlighting",
-  "description": "Language support for the Gata systems language (.g) and its project manifests (.gconf) \u2014 syntax highlighting, real-time syntax diagnostics, and on-save semantic checks from the real appa compiler.",
-  "version": "0.3.0",
+  "displayName": "Gata",
+  "description": "Language support for Gata (.g) and its project manifests (.gconf): semantic highlighting, hovers, an outline, completion, live syntax diagnostics, and on-save semantic diagnostics from the real appa compiler.",
+  "version": "2.0.0",
   "publisher": "gata-lang",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
     "Programming Languages",
-    "Linters"
+    "Linters",
+    "Themes"
   ],
+  "keywords": [
+    "gata",
+    "appa",
+    "gatos",
+    "pawstack",
+    "systems programming"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ApparentlyPlus/Gata.git"
+  },
+  "homepage": "https://github.com/ApparentlyPlus/Gata/tree/main/editors/vscode",
+  "bugs": {
+    "url": "https://github.com/ApparentlyPlus/Gata/issues"
+  },
   "main": "./extension.js",
   "activationEvents": [
     "onLanguage:gata",
@@ -18,7 +34,8 @@
   ],
   "scripts": {
     "compile": "npm --prefix server install && npm --prefix server run build",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "package": "npx --yes @vscode/vsce package"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -34,7 +51,7 @@
         "extensions": [
           ".g"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./gata-config.json"
       },
       {
         "id": "gconf",
@@ -45,7 +62,7 @@
         "extensions": [
           ".gconf"
         ],
-        "configuration": "./gconf-language-configuration.json"
+        "configuration": "./gconf-config.json"
       }
     ],
     "grammars": [
@@ -64,12 +81,15 @@
       {
         "label": "Gata Gold",
         "uiTheme": "vs-dark",
-        "path": "./themes/gata-gold-color-theme.json"
+        "path": "./themes/gata-gold.json"
       }
     ],
     "configurationDefaults": {
       "[gata]": {
-        "editor.bracketPairColorization.enabled": false
+        "editor.bracketPairColorization.enabled": false,
+        "editor.semanticHighlighting.enabled": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
       },
       "[gconf]": {
         "editor.tabSize": 4,
@@ -82,17 +102,17 @@
         "gata.enableSemanticChecks": {
           "type": "boolean",
           "default": true,
-          "description": "Run the real 'appa check' compiler command on save/open for any .g file that belongs to a project (a discoverable *.gconf), surfacing real type/semantic diagnostics alongside the always-on syntax checks. Has no effect on loose files outside a project."
+          "description": "Run 'appa check' on open and on save for any .g file that belongs to a project (one with a discoverable *.gconf), so real type and resolution errors appear alongside the always-on syntax checks. Loose files outside a project are unaffected."
         },
         "gata.appaPath": {
           "type": "string",
           "default": "",
-          "description": "Path to an Appa.dll (run via 'dotnet') or a standalone appa/appa.exe binary. Leave empty to auto-detect a debug build of Appa.csproj next to this checkout (Appa/bin/Debug/net10.0/Appa.dll or .../Release/...), falling back to an 'appa' binary on PATH."
+          "description": "Path to an Appa.dll (run through 'dotnet') or to a standalone appa binary. Leave empty to auto-detect a build of Appa.csproj next to this checkout, falling back to an 'appa' on PATH."
         },
         "gata.libgataPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the libgata directory passed to 'appa check' as --stdlib. Leave empty to auto-detect a sibling Gata/libgata checkout, or to rely on appa's own installed toolchain (from 'appa setup') if neither is found."
+          "description": "Path to the libgata directory passed to 'appa check' as --stdlib. Leave empty to auto-detect a sibling Gata/libgata checkout, or to rely on the toolchain 'appa install' put in place."
         }
       }
     }

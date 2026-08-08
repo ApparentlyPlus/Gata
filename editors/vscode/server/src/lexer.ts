@@ -1,16 +1,11 @@
-// Direct port of Appa/src/Syntax/Lexer.cs. Behavior (what tokens/errors come out for a
-// given source string) is kept faithful to the original; the micro-optimizations the C#
-// version uses (frozen dictionaries, span-based lookups, cached strings) don't matter in
-// a TS LSP server processing one small file at a time, so this uses plain Maps/strings.
 import { Codes, ParseError, Span } from './codes';
 import { TK, Token } from './token';
 
 const KEYWORDS: Record<string, TK> = {
   import: TK.Import,
+  realm: TK.Realm,
   kernel: TK.Kernel,
-  user: TK.User,
-  process: TK.Process,
-  thread: TK.Thread,
+  userspace: TK.Userspace,
   foreground: TK.Foreground,
   background: TK.Background,
   class: TK.Class,
@@ -59,7 +54,6 @@ const KEYWORDS: Record<string, TK> = {
   short: TK.TShort,
   void: TK.TVoid,
 
-  // Width explicit family
   int64: TK.TPrim,
   uint: TK.TPrim,
   uint64: TK.TPrim,
@@ -99,10 +93,18 @@ export class Lexer {
     return this.tokens;
   }
 
-  // A method, not a getter - a getter's return value gets narrowed by TS's control-flow
-  // analysis as if it couldn't change, which is wrong here since it depends on this.pp,
-  // mutated by advance() between re-checks (e.g. a comment/number scanning loop's
-  // condition). A plain method call isn't narrowed the same way.
+  tokenizeLenient(): Token[] {
+    try {
+      while (this.pp < this.src.length) {
+        const before = this.pp;
+        this.readOne();
+        if (this.pp === before) this.advance();
+      }
+    } catch {}
+    this.tokens.push({ kind: TK.EOF, value: '', span: { start: this.src.length, length: 0 } });
+    return this.tokens;
+  }
+
   private cur(): string {
     return this.pp < this.src.length ? this.src[this.pp] : '\0';
   }
@@ -150,16 +152,17 @@ export class Lexer {
         case 'extern': this.emit(TK.AtExtern, '@extern'); return;
         case 'environment': this.emit(TK.AtEnvironment, '@environment'); return;
         case 'keep': this.emit(TK.AtKeep, '@keep'); return;
+        case 'shadows': this.emit(TK.AtShadows, '@shadows'); return;
         case 'builtin': this.emit(TK.AtBuiltin, this.readParenArg('@builtin')); return;
         default:
           this.fail(
-            `unknown annotation '@${nn}'; expected '@intrinsic', '@preamble', '@extern', '@environment', '@keep', or '@builtin'`,
+            `unknown annotation '@${nn}'; expected '@intrinsic', '@preamble', '@extern', ` +
+            `'@environment', '@keep', '@builtin', or '@shadows'`,
             Codes.BadAnnotation,
           );
       }
     }
 
-    // native { }  or  native type Name { }
     if (this.matchKw('native')) {
       const start = this.pp;
       this.advance(6);
@@ -183,7 +186,6 @@ export class Lexer {
       return;
     }
 
-    // fields { }
     if (this.matchKw('fields')) {
       const start = this.pp;
       this.advance(6);
@@ -253,6 +255,9 @@ export class Lexer {
         }
         if (this.peek() === '=') { this.advance(2); this.emit(TK.GtEq, '>='); return; }
         break;
+      case ':':
+        if (this.peek() === ':') { this.advance(2); this.emit(TK.ColonColon, '::'); return; }
+        break;
     }
 
     const c = this.cur();
@@ -302,7 +307,7 @@ export class Lexer {
   }
 
   private readBalanced(): string {
-    this.advance(); // opening {
+    this.advance();
     const start = this.pp;
     let depth = 1;
     while (this.pp < this.src.length && depth > 0) {
@@ -394,7 +399,7 @@ export class Lexer {
   }
 
   private readInterp(): void {
-    this.advance(2); // consume $"
+    this.advance(2);
     this.emit(TK.InterpStrStart, '$"');
 
     while (this.pp < this.src.length && this.cur() !== '"' && this.cur() !== '\n') {
@@ -449,7 +454,7 @@ export class Lexer {
 
   private readString(): string {
     const start = this.pp;
-    this.advance(); // opening "
+    this.advance();
     while (this.pp < this.src.length && this.cur() !== '"' && this.cur() !== '\n') {
       if (this.cur() === '\\') {
         this.advance();
@@ -459,25 +464,38 @@ export class Lexer {
       } else this.advance();
     }
     if (this.cur() !== '"') this.fail('unterminated string literal', Codes.UnterminatedLiteral);
-    this.advance(); // closing "
+    this.advance();
     return this.src.slice(start, this.pp);
   }
 
+  private static escapeValue(c: string): number {
+    switch (c) {
+      case 'n': return 10;
+      case 't': return 9;
+      case 'r': return 13;
+      case '0': return 0;
+      default: return c.charCodeAt(0);
+    }
+  }
+
   private readCharLit(): void {
-    this.advance(); // opening '
+    this.advance();
+    let value = 0;
     if (this.cur() === '\\') {
       this.advance();
       if (!Lexer.tryEscape(this.cur())) this.fail(`unrecognized escape '\\${this.cur()}' in char literal`, Codes.BadEscape);
+      value = Lexer.escapeValue(this.cur());
       this.advance();
     } else if (this.cur() === "'") {
       this.fail('empty char literal', Codes.UnterminatedLiteral);
     } else if (this.cur() === '\n' || this.pp >= this.src.length) {
       this.fail('unterminated char literal', Codes.UnterminatedLiteral);
     } else {
+      value = this.cur().charCodeAt(0);
       this.advance();
     }
     if (this.cur() !== "'") this.fail('char literal must hold exactly one character', Codes.UnterminatedLiteral);
-    this.advance(); // closing '
-    this.emit(TK.CharLit, '0');
+    this.advance(); 
+    this.emit(TK.CharLit, String(value));
   }
 }
