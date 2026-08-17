@@ -295,9 +295,11 @@ After type checking, `appa` walks your program from every entry point and record
 
 Anything not reached is not compiled in.
 
-You can watch this happen. Build the two-realm starter project and note the ISO size in `build/`. Now build the kernel-only version from the end of Chapter 1 and look again. It drops noticeably, because with no `process` in the program, nothing reaches the thread-spawn primitive, and the scheduler goes with it.
+You can watch this happen. Build the two-realm starter project and note the size of `build/<name>.bin`, the linked kernel. Now build the kernel-only version from the end of Chapter 1 and look again. It drops noticeably, because with no `process` in the program, nothing reaches the thread-spawn primitive, and the scheduler goes with it.
 
-Taken to the limit, a full GatOS build with every subsystem is around 200 KB; a hello-world image is around 70 KB. Both numbers are small. The point is not the absolute size but that you did not configure anything to get there.
+Look at the `.bin`, not the `.iso` sitting next to it. The ISO is mostly GRUB and its modules, around 32 MB whatever you build; the two images below differ by half a percent inside it and by 4.3x outside it. The kernel binary is the part your program produced.
+
+Measured, `Release`: a hello-world kernel realm links to 45 KB. A two-realm program using `List`, `Map`, threads and the clock links to 193 KB. Both numbers are small. The point is not the absolute size but that you did not configure anything to get there.
 
 The table above is short, and that is not an abbreviation. It is close to the whole list. Every platform capability enters your program through one of a small, fixed set of named C functions called the floor (Chapter 21), which is precisely what makes this walk possible: `appa` is not guessing at what your program does, it is checking which of a dozen or so specific symbols are reachable.
 
