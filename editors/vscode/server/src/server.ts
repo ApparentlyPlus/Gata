@@ -7,14 +7,25 @@ import {
   Diagnostic,
   DiagnosticSeverity,
   DidChangeConfigurationNotification,
+  SemanticTokens,
+  SemanticTokensParams,
+  DocumentSymbol,
+  SymbolKind,
+  CompletionItem,
+  CompletionItemKind,
+  MarkupKind,
+  Hover,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { Lexer } from './lexer';
 import { Parser } from './parser';
-import { ParseError, Span } from './codes';
+import { CODE_SUMMARIES, ParseError, Span } from './codes';
 import { checkProject, GataSettings, defaultSettings } from './semantic';
 import { validateGconf } from './gconf';
+import { classify, TOKEN_TYPES, TOKEN_MODIFIERS } from './semtokens';
+import { symbolsOf, GataSymbol } from './symbols';
+import { completionsFor, hoverFor, CompletionEntry } from './language';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -27,6 +38,13 @@ connection.onInitialize((params: InitializeParams) => {
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
+      hoverProvider: true,
+      documentSymbolProvider: true,
+      completionProvider: { resolveProvider: false, triggerCharacters: ['@', '.'] },
+      semanticTokensProvider: {
+        legend: { tokenTypes: [...TOKEN_TYPES], tokenModifiers: [...TOKEN_MODIFIERS] },
+        full: true,
+      },
     },
   };
 });
@@ -56,9 +74,6 @@ async function refreshSettings(): Promise<void> {
   };
 }
 
-// Every diagnostic this server publishes for a file is grouped by source ('gata-syntax'
-// vs 'appa') so the two layers (Part 2's instant in-process parse, Part 3's on-save real
-// compiler run) never clobber each other; each keeps its own last-known set per URI.
 const syntaxDiagnostics = new Map<string, Diagnostic[]>();
 const semanticDiagnostics = new Map<string, Diagnostic[]>();
 
@@ -73,12 +88,7 @@ function spanToRange(doc: TextDocument, span: Span) {
   return { start, end };
 }
 
-/// Lexes and parses the document in-process (a faithful port of Appa's own Lexer/Parser)
-/// and publishes every syntax error it throws. This never shells out to anything, so it
-/// runs on every keystroke regardless of whether the file belongs to a real project.
 function validateSyntax(doc: TextDocument): void {
-  // A .gconf is XML, not Gata. Running the Gata parser over one would report a wall of
-  // nonsense, so each language gets its own validator and they never cross.
   if (doc.languageId === 'gconf') {
     let diags: Diagnostic[];
     try {
@@ -103,16 +113,18 @@ function validateSyntax(doc: TextDocument): void {
     new Parser(tokens).parseProgram();
   } catch (e) {
     if (e instanceof ParseError) {
+      const summary = CODE_SUMMARIES[e.code];
+      const lines = [e.message];
+      for (const hint of e.hints) lines.push(`help: ${hint}`);
+      if (summary) lines.push(`${e.code}: ${summary}`);
       diags.push({
         severity: DiagnosticSeverity.Error,
         range: spanToRange(doc, e.span),
-        message: e.hints.length > 0 ? `${e.message}\nhelp: ${e.hints.join('\nhelp: ')}` : e.message,
+        message: lines.join('\n'),
         code: e.code,
         source: 'gata-syntax',
       });
     } else {
-      // A bug in the ported parser itself (e.g. an unhandled token shape) shouldn't take
-      // the whole extension down - surface it as a diagnostic instead of throwing.
       diags.push({
         severity: DiagnosticSeverity.Warning,
         range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
@@ -125,9 +137,6 @@ function validateSyntax(doc: TextDocument): void {
   publish(doc.uri);
 }
 
-// Keyed by URI: one shared timer meant that editing file A and then file B within the
-// debounce window cancelled A's pending validation and never rescheduled it, leaving A
-// showing stale diagnostics until it was touched again.
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 documents.onDidChangeContent((change) => {
   const uri = change.document.uri;
@@ -139,7 +148,6 @@ documents.onDidChangeContent((change) => {
   }, 150));
 });
 
-// Closing a file must retract its diagnostics, and drop the state we were holding for it.
 documents.onDidClose((change) => {
   const uri = change.document.uri;
   const pending = debounceTimers.get(uri);
@@ -154,17 +162,15 @@ documents.onDidOpen((change) => {
   void runSemanticCheck(change.document);
 });
 
-// A crash in a handler must not take the server process down with it and silently kill
-// diagnostics for the whole session; log and keep serving.
+documents.onDidSave((change) => {
+  void runSemanticCheck(change.document);
+});
+
 process.on('uncaughtException', (e) => {
   connection.console.error(`gata: uncaught server error: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
 });
 process.on('unhandledRejection', (e) => {
   connection.console.error(`gata: unhandled rejection: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
-});
-
-documents.onDidSave((change) => {
-  void runSemanticCheck(change.document);
 });
 
 async function runSemanticCheck(doc: TextDocument): Promise<void> {
@@ -174,9 +180,7 @@ async function runSemanticCheck(doc: TextDocument): Promise<void> {
   if (!filePath) return;
   try {
     const byFile = await checkProject(filePath, settings);
-    if (!byFile) return; // no project found - nothing to merge in
-    // Clear stale semantic diagnostics for every previously-known file before applying
-    // the fresh batch, so a fixed error doesn't linger forever in an unsaved sibling file.
+    if (!byFile) return;
     for (const uri of [...semanticDiagnostics.keys()]) {
       if (!byFile.has(uri)) { semanticDiagnostics.delete(uri); publish(uri); }
     }
@@ -194,13 +198,104 @@ function uriToPath(uri: string): string | undefined {
     const u = new URL(uri);
     if (u.protocol !== 'file:') return undefined;
     let p = decodeURIComponent(u.pathname);
-    // file:///C:/foo -> pathname is /C:/foo on Windows; strip the leading slash.
     if (/^\/[a-zA-Z]:\//.test(p)) p = p.slice(1);
     return p;
   } catch {
     return undefined;
   }
 }
+
+connection.languages.semanticTokens.on((params: SemanticTokensParams): SemanticTokens => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || doc.languageId !== 'gata') return { data: [] };
+  try {
+    return { data: encode(doc, classify(doc.getText())) };
+  } catch (e) {
+    connection.console.warn(`gata: semantic tokens failed: ${e instanceof Error ? e.message : String(e)}`);
+    return { data: [] };
+  }
+});
+
+function encode(doc: TextDocument, tokens: ReturnType<typeof classify>): number[] {
+  const data: number[] = [];
+  let lastLine = 0;
+  let lastChar = 0;
+  for (const t of tokens) {
+    const pos = doc.positionAt(t.start);
+    const end = doc.positionAt(t.start + t.length);
+    if (end.line !== pos.line) continue;   // a multi-line token cannot be encoded this way
+    const deltaLine = pos.line - lastLine;
+    const deltaChar = deltaLine === 0 ? pos.character - lastChar : pos.character;
+    data.push(deltaLine, deltaChar, t.length, t.type, t.modifiers);
+    lastLine = pos.line;
+    lastChar = pos.character;
+  }
+  return data;
+}
+
+connection.onHover((params): Hover | null => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || doc.languageId !== 'gata') return null;
+  const markdown = hoverFor(doc.getText(), doc.offsetAt(params.position));
+  if (!markdown) return null;
+  return { contents: { kind: MarkupKind.Markdown, value: markdown } };
+});
+
+const SYMBOL_KINDS: Readonly<Record<GataSymbol['kind'], SymbolKind>> = {
+  class: SymbolKind.Class,
+  module: SymbolKind.Module,
+  enum: SymbolKind.Enum,
+  union: SymbolKind.Struct,
+  variant: SymbolKind.EnumMember,
+  enumMember: SymbolKind.EnumMember,
+  function: SymbolKind.Function,
+  method: SymbolKind.Method,
+  operator: SymbolKind.Operator,
+  realm: SymbolKind.Namespace,
+  process: SymbolKind.Namespace,
+  thread: SymbolKind.Namespace,
+  nativeType: SymbolKind.Struct,
+};
+
+connection.onDocumentSymbol((params): DocumentSymbol[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || doc.languageId !== 'gata') return [];
+  return symbolsOf(doc.getText()).map((sym) => {
+    const range = spanToRange(doc, { start: sym.start, length: sym.length });
+    return {
+      name: sym.name,
+      detail: sym.detail,
+      kind: SYMBOL_KINDS[sym.kind],
+      range,
+      selectionRange: range,
+    };
+  });
+});
+
+const COMPLETION_KINDS: Readonly<Record<CompletionEntry['kind'], CompletionItemKind>> = {
+  keyword: CompletionItemKind.Keyword,
+  type: CompletionItemKind.Keyword,
+  class: CompletionItemKind.Class,
+  enum: CompletionItemKind.Enum,
+  union: CompletionItemKind.Struct,
+  function: CompletionItemKind.Function,
+  variable: CompletionItemKind.Variable,
+  annotation: CompletionItemKind.Property,
+  namespace: CompletionItemKind.Module,
+};
+
+connection.onCompletion((params): CompletionItem[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || doc.languageId !== 'gata') return [];
+  return completionsFor(doc.getText()).map((entry) => ({
+    label: entry.label,
+    kind: COMPLETION_KINDS[entry.kind],
+    detail: entry.detail,
+    documentation: entry.documentation
+      ? { kind: MarkupKind.Markdown, value: entry.documentation }
+      : undefined,
+  }));
+});
 
 documents.listen(connection);
 connection.listen();
