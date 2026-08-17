@@ -197,6 +197,10 @@
         uapps();
         gata_kernelspace_main();
         QEMU_LOG("Reached kernel idle loop");
-        while(1) cpu_idle();
+
+        while (1) {
+            if (sched_active()) sched_sleep(60000);
+            else cpu_idle();
+        }
     }
 }
