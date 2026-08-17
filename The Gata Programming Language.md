@@ -3028,7 +3028,6 @@ Both tables are precomputed per prime at startup, which is why the inner loop ha
 | divisions | 1.9 x 10^10 | 78,492 |
 | per-prime state | 8 bytes | 41 bytes (2.5 MB, L3-resident) |
 
-That is 2.9x fewer crossings, each of them cheaper. Measured at 3.1 cycles per crossing on your 5900X, the previous version's 790 s should land somewhere near **250 s**, and the gap between that prediction and the real number is the interesting part.
 
 ### It checks itself before it starts
 
@@ -3543,26 +3542,43 @@ realm kernel {
 
 ### What it prints
 
+Real output, GatOS on a Ryzen 9 5900X, progress lines elided:
+
 ```
 sieve-xl: wheel-30 segmented sieve, one core
 limit 1000000000000, 127157 blocks of 7864320 integers
 base primes 78495, wheel 30, presieve 7/11/13
 self-test ok: 78498 primes below 1000000
-1% 1271/127157 blocks  454906730 primes  3s elapsed  248s left
 ...
-50% 63578/127157 blocks  19310362910 primes  126s elapsed  125s left
-...
-100% 127157/127157 blocks  37607912018 primes  251s elapsed  0s left
-
 primes below 1000000000000: 37607912018
 largest prime found: 999999999989
-elapsed: 251 s
-rate: 3984063 numbers/ms
+elapsed: 321 s
+rate: 3113373 numbers/ms
 RESULT: PASS (37607912018)
 powering off in 60 seconds
 ```
 
-Those timings are a prediction, not a measurement. The crossing count is exact and the 3.1 cycles per crossing is measured from your last run; everything else is arithmetic on top of that.
+The same source built hosted against libc, pinned to one core with `taskset`, run to the end:
+
+```
+sieve-xl (hosted): wheel-30 segmented sieve, one thread
+self-test ok: 78498 primes below 1000000
+limit 1000000000000, 127157 blocks of 7864320 integers
+base primes 78495, wheel 30, presieve 7/11/13
+2% 2599/127157 blocks  900722403 primes  5s elapsed  ~239s left
+...
+50% 64018/127157 blocks  19436490825 primes  145s elapsed  ~143s left
+...
+99% 126807/127157 blocks  37508413020 primes  300s elapsed  ~0s left
+
+primes below 1000000000000: 37607912018
+largest prime found: 999999999989
+elapsed: 300 s
+rate: 3323208 numbers/ms
+RESULT: PASS (37607912018)
+```
+
+Same count, same largest prime, both times.
 
 ### Where the language earns its place
 
