@@ -40,7 +40,7 @@ There is no build step to run before using it and nothing to configure. Open a `
 | **Hovers** | Every keyword, annotation and primitive carries an explanation of the rule behind it. Hovering a name declared in the file shows the declaration as written. |
 | **Outline and breadcrumbs** | Types, methods, operators, enum members, union variants, realms, processes and threads, each under what contains it. |
 | **Completion** | Keywords, primitives, annotations and everything the current file declares, each with the same documentation the hover shows. |
-| **A theme** | `Gata Gold`, optional. The extension does not need it: its colors are applied as an overlay on top of whatever theme you already use. |
+| **A theme** | `Gata Gold`, entirely optional and never selected for you. The extension does not need it: its colors land as foreground-only defaults on top of whatever theme you already use. |
 
 ## Installing
 
@@ -107,7 +107,11 @@ Two layers, in this order.
 
 **The language server** then classifies the same file properly and sends semantic tokens back. This is where guessing stops. `class Box[Element]` gives `Element` the generic-parameter color everywhere it appears, no matter how many letters it has. `Shape.Circle` is a union variant because `Shape` is a union that declares it. `Dir.North` is an enum member for the same reason. A call is a function, a member is a property, a `let` binds a variable, a parameter list binds parameters.
 
-The extension writes both sets of colors into your global settings as an overlay. Every TextMate scope it writes ends in `.gata` and every semantic rule is qualified with `:gata`, neither of which any other grammar produces, so nothing outside a Gata file can be affected. Re-running the extension replaces its own rules and leaves any you wrote alone.
+Both sets of colors ship as configuration *defaults*, contributed from `package.json`. Nothing is written to your `settings.json`, no color theme is selected for you, and your current theme keeps every one of its own colors: the extension only adds foreground rules whose TextMate scopes all end in `.gata` and whose semantic selectors are all qualified with `:gata`, neither of which any other grammar produces. Outside a `.g` file nothing changes at all.
+
+Because they are defaults, they are also the lowest-priority value there is. Put an `editor.tokenColorCustomizations` or `editor.semanticTokenColorCustomizations` of your own in `settings.json` and yours wins outright — which is the supported way to recolor a role you disagree with.
+
+Builds up to 2.0.0 did write the palette into global settings instead. Upgrading takes those entries back out once, so you get your `settings.json` back; anything in there that was not written by the extension is left alone.
 
 It also turns off VS Code's bracket pair colorization for `.g` files only, so parentheses and brackets keep the grammar's color instead of cycling by nesting depth.
 
@@ -195,7 +199,7 @@ An XSD ships in `schemas/gconf.xsd` for anyone who would rather point the Red Ha
 
 ```
 editors/vscode/
-├── extension.js                     Activation, the color overlay, the language client
+├── extension.js                     Activation, the language client, the 2.0.0 settings cleanup
 ├── package.json                     Contributions and settings
 ├── assets/                          The extension icon, the file icon, the wordmark
 ├── gata-config.json                 Comments, brackets, auto-closing pairs for .g
@@ -229,6 +233,12 @@ Both layers read one file at a time and neither is a type checker, so a few thin
 - The syntax layer reports the first error in a file, exactly as the compiler's parser does, rather than recovering and continuing.
 
 None of this affects the compiler. It is all cosmetic, or it is a diagnostic the real one repeats.
+
+## What Changed in v2.1.0
+
+- **The palette stopped touching your settings.** It ships as contributed defaults now, so no color theme is ever selected for you and `settings.json` is never written. Entries an older build left behind are removed once, on the first launch after the upgrade.
+- **Squiggles land on the right span.** `appa` reports the width of the offending span only as the caret row under the source snippet, which the client used to throw away, underlining a single character at the start of the statement instead. It reads the carets now, so `undefinedThing` is underlined, not the `l` of the `let` in front of it.
+- **A smaller file icon.** The mark was 13px wide in a 16px slot, wider than every icon around it in the explorer and flush against the left edge. Its canvas grew so the mark lands at 11.5px, with the same left bearing as the rest of the tree.
 
 ## What Changed in v2.0.0
 

@@ -15,6 +15,7 @@ const ANSI = /\x1b\[[0-9;]*m/g;
 const HEADER_WITH_SPAN = /^(.*?):(\d+):(\d+): (error|warning)\[(G\d+)\]: (.*)$/;
 const HEADER_NO_SPAN = /^(.*?): (error|warning)\[(G\d+)\]: (.*)$/;
 const HELP_LINE = /^\s*=\s*help:\s*(.*)$/;
+const CARET_LINE = /^[^|]*\|[ \t]*(\^+)\s*$/;
 
 function findGconf(startDir: string): string | undefined {
   let dir = startDir;
@@ -124,13 +125,23 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
   };
 
   let openDiag: Diagnostic | undefined;
+  let awaitingCarets = false;
 
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.replace(ANSI, '');
     const help = HELP_LINE.exec(line);
     if (help && openDiag) {
       openDiag.message += `\nhelp: ${help[1]}`;
+      awaitingCarets = false;
       continue;
+    }
+    if (awaitingCarets && openDiag) {
+      const carets = CARET_LINE.exec(line);
+      if (carets) {
+        openDiag.range.end.character = openDiag.range.start.character + carets[1].length;
+        awaitingCarets = false;
+        continue;
+      }
     }
     let m = HEADER_WITH_SPAN.exec(line);
     if (m) {
@@ -149,6 +160,7 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
       if (!byUri.has(uri)) byUri.set(uri, []);
       byUri.get(uri)!.push(diag);
       openDiag = diag;
+      awaitingCarets = true;
       continue;
     }
     m = HEADER_NO_SPAN.exec(line);
@@ -166,6 +178,7 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
       if (!byUri.has(uri)) byUri.set(uri, []);
       byUri.get(uri)!.push(diag);
       openDiag = diag;
+      awaitingCarets = false;
     }
   }
 
