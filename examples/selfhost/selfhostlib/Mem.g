@@ -75,7 +75,14 @@ private usize func _mem_diff_word(void* a, void* b, usize words) native {
         return words;
     }
     size_t w = 0;
+    #if defined(__GNUC__) || defined(__clang__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Warray-bounds"
+    #endif
     while (w < words && aw[w] == bw[w]) w++;
+    #if defined(__GNUC__) || defined(__clang__)
+    #pragma GCC diagnostic pop
+    #endif
     return w;
 }
 

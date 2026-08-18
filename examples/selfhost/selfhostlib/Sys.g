@@ -11,8 +11,6 @@ import "selfhostlib/String.g";
 @extern void func _env_exit(int code);
 @extern void func _env_shutdown();
 @extern void func _env_reboot();
-@extern int func _env_argc();
-@extern char* func _env_argv(int i);
 
 // Intrinsics for the above, so the compiler can inline them and avoid a call overhead
 @intrinsic(env_debug)
@@ -84,23 +82,5 @@ module Sys {
      */
     public void func Reboot() {
         _env_reboot();
-    }
-
-    /*
-     * Argc - The process's argument count (argv[0], the program name, included)
-     */
-    public int func Argc() {
-        return _env_argc();
-    }
-
-    /*
-     * Arg - Argument i, or an empty string if i is out of range
-     */
-    public String func Arg(int i) {
-        unsafe {
-            let char* a = _env_argv(i);
-            if (a == null) { return ""; }
-            return String.FromRaw(a);
-        }
     }
 }
