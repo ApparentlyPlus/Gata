@@ -33,8 +33,17 @@ module Console {
      * PrintLine - Write s followed by a newline
      */
     public void func PrintLine(String s) {
-        Console.Print(s);
-        Console.NewLine();
+        if (s == null || s.CStr() == null) { Console.NewLine(); return; }
+        let n = s.Length();
+        unsafe {
+            let buf = alloc((n + 1) as usize) as char*;
+            defer free(buf);
+            let src = s.CStr();
+            let i = 0;
+            while (i < n) { buf[i] = src[i]; i = i + 1; }
+            buf[n] = '\n';
+            _env_write(buf, n + 1);
+        }
     }
 
     public void func Clear() { _env_tty_clear(); }
