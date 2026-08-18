@@ -39,6 +39,28 @@ native {
 }
 
 /*
+ * retain/release/obj_init read and write the header through a `gata_obj*` obtained by
+ * reinterpreting a pointer whose declared type is some unrelated generated struct
+ * (every class's own gata_<Name>*). Under -fstrict-aliasing that is two different
+ * effective types touching the same bytes with no union or char* in sight, which the
+ * standard does not protect: a release-build GCC is free to assume a write through
+ * one doesn't have to be visible through the other, and can reorder or drop the
+ * refcount update entirely.
+ *
+ * gata_obj_ma is the same two fields with the `may_alias` type attribute, which turns
+ * that assumption off for exactly these three functions. It has to be a genuinely
+ * separate struct definition rather than a typedef of `gata_obj` - GCC silently
+ * ignores an attribute tacked onto a typedef of an already-complete struct type
+ * ("ignoring attributes applied to 'struct gata_obj' after definition"), which would
+ * leave the cast just as aliasing-unsafe as before with no warning that it hadn't
+ * taken effect. Nothing else needs it - everywhere else the header is reached through
+ * its real embedding class, never through a cast.
+ */
+native {
+    typedef struct { gata_Fn_void__void_p __dtor; size_t __rc; } __attribute__((__may_alias__)) gata_obj_ma;
+}
+
+/*
  * The two count operations, atomic or not.
  */
 native {
@@ -56,8 +78,8 @@ native {
  */
 @intrinsic(retain)
 void* func retain(void* p) native {
-    if (p && ((gata_obj*)p)->__rc != GATA_RC_STATIC)
-        GATA_RC_INC((gata_obj*)p);
+    if (p && ((gata_obj_ma*)p)->__rc != GATA_RC_STATIC)
+        GATA_RC_INC((gata_obj_ma*)p);
     return p;
 }
 
@@ -67,7 +89,7 @@ void* func retain(void* p) native {
 @intrinsic(release)
 void func release(void* p) native {
     if (!p) return;
-    gata_obj* o = (gata_obj*)p;
+    gata_obj_ma* o = (gata_obj_ma*)p;
     if (o->__rc == GATA_RC_STATIC) return;
     if (o->__rc == 0) return;
     if (GATA_RC_DEC(o) == 0) {
@@ -81,7 +103,7 @@ void func release(void* p) native {
  */
 @intrinsic(obj_init)
 void func obj_init(void* o, func(void*) -> void dtor) native {
-    gata_obj* x = (gata_obj*)o;
+    gata_obj_ma* x = (gata_obj_ma*)o;
     x->__rc = 1;
     x->__dtor = dtor;
 }
