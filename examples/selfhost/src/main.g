@@ -48,6 +48,10 @@ realm userspace {
         Console.PrintLine("gone=" + (!Dir.IsDir(dir) as String));
         Dir.DeleteFile(path);
 
+        Console.PrintLine("argc=" + (Sys.Argc() as String));
+        let int a = 0;
+        while (a < Sys.Argc()) { Console.PrintLine("argv[" + (a as String) + "]=" + Sys.Arg(a)); a = a + 1; }
+
         Sys.Exit(0);
     }
 }

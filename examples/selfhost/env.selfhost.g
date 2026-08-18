@@ -65,6 +65,14 @@
     #include <stdbool.h>
     #include <time.h>
 
+    int gata_argc = 0;
+    char** gata_argv = 0;
+
+    static inline int _env_argc(void) { return gata_argc; }
+    static inline char* _env_argv(int i) {
+        return (i >= 0 && i < gata_argc) ? gata_argv[i] : NULL;
+    }
+
     static inline void* _env_alloc(size_t n) { return malloc(n); }
     static inline void  _env_free(void* p)   { free(p); }
     static inline int _env_format(char* buf, size_t n, char* fmt, int kind, uint64_t bits) {

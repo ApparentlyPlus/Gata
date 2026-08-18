@@ -1912,6 +1912,9 @@ public void func Sleep(int ms)
 public void func Exit()
 public void func Shutdown()
 public void func Reboot()
+
+public int    func Argc()
+public String func Arg(int i)
 ```
 
 ### DESCRIPTION
@@ -1926,9 +1929,24 @@ public void func Reboot()
 
 `Process` and `Thread` are opaque handles with no Gata-visible fields, which the compiler resolves to a bare pointer. You do not construct them; the generated launcher does, from the `process` and `thread` declarations in your realms.
 
+**`Argc()`** — The process's argument count, `argv[0]` (the program name) included. Hosted only: a batch process has argv, a kernel does not, so a GatOS environment binds no `_env_argc`/`_env_argv` at all. Calling `Argc()`/`Arg()` from a `kernel` realm fails at `appa check`, before it ever reaches C, naming exactly what's missing:
+
+```
+<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argc'; add one
+<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argv'; add one
+```
+
+That's the same unbound-floor diagnostic every other capability an environment doesn't provide gets - not a special case, just what `Sys.g`'s ordinary `@extern` declarations plus `ValidateFloor` already do for a call with nothing behind it.
+
+**`Arg()`** — Argument *i*, or an empty string if *i* is out of range.
+
 ### RETURN VALUE
 
 `Sleep()` treats a negative *ms* as zero. `Exit()` is a no-op in the kernel realm, where there is no process to end.
+
+### NOTES
+
+`Argc()`/`Arg()` read two globals (`gata_argc`, `gata_argv`) that a Hosted build's generated `main(int argc, char** argv)` populates before anything else runs - unconditionally, for every Hosted build, not gated on whether the program actually reads them back. There is nothing to gate: `main()` with this shape is only ever emitted for a pure Hosted build in the first place, so a GatOS image never carries it regardless.
 
 ### SEE ALSO
 
