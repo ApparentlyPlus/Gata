@@ -8,6 +8,7 @@ import Runtime;
 import Char;
 import Mem;
 import List;
+import Span;
 import Int; // Int.ToString backs the `as String` operator below
 import Long; // Long.ToString backs `int64 as String`
 import Format; // Format.Double backs `v as String` for double
@@ -37,6 +38,19 @@ class String {
      * CStr - The raw NUL-terminated buffer, for platform calls that need a char*
      */
     public char* func CStr() { return self.data; }
+
+    /*
+     * AsSpan - A borrowed, non-allocating view over the whole string
+     */
+    public Span[char] func AsSpan() { return Span[char].View(self.data, self.Length()); }
+
+    /*
+     * SubSpan - Like Substring, but borrows instead of allocating: len characters starting at
+     * start, clamped exactly the way Substring clamps
+     */
+    public Span[char] func SubSpan(int start, int len) {
+        return Slice(self.AsSpan(), start, len);
+    }
 
     public char func CharAt(int i) {
         if (i < 0 || i >= self.Length()) { return '\0'; }
@@ -407,6 +421,15 @@ class String {
             r.data[len] = '\0';
         }
         return r;
+    }
+
+    /*
+     * FromSpan - Materialize a borrowed Span[char] into a new, owned String (copies the bytes)
+     */
+    public static String func FromSpan(Span[char] s) {
+        match (s) {
+            case View(ptr, len) { unsafe { return String.FromBuffer(ptr, len); } }
+        }
     }
 
     public operator String func as(char c) { return String.FromChar(c); }

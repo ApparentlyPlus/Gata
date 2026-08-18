@@ -8,6 +8,7 @@ import Runtime;
 import Optional;
 import String;
 import Mem;
+import Span;
 
 class List[T] {
     T*  data;
@@ -73,6 +74,20 @@ class List[T] {
      * Elements stay owned by the list (the Algorithms.g sorts walk it directly).
      */
     public T* func Raw() { return self.data; }
+
+    /*
+     * AsSpan - A borrowed, non-allocating view over the whole backing buffer (same borrow-only
+     * deal as Raw: elements stay owned by the list, nothing here retains anything)
+     */
+    public Span[T] func AsSpan() { return FromRaw(self.data, self.length); }
+
+    /*
+     * SubSpan - A borrowed view of [start, start+len), clamped to the list's own bounds
+     */
+    public Span[T] func SubSpan(int start, int len) {
+        return Slice(self.AsSpan(), start, len);
+    }
+
     public T func First() { return self.Get(0); }
     public T func Last() { return self.Get(self.Length() - 1); }
 
