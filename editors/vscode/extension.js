@@ -2,86 +2,85 @@ const vscode = require('vscode');
 const path = require('path');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 
-const TEXTMATE_RULES = [
-  { scope: 'comment.line.double-slash.gata', settings: { foreground: '#6b7280', fontStyle: 'italic' } },
-  { scope: 'comment.block.gata', settings: { foreground: '#6b7280', fontStyle: 'italic' } },
-  { scope: 'comment.block.native.gata', settings: { foreground: '#6f7178' } },
-  { scope: 'keyword.control.risk.gata', settings: { foreground: '#c2504a' } },
-  { scope: 'keyword.control.topology.gata', settings: { foreground: '#8f87b0' } },
-  { scope: 'entity.name.namespace.gata', settings: { foreground: '#b6aed4' } },
-  { scope: 'keyword.other.annotation.gata', settings: { foreground: '#8f87b0' } },
-  { scope: 'variable.parameter.annotation.gata', settings: { foreground: '#b6aed4' } },
-  { scope: 'keyword.declaration.gata', settings: { foreground: '#5b84c4' } },
-  { scope: 'storage.modifier.gata', settings: { foreground: '#6f9fd8' } },
-  { scope: 'keyword.control.flow.gata', settings: { foreground: '#8caa6e' } },
-  { scope: 'keyword.operator.word.gata', settings: { foreground: '#7fa8c9' } },
-  { scope: 'variable.language.self.gata', settings: { foreground: '#5b84c4', fontStyle: 'italic' } },
-  { scope: 'entity.name.function.gata', settings: { foreground: '#7fc4b8' } },
-  { scope: 'entity.name.function.operator.gata', settings: { foreground: '#7fc4b8' } },
-  { scope: 'variable.other.gata', settings: { foreground: '#cfcbc1' } },
-  { scope: 'variable.other.property.gata', settings: { foreground: '#cfcbc1' } },
-  { scope: 'variable.other.binding.gata', settings: { foreground: '#cfcbc1' } },
-  { scope: 'variable.parameter.gata', settings: { foreground: '#cfcbc1', fontStyle: 'italic' } },
-  { scope: 'variable.other.enummember.gata', settings: { foreground: '#e6cf94' } },
-  { scope: 'constant.language.boolean.gata', settings: { foreground: '#e6cf94', fontStyle: 'bold' } },
-  { scope: 'constant.language.null.gata', settings: { foreground: '#e6cf94', fontStyle: 'bold' } },
-  { scope: 'storage.type.primitive.gata', settings: { foreground: '#c9a227' } },
-  { scope: 'entity.name.type.class.gata', settings: { foreground: '#f0c66a' } },
-  { scope: 'entity.name.type.enum.gata', settings: { foreground: '#f0c66a' } },
-  { scope: 'entity.name.type.union.gata', settings: { foreground: '#f0c66a' } },
-  { scope: 'entity.name.type.gata', settings: { foreground: '#e0b34d' } },
-  { scope: 'entity.name.type.variant.gata', settings: { foreground: '#d9a05b' } },
-  { scope: 'entity.name.type.parameter.gata', settings: { foreground: '#a9854f', fontStyle: 'italic' } },
-  { scope: 'string.quoted.double.gata', settings: { foreground: '#d98a4f' } },
-  { scope: 'string.interpolated.gata', settings: { foreground: '#e0a468' } },
-  { scope: 'constant.character.gata', settings: { foreground: '#d98a4f' } },
-  { scope: 'punctuation.definition.string.begin.gata', settings: { foreground: '#b0713f' } },
-  { scope: 'punctuation.definition.string.end.gata', settings: { foreground: '#b0713f' } },
-  { scope: 'punctuation.section.interpolation.gata', settings: { foreground: '#b0713f' } },
-  { scope: 'constant.character.escape.gata', settings: { foreground: '#f0c08a' } },
-  { scope: 'constant.numeric.integer.gata', settings: { foreground: '#cf8c4a' } },
-  { scope: 'constant.numeric.integer.hexadecimal.gata', settings: { foreground: '#cf8c4a' } },
-  { scope: 'constant.numeric.float.gata', settings: { foreground: '#cf8c4a' } },
-  { scope: 'keyword.operator.gata', settings: { foreground: '#c5cad1' } },
-  { scope: 'keyword.operator.scope.gata', settings: { foreground: '#b6aed4' } },
-  { scope: 'punctuation.terminator.gata', settings: { foreground: '#c5cad1' } },
-  { scope: 'punctuation.brackets.gata', settings: { foreground: '#c9c34f' } },
-  { scope: 'punctuation.braces.gata', settings: { foreground: '#8a8f98' } },
-  { scope: 'punctuation.separator.gata', settings: { foreground: '#8a8f98' } },
-  { scope: 'punctuation.accessor.gata', settings: { foreground: '#8a8f98' } },
-  { scope: 'invalid.illegal.gata', settings: { foreground: '#ef5350' } },
-];
+const LEGACY_TEXTMATE_SCOPES = new Set([
+  'comment.line.double-slash.gata',
+  'comment.block.gata',
+  'comment.block.native.gata',
+  'keyword.control.risk.gata',
+  'keyword.control.topology.gata',
+  'entity.name.namespace.gata',
+  'keyword.other.annotation.gata',
+  'variable.parameter.annotation.gata',
+  'keyword.declaration.gata',
+  'storage.modifier.gata',
+  'keyword.control.flow.gata',
+  'keyword.operator.word.gata',
+  'variable.language.self.gata',
+  'entity.name.function.gata',
+  'entity.name.function.operator.gata',
+  'variable.other.gata',
+  'variable.other.property.gata',
+  'variable.other.binding.gata',
+  'variable.parameter.gata',
+  'variable.other.enummember.gata',
+  'constant.language.boolean.gata',
+  'constant.language.null.gata',
+  'storage.type.primitive.gata',
+  'entity.name.type.class.gata',
+  'entity.name.type.enum.gata',
+  'entity.name.type.union.gata',
+  'entity.name.type.gata',
+  'entity.name.type.variant.gata',
+  'entity.name.type.parameter.gata',
+  'string.quoted.double.gata',
+  'string.interpolated.gata',
+  'constant.character.gata',
+  'punctuation.definition.string.begin.gata',
+  'punctuation.definition.string.end.gata',
+  'punctuation.section.interpolation.gata',
+  'constant.character.escape.gata',
+  'constant.numeric.integer.gata',
+  'constant.numeric.integer.hexadecimal.gata',
+  'constant.numeric.float.gata',
+  'keyword.operator.gata',
+  'keyword.operator.scope.gata',
+  'punctuation.terminator.gata',
+  'punctuation.brackets.gata',
+  'punctuation.braces.gata',
+  'punctuation.separator.gata',
+  'punctuation.accessor.gata',
+  'invalid.illegal.gata',
+]);
 
-const SEMANTIC_RULES = {
-  'namespace:gata': '#b6aed4',
-  'class:gata': '#e0b34d',
-  'class.declaration:gata': { foreground: '#f0c66a' },
-  'enum:gata': '#e0b34d',
-  'enum.declaration:gata': { foreground: '#f0c66a' },
-  'struct:gata': '#e0b34d',
-  'struct.declaration:gata': { foreground: '#f0c66a' },
-  'enumMember:gata': '#e6cf94',
-  'type:gata': '#e0b34d',
-  'typeParameter:gata': { foreground: '#a9854f', fontStyle: 'italic' },
-  'function:gata': '#7fc4b8',
-  'method:gata': '#7fc4b8',
-  'parameter:gata': { foreground: '#cfcbc1', fontStyle: 'italic' },
-  'variable:gata': '#cfcbc1',
-  'property:gata': '#cfcbc1',
-  'macro:gata': '#8f87b0',
-};
+const LEGACY_SEMANTIC_SELECTORS = new Set([
+  'namespace:gata',
+  'class:gata',
+  'class.declaration:gata',
+  'enum:gata',
+  'enum.declaration:gata',
+  'struct:gata',
+  'struct.declaration:gata',
+  'enumMember:gata',
+  'type:gata',
+  'typeParameter:gata',
+  'function:gata',
+  'method:gata',
+  'parameter:gata',
+  'variable:gata',
+  'property:gata',
+  'macro:gata',
+]);
 
-const OWNED_TEXTMATE_SCOPES = new Set(TEXTMATE_RULES.map((rule) => rule.scope));
-const OWNED_SEMANTIC_SELECTORS = new Set(Object.keys(SEMANTIC_RULES));
+const OVERLAY_REMOVED_KEY = 'gata.legacyOverlayRemoved';
 
 /** @type {import('vscode-languageclient/node').LanguageClient | undefined} */
 let client;
 
 function activate(context) {
   try {
-    applyOverlay();
+    removeLegacyOverlay(context);
   } catch (err) {
-    console.error('gata: could not apply the color overlay:', err);
+    console.error('gata: could not clean up the legacy color overlay:', err);
   }
   try {
     client = startLanguageServer(context);
@@ -118,45 +117,59 @@ function startLanguageServer(context) {
   return languageClient;
 }
 
-function applyOverlay() {
+function removeLegacyOverlay(context) {
+  if (context.globalState.get(OVERLAY_REMOVED_KEY)) return;
   const config = vscode.workspace.getConfiguration();
-  writeTextMateOverlay(config);
-  writeSemanticOverlay(config);
+
+  const pruned = [
+    pruneTextMate(config),
+    pruneSemantic(config),
+  ];
+
+  Promise.all(pruned).then(
+    () => context.globalState.update(OVERLAY_REMOVED_KEY, true),
+    (err) => console.error('gata: could not remove the legacy color overlay:', err)
+  );
 }
 
-function writeTextMateOverlay(config) {
-  const current = config.get('editor.tokenColorCustomizations') || {};
-  const existing = Array.isArray(current.textMateRules) ? current.textMateRules : [];
-  const kept = existing.filter((rule) => {
+function pruneTextMate(config) {
+  const inspected = config.inspect('editor.tokenColorCustomizations');
+  const current = inspected && inspected.globalValue;
+  if (!current || !Array.isArray(current.textMateRules)) return Promise.resolve();
+
+  const kept = current.textMateRules.filter((rule) => {
     const scope = Array.isArray(rule.scope) ? rule.scope[0] : rule.scope;
-    return !OWNED_TEXTMATE_SCOPES.has(scope);
+    return !LEGACY_TEXTMATE_SCOPES.has(scope);
   });
+  if (kept.length === current.textMateRules.length) return Promise.resolve();
 
-  const next = [...kept, ...TEXTMATE_RULES];
-  if (JSON.stringify(existing) === JSON.stringify(next)) return;
-
-  update(config, 'editor.tokenColorCustomizations', { ...current, textMateRules: next });
+  const next = { ...current };
+  if (kept.length) next.textMateRules = kept;
+  else delete next.textMateRules;
+  return write(config, 'editor.tokenColorCustomizations', next);
 }
 
-function writeSemanticOverlay(config) {
-  const current = config.get('editor.semanticTokenColorCustomizations') || {};
-  const existing = current.rules && typeof current.rules === 'object' ? current.rules : {};
+function pruneSemantic(config) {
+  const inspected = config.inspect('editor.semanticTokenColorCustomizations');
+  const current = inspected && inspected.globalValue;
+  if (!current || !current.rules || typeof current.rules !== 'object') return Promise.resolve();
 
   const kept = {};
-  for (const [selector, value] of Object.entries(existing))
-    if (!OWNED_SEMANTIC_SELECTORS.has(selector)) kept[selector] = value;
+  for (const [selector, value] of Object.entries(current.rules))
+    if (!LEGACY_SEMANTIC_SELECTORS.has(selector)) kept[selector] = value;
+  if (Object.keys(kept).length === Object.keys(current.rules).length) return Promise.resolve();
 
-  const next = { ...kept, ...SEMANTIC_RULES };
-  if (JSON.stringify(existing) === JSON.stringify(next)) return;
+  const next = { ...current };
+  if (Object.keys(kept).length) next.rules = kept;
+  else delete next.rules;
+  if (Object.keys(next).length === 1 && next.enabled === true) delete next.enabled;
 
-  update(config, 'editor.semanticTokenColorCustomizations', { ...current, rules: next });
+  return write(config, 'editor.semanticTokenColorCustomizations', next);
 }
 
-function update(config, key, value) {
-  Promise.resolve(config.update(key, value, vscode.ConfigurationTarget.Global)).then(
-    undefined,
-    (err) => console.error(`gata: could not write ${key}:`, err)
-  );
+function write(config, key, value) {
+  const empty = Object.keys(value).length === 0;
+  return Promise.resolve(config.update(key, empty ? undefined : value, vscode.ConfigurationTarget.Global));
 }
 
 function deactivate() {

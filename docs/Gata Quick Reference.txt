@@ -1,0 +1,2609 @@
+THE GATA LANGUAGE - COMPLETE FEATURE REFERENCE
+Derived from the Appa compiler source (src/Syntax, src/Semantics, src/Lowering,
+src/Backend, src/CLI) and from libgata. Not from the book.
+Every feature the language supports, with a minimal example for each.
+
+HOW TO READ THIS FILE
+  - Fragments are shown bare. A *complete* program needs an entry point and a
+    realm (see 1.3), so mentally wrap fragments in one when in doubt.
+  - "ERROR Gnnn" marks something the compiler rejects, with its diagnostic code.
+    The full code table is section 24.
+  - Where the compiler's behaviour is surprising or non-obvious, there is a
+    "WHY" note.
+  - Every example in this file, and the full program in section 26, was checked
+    against the compiler itself.
+
+CONTENTS
+   1. The compilation model            14. Operator overloading
+   2. Lexical structure                15. Conversions and casts
+   3. Types                            16. Error handling (throws/try/catch)
+   4. Top-level declarations           17. Scoping, shadowing, scope storage
+   5. Modifiers and visibility         18. Files, imports, cross-file names
+   6. Classes                          19. Annotations
+   7. Modules                          20. Native interop summary
+   8. Enums                            21. Memory model
+   9. Unions                           22. Dead code, renaming, output layout
+  10. Generics                         23. Things Gata does not have
+  11. Realms, processes, threads       24. Diagnostic code table
+  12. Statements                       25. Grammar summary
+  13. Expressions                      26. A program using most of the language
+
+
+1. THE COMPILATION MODEL
+
+1.1 FILES AND THE TOOLCHAIN
+
+Source files use the extension .g. The compiler is `appa`. It transpiles Gata to
+C and drives a bundled cross-toolchain.
+
+  appa install               install toolchain, libgata, envs, template
+                             (--with-path / --no-path answer the PATH question;
+                              asking for PATH re-runs elevated, or stops)
+  appa update                same, refreshing (also self-updates the appa binary)
+  appa new <name>            scaffold a project
+  appa check [flags]         front end only (parse/resolve/diagnose)
+  appa build [flags]         full build, up to the ISO
+  appa run [flags]           build the ISO, then boot it in QEMU
+  appa clean [dir]           remove transpilation/, build/, artifacts/
+  appa --version / --help
+
+  Build flags: --env <file>  --entry <file>  --stdlib <dir>  --werror
+               --pure-transpile  --emit-sourcemap
+  Run flags:   the build flags, plus  headless  timeout=<30s|5m|1h>
+
+A GatOS build leaves two artifacts in build/, both named after <ProjectName>:
+`<name>.iso`, the bootable image `appa run` launches, and `<name>.bin`, the bare
+linked kernel for a debugger, an objdump, or a bootloader of your own. A Hosted
+build writes C into transpilation/ instead and stops there.
+
+A project is configured by exactly one `<name>.gconf` XML file in the project
+root:
+
+  <appa>
+    <ProjectName>demo</ProjectName>
+    <TargetBackend>GatOS</TargetBackend>          <!-- GatOS | Hosted -->
+    <BuildMode>Debug</BuildMode>                  <!-- Debug | Release -->
+    <OutputType>Framebuffer</OutputType>          <!-- Framebuffer | Serial -->
+    <KeyboardSupport>Default</KeyboardSupport>    <!-- Default | External | Hotplug -->
+    <CapabilityDiscovery>On</CapabilityDiscovery> <!-- On | Off -->
+  </appa>
+
+gcc flags, the entry file (src/main.g by convention) and the environment file
+(discovered by the @environment marker) are NOT configured here - appa owns them.
+
+1.2 PASS ORDER (why some errors appear where they do)
+
+  Lexer -> Parser -> ScopeBinder (realm/process scopes, @shadows, qualifiers)
+        -> Monomorphizer (stamp generic classes/unions)
+        -> SymbolCollector (declaration registry, @intrinsic/@builtin binding)
+        -> TypeResolver (types, overloads, all semantic diagnostics)
+        -> Desugar (interpolation, switch, match)
+        -> CapabilityScan -> DCE -> Densifier -> Ownership (ARC, throws, defer)
+        -> Emitter -> C -> gcc
+
+The front end re-runs up to 6 rounds when resolution discovers new generic
+instantiations.
+
+1.3 THE MINIMAL COMPLETE PROGRAM
+
+GatOS target (default) - boots into the kernel realm:
+
+  realm kernel {
+      entry func Main() { }
+  }
+
+Hosted target - one userspace realm, one entry func, no kernel realm:
+
+  realm userspace {
+      entry func Main() { }
+  }
+
+Rules (Pipeline.ValidateStructure). What is counted is the ENTRY POINT, never the
+blocks: a realm is one namespace however many blocks open it, in however many
+files (see 17.4).
+  GatOS : a `realm kernel` holding exactly one `entry func` in the build - none
+          is ERROR G002, more than one is ERROR G059. `entry func` inside
+          `realm userspace` is ERROR G068; userspace entry points there are
+          process threads. Any number of blocks of either realm.
+  Hosted: no `realm kernel` at all (ERROR G055), a `realm userspace` holding
+          exactly one `entry func` - none is ERROR G058, more than one is
+          ERROR G059. Any number of blocks.
+  Any `entry func` outside a realm block is ERROR G068.
+
+
+2. LEXICAL STRUCTURE
+
+2.1 COMMENTS
+
+  // line comment
+  /* block comment, does NOT nest */
+
+An unterminated block comment is ERROR G046.
+
+2.2 IDENTIFIERS
+
+ASCII only: [A-Za-z_][A-Za-z0-9_]*. No Unicode identifiers.
+
+  let int _count = 0;
+  let int camelCase = 1;
+
+2.3 KEYWORDS (reserved everywhere)
+
+  import realm kernel userspace foreground background
+  class enum module union func static public private entry throws operator as
+  fields ref return if else while for in switch case break continue
+  debug panic try catch new let null unsafe throw sizeof default defer match
+  assign
+  bool int char float double short void
+  int64 uint uint64 ushort byte sbyte usize uintptr
+  true false
+
+NOTE: `kernel` and `userspace` are hard keywords, so they can never be used as
+identifiers - this is what lets `kernel.Foo` be recognised as a scope qualifier
+before anything is resolved.
+
+  class userspace { }            // ERROR G044
+  let int kernel = 1;            // ERROR G044
+
+2.4 CONTEXTUAL KEYWORDS (ordinary identifiers elsewhere)
+
+  process, thread, native
+
+  realm kernel { entry func Main() {
+      let int process = 2;       // fine
+      let int thread  = 3;       // fine
+      let int native  = 4;       // fine
+  } }
+
+They only take on meaning in declaration position:
+  `process Name {` / `Name : foreground`, `thread Name {`,
+  `native {`, `native type Name {`.
+
+`self` is not a keyword either - it is resolved as a name inside an instance
+method, and is an error anywhere else (ERROR G005).
+
+2.5 INTEGER LITERALS
+
+Decimal or hex, with optional u/U and l/L suffix characters in any run.
+
+  let a = 42;                    // int
+  let b = 0xFF;                  // int, emitted verbatim as 0xFF
+  let c = 100L;                  // int64
+  let d = 4096u;                 // uint
+  let e = 0xFFULL;               // uint64
+  let f = 5000000000;            // int64 (too big for int)
+  let g = 18446744073709551615;  // uint64 (too big for int64)
+
+Inferred type table (TypeResolver.TryParseIntLit):
+  u + l          -> uint64
+  l              -> int64
+  u              -> uint if it fits, else uint64
+  no suffix      -> int if <= int.MaxValue, else int64, else uint64
+
+  let x = 0x;                    // ERROR G049 (no digits)
+  let y = 12abc;                 // ERROR G049 (bad suffix)
+  let z = 99999999999999999999999; // ERROR G004 (does not fit in 64 bits)
+
+2.6 FLOAT LITERALS
+
+  let a = 1.0;        // double
+  let b = 2.5f;       // float  (f/F suffix)
+  let c = 1.0e+300;   // double
+  let d = 2e10f;      // float
+  let e = 1.5e-10;    // double
+
+A '.' only starts a fraction when a digit follows: `1.f` is a member access on
+the literal `1`, not a float.
+
+2.7 CHAR LITERALS
+
+Exactly one character or one escape, in single quotes. The value is its
+codepoint.
+
+  let c  = 'a';
+  let nl = '\n';
+  let q  = '\'';
+  let z  = '\0';
+
+Recognised escapes, everywhere (char, string, interpolation): \n \t \r \0 \' \\ \"
+Anything else is ERROR G047.
+
+  let bad = '\q';     // ERROR G047
+  let e2  = '';       // ERROR G046 (empty)
+  let e3  = 'ab';     // ERROR G046 (more than one character)
+
+2.8 STRING LITERALS
+
+Double-quoted, no embedded raw newline.
+
+  let s = "hello";
+  let t = "tab\there";
+
+A string literal is a `String` value - specifically ONE static String object per
+literal, never freed, never mutated (which is why String has no `[]=` operator).
+
+  let s = "line
+  break";             // ERROR G046 (unterminated: raw newline)
+
+2.9 INTERPOLATED STRINGS
+
+  let int n = 7;
+  let String s = $"n = {n}, twice = {n * 2}";
+
+  - `{{` and `}}` are literal braces.
+  - Any expression may appear between braces; each part is converted to String
+    (see 15.4).
+  - Nesting braces inside the expression works: $"{ f({1}) }" style nesting is
+    tracked by depth.
+  - Unterminated `{` or unterminated string is ERROR G046.
+
+WARNING G080: a *plain* string containing `{name}` where `name` is a variable in
+scope warns that a `$` was probably dropped.
+
+  let int count = 1;
+  let String s = "count = {count}";   // WARNING G080
+
+2.10 OPERATOR AND PUNCTUATION TOKENS
+
+  + - * / %      & | ^ ~ << >>       ! && ||
+  == != < > <= >=
+  = += -= *= /= %= &= |= ^= <<= >>=
+  ++ --  ->  ::  ?  :  .  ,  ;  ( ) { } [ ]  @  $
+
+`::` is always the root-scope qualifier, so a ternary needs a space before a
+`::`-qualified branch:
+
+  let int z = c ? 1 : ::Step();     // ok
+  let int z = c ? 1 :::Step();      // ERROR G044, with a hint naming the cause
+
+
+3. TYPES
+
+3.1 PRIMITIVES
+
+  Gata      C type       signed?    promotion rank
+  --------  -----------  ---------  --------------
+  bool      bool         (integral) 1
+  char      char         signed     2
+  sbyte     int8_t       signed     2
+  byte      uint8_t      unsigned   2
+  short     int16_t      signed     3
+  ushort    uint16_t     unsigned   3
+  int       int32_t      signed     4
+  uint      uint32_t     unsigned   4
+  int64     int64_t      signed     5
+  uint64    uint64_t     unsigned   5
+  usize     size_t       unsigned   5
+  uintptr   uintptr_t    unsigned   5
+  float     float        -          6
+  double    double       -          7
+  void      void         -          0
+
+Widths are fixed by the C typedefs above - `int` is always 32-bit.
+
+  let byte  b = (7 as byte);
+  let usize n = (9 as usize);
+  let uintptr p = (0 as uintptr);
+
+`void` is not a value type: `let void v;` is ERROR G007; a `void` parameter is
+ERROR G007. It is legal only as a return type and as a pointee (`void*`).
+
+3.2 POINTERS
+
+  T*, T**, void*, ...
+
+  unsafe {
+      let int n = 1;
+      let int* p = &n;
+      let int  v = *p;
+  }
+
+Every pointer operation (address-of, deref, indexing, arithmetic, ++/--, casts)
+requires an `unsafe` block: ERROR G033 otherwise. Any depth of `void*` is a legal
+type without further checking.
+
+3.3 FIXED-SIZE ARRAYS
+
+Size comes BEFORE the element type.
+
+  let [3]int  a = [1, 2, 3];
+  let [3]char seq = [(27 as char), '[', 'H'];
+  let [2][4]int grid;             // 2 arrays of 4 ints
+
+  - The size must be a positive integer literal (ERROR G007 otherwise).
+  - An array is a VALUE type (it is emitted as a boxed struct), so assigning one
+    copies it.
+  - `for x in a` works (see 12.6).
+  - WARNING G094: a fixed array of a managed element type never releases its
+    elements - use List[T] for owned elements.
+
+3.4 FUNCTION POINTERS
+
+  func(T1, T2) -> R
+
+  int func Add(int a, int b) { return a + b; }
+
+  realm kernel { entry func Main() {
+      let func(int, int) -> int f = Add;
+      let int n = f(2, 3);
+  } }
+
+  - `func() -> void` is the zero-parameter void form.
+  - A pointer *to* a function type is not supported: `func(int) -> int*` parses
+    as returning `int*`; writing `(func(int)->int)*` is ERROR G053.
+  - You cannot take the address of: an overloaded function (ERROR G015), an
+    `entry func` (ERROR G030), a `throws` function (ERROR G004), or a function
+    with a `ref` parameter (ERROR G004 - the type cannot express `ref`).
+  - Indirect calls do not accept `ref` arguments (ERROR G037).
+
+3.5 CLASS, ENUM, UNION TYPES
+
+Declared types (see sections 6-9). A class-typed variable is a reference
+(pointer) participating in reference counting; enums are integer-backed; unions
+are value types (tag + payload struct).
+
+3.6 BUILTIN TYPES
+
+Four names the compiler knows *by role*, bound from libgata declarations via
+`@builtin`, never hardcoded:
+
+  String          - the text type; literals have this type
+  StringBuilder   - used by interpolation lowering when it has 3+ parts
+  Process         - opaque handle, resolves to void*
+  Thread          - opaque handle, resolves to void*
+
+  @builtin(String)
+  class String { char* data; usize length; /* ... */ }
+
+  @builtin(Process)
+  native type Process { void* _opaque; }
+
+3.7 TYPE INFERENCE
+
+  let x = 5;                 // int, from the initializer
+  let s = "hi";              // String
+  let a = [1, 2];            // [2]int
+  let c = new List[int]();   // List[int]
+
+Cannot infer:
+  let x;                     // ERROR G054 (no type, no initializer)
+  let x = null;              // ERROR G054 (null has no type)
+  let x = SomeVoidFunc();    // ERROR G054 (initializer has no value)
+
+3.8 WRITING A TYPE: FULL GRAMMAR
+
+  type      := arraypfx* ( funcptr | name genericargs? ) '*'*
+  arraypfx  := '[' intlit ']'
+  funcptr   := 'func' '(' type,* ')' '->' type
+  name      := scopequal? ident ( '.' ident )*  |  primitive
+  scopequal := '::' | 'kernel' '.' | 'userspace' '.'
+
+Examples of every slot:
+
+  let ::Cargo c;                     // root-scope qualified
+  let kernel.Cargo k;                // realm-scope qualified
+  let Map[String, List[int]] m;      // nested generic args
+  let func(int) -> Optional[int] f;  // generic inside a func type
+  let [4]Point pts;                  // array of class refs
+
+
+4. TOP-LEVEL DECLARATIONS
+
+What may appear at the top level of a file:
+
+  import ...;
+  @environment
+  native { ... }
+  native type Name { ... }
+  @extern <ret> func Name(params);
+  enum / union / class / module declarations
+  free function declarations
+  realm kernel { ... } / realm userspace { ... }
+
+What may NOT appear at the top level:
+  process (ERROR G001 - must be inside a realm)
+  thread  (ERROR G001 - must be inside a process)
+  let     (there are no global variables; see 11.4)
+
+4.1 IMPORTS
+
+  import String;            // library module: <stdlib>/String.g
+  import "src/util.g";      // path form, resolved RELATIVE TO THE PROJECT ROOT
+                            // (not relative to the importing file).
+                            // The project root is the .gconf's directory, or -
+                            // in the loose `--env/--entry` mode - the entry
+                            // file's directory.
+
+  - Imports must be at the top level of a file (ERROR G001 inside a realm,
+    process, or class).
+  - Import graph cycles are fine (each file is parsed once).
+  - Annotations on an import are ERROR G048.
+
+Visibility: a file may name the top-level declarations of itself plus the
+TRANSITIVE closure of its imports. A type that exists but is not reachable gives
+"not in scope; import its module" (ERROR G007 / G006).
+
+  // a.g
+  class Widget { public int n; }
+  // b.g  (does not import a.g)
+  void func F() { let Widget w = new Widget(); }   // ERROR G007
+
+4.2 @environment
+
+Marks exactly one file in the build as the environment definition (the file
+providing the platform floor as C preambles).
+
+  @environment
+
+  @preamble(kernel)
+  native { /* ... C floor for the kernel ... */ }
+
+  - Exactly one per build: zero is ERROR G000, more than one is ERROR G000.
+  - Only at the top level of a file; inside a realm block it is ERROR G064.
+
+4.3 NATIVE BLOCKS
+
+  native {
+      #include <stdio.h>
+      static int helper(void) { return 1; }
+  }
+
+Raw C, captured verbatim, brace-balanced with awareness of C comments and string
+/ char literals (so `char* s = "}"` does not end the block).
+
+Placement decides the translation unit: at the top level it is shared; inside
+`realm kernel` it goes to the kernel TU; inside `realm userspace` to the user TU.
+
+With @preamble it is emitted before everything else (see 20.2).
+
+4.4 NATIVE TYPES
+
+Registers a C struct as a named Gata type. The body is emitted verbatim as the
+struct body.
+
+  native type obj {
+      gata_Fn_void__void_p __dtor;
+      size_t               __rc;
+  }
+
+  - The type name becomes usable in type positions.
+  - Its fields are NOT visible to Gata (it is an "opaque struct"): member access
+    and method lookup on it are silently allowed rather than errors, because the
+    compiler cannot see inside.
+  - May carry @intrinsic and @builtin.
+
+4.5 @extern
+
+Declares that a C function exists so Gata can call it, with no Gata body.
+
+  @extern void func _env_yield();
+  @extern int  func _env_read(char* buf, int max);
+  @extern void* func _env_alloc(usize n);
+
+  - Terminated by `;`, never a body.
+  - Declaring the same name twice with a different signature is ERROR G003.
+  - Declaring a name both as `@extern` and as a normal function is ERROR G003.
+
+IMPORTANT KNOWN GAP: appa does NOT emit a C prototype for an @extern
+declaration. You must ensure a real C declaration reaches the translation unit -
+normally via `native { #include <...> }` or a `native { }` definition. Without
+one the C compiler reports an implicit declaration. This is deliberate: Gata
+cannot currently spell a truthful C signature for many C functions (e.g. those
+taking `const` pointers), so the compiler does not pretend to. The extern
+boundary is unchecked in both directions.
+
+  native { void lib_probe(void); }     // the declaration C needs
+  @extern void func lib_probe();       // the Gata-side view
+
+
+5. MODIFIERS AND VISIBILITY
+
+5.1 THE MODIFIERS
+
+  static    - on a class method only
+  public    - on a class/module member only
+  private   - on a class/module member, or on a free function
+
+They may combine (`public static`), never repeat (ERROR G065), and `public
+private` together is ERROR G065.
+
+5.2 WHERE EACH IS LEGAL
+
+  free function : `private` only. `public` is ERROR G053 (a free function is
+                  already visible to importers). `static` is ERROR G040.
+  class field   : `public` only. `static` is ERROR G053 - THERE ARE NO STATIC
+                  FIELDS, and therefore no global mutable state except process
+                  variables (11.4).
+  class method  : `public`, `private`, `static`.
+  operator      : `public` / `private`. `static` is ERROR G053 (an `as` operator
+                  is implicitly static).
+  module member : `public` / `private`; every member is static implicitly.
+  type decls    : none. `public class C` / `private enum E` are ERROR G053.
+  thread entry  : none (ERROR G053).
+
+5.3 DEFAULTS
+
+  - Class fields, methods and operators are PRIVATE unless marked `public`.
+    Accessing one from outside its declaring class is ERROR G035.
+  - Free functions and top-level types are visible to every file that imports
+    their file. `private` makes a free function file-local.
+
+  class Counter {
+      int n;                                 // private field
+      public int func Value() { return self.n; }
+      void func Bump() { self.n = self.n + 1; }   // private method
+  }
+
+  realm kernel { entry func Main() {
+      let Counter c = new Counter();
+      let int v = c.Value();     // ok
+      let int q = c.n;           // ERROR G035
+      c.Bump();                  // ERROR G035
+  } }
+
+5.4 PRIVATE FREE FUNCTIONS
+
+  private int func helper(int x) { return x + 1; }
+
+  - Visible only inside the declaring file.
+  - Two different files may each declare `private func helper` with no clash;
+    they are mangled per file.
+  - Declaring the same private signature twice in one file is ERROR G003.
+
+Within a file, a private free function takes priority over an imported public one
+of the same name - and taking the name away is WARNING G057, since every call in
+this file then means something different from the same call in the file next to
+it:
+
+  // lib.g
+  int func Clamp(int v) { return v; }
+
+  // main.g
+  import "lib.g";
+  private int func Clamp(int v) { return v + 1; }    // WARNING G057
+
+The imported one stays reachable through its file (18.3), and `@shadows` says the
+displacement was deliberate and silences the warning:
+
+  import "lib.g";
+  @shadows
+  private int func Clamp(int v) { return v + 1; }
+
+  realm kernel { entry func Main() {
+      let int a = Clamp(1);        // this file's
+      let int b = lib.Clamp(1);    // the imported one
+  } }
+
+The warning is reported once, at the declaration, however many overloads share
+the name and however many calls there are. `@shadows` on a private function that
+displaces nothing is ERROR G088, exactly as it is anywhere else.
+
+
+6. CLASSES
+
+6.1 DECLARATION
+
+  class Point {
+      public int x;
+      public int y;
+
+      func _init(int x, int y) { self.x = x; self.y = y; }
+
+      public int func SumOf() { return self.x + self.y; }
+  }
+
+  realm kernel { entry func Main() {
+      let Point p = new Point(3, 4);
+      let int s = p.SumOf();
+  } }
+
+  - Classes cannot nest (ERROR G051).
+  - A class may be declared at the top level, inside a realm, or inside a
+    process.
+  - Duplicate type name in the build is ERROR G003.
+
+6.2 FIELDS
+
+Three spellings:
+
+  class C {
+      int a;              // declared type, no initializer
+      int b = 5;          // declared type + initializer
+      c = 7;              // type INFERRED - literals only
+  }
+
+Field type inference (TypeResolver.InferFieldTypeSpec) accepts only: an integer,
+float, bool, char or string literal, optionally under a unary minus. Anything
+else is ERROR G054.
+
+  class D {
+      e = Compute();      // ERROR G054 - give it an explicit type
+  }
+
+  - Field initializers run as part of construction, before `_init`.
+  - A field and a method may not share a name (ERROR G003).
+  - Fields are private by default; see 5.3.
+  - A field may hold a function pointer, and calling it dispatches indirectly:
+
+      class Handler {
+          public func(int) -> int cb;
+      }
+      // h.cb(3) is an indirect call
+
+6.3 LIFECYCLE: _init AND _deinit
+
+The only two methods the compiler itself calls.
+
+  class Buffer {
+      char* data;
+
+      func _init() { self.data = null; }          // constructor
+      func _deinit() {                            // destructor
+          unsafe { if (self.data != null) { free(self.data); } }
+      }
+  }
+
+  - `_init` runs after allocation and header stamping; its parameters are the
+    arguments to `new`.
+  - `_deinit` runs when the reference count reaches zero, before the object's
+    managed fields are released and the memory is freed.
+  - Neither may be `throws` (ERROR G067) - generated code cannot receive a
+    Result.
+  - Both are ordinary private methods otherwise.
+
+6.4 METHODS
+
+  class Vec {
+      int n;
+      public int func Length() { return self.n; }
+      public static Vec func Zero() { return new Vec(); }
+      public void func Scale(ref int factor) { }
+      public int func At(int i) { return i; }
+      public int func At(int i, int j) { return i + j; }   // overload
+  }
+
+  - Signature: [annotations] [modifiers] [entry] [throws] [returntype] func Name
+    [generics] (params) body
+  - Omitting the return type means `void`, and is written by putting `func`
+    directly before the name: `void func F()` and `func F()` are the same.
+  - `entry` is never valid on a class method (ERROR G053).
+  - Overloads differ by parameter types (SignatureKey); two methods with the
+    same name and parameter types are ERROR G003.
+  - `self` is available in instance methods only (ERROR G005 in a static one).
+  - Calling an instance method without a receiver from inside the class is an
+    error that names the fix: use `self.M(...)`.
+  - Calling a static method on an instance is ERROR G014; calling an instance
+    method on the class name is ERROR G013.
+
+6.5 fields { } BLOCK
+
+Raw C struct members injected verbatim into the emitted struct.
+
+  class Ring {
+      fields {
+          volatile uint32_t head;
+          volatile uint32_t tail;
+      }
+      public int func Depth() native {
+          return (int)(self->head - self->tail);
+      }
+  }
+
+A class with a `fields { }` block is treated as having opaque fields: unknown
+member accesses on it are not reported, since the compiler cannot see the C.
+
+6.6 NATIVE METHOD BODIES
+
+Put `native { ... }` where the body would go. The body is raw C, with `self`
+available as the C pointer.
+
+  class Bits {
+      public int func Popcount(uint v) native {
+          int n = 0;
+          while (v) { n += v & 1u; v >>= 1; }
+          return n;
+      }
+  }
+
+Free functions take the same form:
+
+  private void func blit(void* d, void* s, usize n) native { /* C */ }
+
+WHY: a native body is invisible to flow analysis. A `return` inside a
+`native { }` *statement* embedded in a Gata body does not satisfy the
+missing-return check (ERROR G027 with a hint saying so) - make the whole body
+native instead.
+
+
+7. MODULES
+
+A module is a class whose members are all implicitly static, and which may hold
+no state.
+
+  module MathUtil {
+      public static int func Square(int x) { return x * x; }
+      public int func Cube(int x) { return x * x * x; }   // `static` is implied
+  }
+
+  realm kernel { entry func Main() {
+      let int a = MathUtil.Square(4);
+  } }
+
+  - A module may not declare a field: ERROR G063 ("modules are stateless; use a
+    class for instance state").
+  - `new ModuleName()` is ERROR G011.
+  - Modules cannot be generic (no `[T]` on the declaration), but their methods
+    can be (see 10.3).
+  - A module type cannot be stored: a union variant field of module type is
+    ERROR G004.
+
+
+8. ENUMS
+
+  enum Dir { North, East, South, West }
+
+  enum Flags {
+      None  = 0,
+      Read  = 1,
+      Write = 1 << 1,
+      Both  = Read | Write,
+      Next                       // 4 - continues from the previous value
+  }
+
+  realm kernel { entry func Main() {
+      let Dir d = Dir.North;
+      let int n = d as int;          // enum -> int
+      let Dir e = 2 as Dir;          // int  -> enum
+  } }
+
+  - Members with no value take the previous value + 1, starting at 0.
+  - An explicit value is a CONSTANT INTEGER EXPRESSION: integer and char
+    literals, earlier members of the same enum (bare or `Enum.Member`), and
+    + - * / % << >> & | ^ ~ and unary -. Anything else is ERROR G004.
+  - Values are read as `int`; a value outside int range is ERROR G004.
+  - An enum with no members is ERROR G053.
+  - A duplicate member name is ERROR G003.
+  - A trailing comma after the last member is ERROR G052.
+  - `==` and `!=` work between same-typed enums. Relational operators do NOT:
+    `a < b` on enums is ERROR G004 with a hint to compare `a as int < b as int`.
+  - Enums are valid `switch` scrutinees and valid array indices.
+
+
+9. UNIONS (TAGGED UNIONS)
+
+9.1 DECLARATION AND CONSTRUCTION
+
+  union Shape {
+      Circle(double r),
+      Rect(double w, double h),
+      Point                            // no payload
+  }
+
+  realm kernel { entry func Main() {
+      let Shape a = Shape.Circle(1.0);
+      let Shape b = Shape.Rect(2.0, 3.0);
+      let Shape c = Shape.Point();     // still a CALL, even with no payload
+  } }
+
+  - Variants are comma-separated; a trailing comma is ERROR G052.
+  - Payload fields are named and typed like parameters.
+  - `Shape.Point` without parentheses is ERROR G005, with a hint to call it.
+  - A union with no variants is ERROR G053.
+  - Duplicate variant or duplicate field name is ERROR G003.
+  - `new Shape(...)` is ERROR G011 - a union value is one of its variants.
+
+9.2 CONTAINMENT RESTRICTION
+
+A union cannot contain itself by value, directly or through another union
+(the two would have no size): ERROR G004.
+
+  union Tree { Leaf, Node(Tree left, Tree right) }   // ERROR G004
+  union Ok   { Leaf, Node(List[Ok] kids) }           // fine - held indirectly
+
+9.3 MATCHING
+
+  void func Describe(Shape s) {
+      match (s) {
+          case Circle(r)   { }
+          case Rect(w, h)  { }
+          case Point       { }
+      }
+  }
+
+  - Bindings are positional and bind the variant's fields as locals in the arm.
+  - The binding count must equal the field count (ERROR G008).
+  - A `match` with no `default` must cover EVERY variant: ERROR G039 otherwise,
+    naming the missing ones.
+  - A `default` when all variants are already covered is WARNING G077 ("remove
+    the 'default' so a new variant becomes a compile error").
+  - Matching the same variant twice is ERROR G003; an unknown variant name is
+    ERROR G005.
+  - `match` on a non-union is ERROR G004.
+  - `match` lowers to a scrutinee temp plus a tag-comparison if/else chain.
+
+9.4 EQUALITY
+
+`==` / `!=` between two values of the SAME union type are compiled to a
+generated structural comparison (tag, then the live variant's fields).
+
+  if (a == b) { }
+
+Two warnings guard what that comparison actually means:
+  G083 - a payload field is a class with no `==` operator, so it is compared by
+         identity, not by value.
+  G084 - a payload field is float/double, so it is compared with floating-point
+         `==`.
+Both are reported at the comparison site, so a union nobody compares stays
+silent.
+
+9.5 GENERIC UNIONS
+
+  union Optional[V] { Some(V v), None }
+
+  let Optional[int] m = Optional.Some(3);
+  let Optional[int] n = Optional[int].None();   // explicit instantiation
+
+When the base name alone is used, the compiler picks the instantiation from
+(1) the argument types when exactly one instance accepts them, else (2) the
+expected type of the enclosing `let`/`return`. If neither settles it, ERROR G054
+lists the candidates.
+
+
+10. GENERICS
+
+Gata generics are MONOMORPHIZED: one concrete copy per distinct type argument
+set. There is no boxing and no runtime type information. There are no
+constraints/bounds - a template is checked only through its stamped instances,
+and errors inside one are reported once with a hint naming the instantiation.
+
+10.1 GENERIC CLASSES
+
+  class Box[T] {
+      public T v;
+      func _init() { }
+      public T func Get() { return self.v; }
+  }
+
+  realm kernel { entry func Main() {
+      let Box[int] b = new Box[int]();
+      let int v = b.Get();
+  } }
+
+  - Parameters are plain names: `class Foo[Bar[Baz]]` is ERROR G053.
+  - A duplicate type parameter is ERROR G003.
+  - Multiple parameters: `class Map[K, V] { }`
+  - The instance name is mangled (`Box_int`); diagnostics always show `Box[int]`.
+
+10.2 GENERIC UNIONS
+
+  union Result[T, E] { Ok(T v), Err(E e) }
+
+Same rules as generic classes.
+
+10.3 GENERIC FUNCTIONS AND METHODS
+
+Type arguments are INFERRED from the argument types. Explicit type arguments at
+a call site are ERROR G097.
+
+  T func Max[T](T a, T b) { if (a > b) { return a; } return b; }
+
+  class Bag {
+      public T func Echo[T](T x) { return x; }
+  }
+
+  realm kernel { entry func Main() {
+      let int   a = Max(3, 7);
+      let int64 b = Max((10 as int64), (4 as int64));
+      let int   c = Max[int](3, 7);       // ERROR G097
+  } }
+
+Inference (Monomorphizer.UnifyParam) binds a parameter `T` from:
+  - a bare parameter of type T,
+  - a `T*` parameter against a pointer argument,
+  - a `Box[T]` parameter against a `Box[int]` argument (structural, one level).
+A type parameter that appears in no parameter position cannot be inferred:
+ERROR G007. Two arguments binding the same parameter to different types is
+ERROR G009.
+
+10.4 LIMITS
+
+  - Type arguments nest at most 6 deep for on-demand instantiation.
+  - A generic type named only over a generic FUNCTION's own type parameter may
+    fail to be created; the diagnostic (ERROR G007) says so and suggests naming
+    the instantiation once outside any generic function:
+      let Box[int] _seed = ...;
+  - A generic type and a non-generic type of the same name are two meanings of
+    one name and collide (ERROR G003).
+
+
+11. REALMS, PROCESSES, THREADS (TOPOLOGY)
+
+11.1 REALMS
+
+There are exactly two realms, `kernel` and `userspace`. A realm block groups
+declarations that belong to one execution environment, deciding the translation
+unit they are emitted into.
+
+  realm kernel {
+      entry func Main() { }
+  }
+
+  realm userspace {
+      int func Helper() { return 1; }
+  }
+
+  - `realm` blocks cannot nest (ERROR G051).
+  - `kernel` without `realm` is ERROR G085 with a hint.
+  - Any other word after `realm` is ERROR G086 (with a "did you mean" hint).
+  - Several blocks may open the SAME realm, in the same file or across files -
+    they are one namespace (see 17.4). This holds for both realms equally, so a
+    kernel of any size splits across files without its declarations having to
+    leave the realm scope:
+
+      // mm.g
+      realm kernel { class PageTable { public int root; } }
+      // sched.g
+      realm kernel { int func Tick() { return 1; } }
+      // main.g
+      realm kernel { entry func Main() { let PageTable p = new PageTable(); } }
+
+    What stays singular is the entry point, not the block (see 1.3).
+  - A realm block may hold: classes, modules, enums, unions, native blocks,
+    native types, @extern declarations, free functions, processes,
+    @environment. Not: imports (ERROR G001), other realms, threads, `let`.
+
+11.2 PROCESSES
+
+A process is pure deployment topology: a named bag of threads plus its own
+declarations and state. It holds no logic itself.
+
+  realm userspace {
+      foreground process App {
+          thread Ui     { entry func Run() { } }
+          thread Worker { entry func Run() { } }
+      }
+      background process Daemon {
+          thread Loop { entry func Run() { } }
+      }
+  }
+
+The mode is written before `process`, and is mandatory:
+
+  foreground process App { ... }
+  background process Daemon { ... }
+  process App { ... }               // ERROR G060 - the mode is mandatory
+  process App : foreground { ... }  // ERROR G060 - the mode goes before 'process'
+
+`:` belongs to the conditional and to nothing else in a declaration, so a
+declaration reaching for it is told where the mode goes rather than left to a
+syntax error about the `{` that never arrived.
+
+  - `foreground` owns TTY focus; `background` is hidden (the generated launcher
+    calls the environment's proc-hide binding).
+  - A process must be inside a realm (ERROR G001 at the top level).
+  - Processes cannot nest (ERROR G051).
+  - A process with no threads is ERROR G091 - it would be created and do
+    nothing.
+  - Two processes of the same name in one realm is ERROR G003.
+  - A process body may hold: threads, classes, modules, enums, unions, native
+    blocks, native types, @extern, free functions, and `let` process variables.
+    Not: imports, realms, other processes.
+  - An `entry func` inside a process body (rather than in a thread) is
+    ERROR G068 - a process's entry points are its threads.
+
+11.3 THREADS
+
+  thread Worker {
+      entry func Run() { }
+  }
+
+  - A thread body contains exactly one `entry func` and nothing else
+    (ERROR G053).
+  - The entry function's NAME is documentation only; the thread is what names
+    it.
+  - A thread entry takes no parameters (ERROR G061) and has no return type
+    (ERROR G053) - the runtime dispatches it through a fixed void(*)(void*) ABI.
+  - A thread entry cannot be `throws` (ERROR G061) - there is no caller to
+    receive the error; handle failure inside it.
+  - Access/storage modifiers on a thread entry are ERROR G053.
+  - `foreground`/`background` on a thread is ERROR G043 - only a process has a
+    mode.
+  - Threads cannot nest (ERROR G051), and a thread outside a process is
+    ERROR G001.
+
+11.4 PROCESS VARIABLES (the only global state)
+
+A `let` written directly in a process body is one variable shared by every
+thread of that process, initialised once before any thread is spawned, living
+as long as the process.
+
+  realm userspace {
+      foreground process App {
+          let int ticks = 0;
+          let String name = "app";
+
+          thread A { entry func Run() { ticks = ticks + 1; } }
+          thread B { entry func Run() { let int t = ticks; } }
+      }
+  }
+
+  - The type is mandatory (unlike a local `let`) and so is the initializer:
+    ERROR G100 otherwise, because every thread shares the one variable and there
+    is no later point where a first assignment is known to have run first.
+  - Initialisers run in DECLARATION ORDER. Reading a variable declared below is
+    ERROR G098; reading the variable inside its own initializer is ERROR G098
+    with a message saying exactly that.
+  - A `catch` handler on a process variable's initializer cannot `return`
+    (ERROR G100) - it must end with `assign`.
+  - A local shadowing a process variable is WARNING G070.
+  - Duplicate process variable names are ERROR G003.
+  - Annotations on a process variable are rejected.
+
+
+12. STATEMENTS
+
+12.1 BLOCKS AND DECLARATIONS
+
+  {
+      let int a = 1;         // typed
+      let b = 2;             // inferred
+      let int c;             // declared, unassigned
+      c = 3;                 // must be assigned before it is read (ERROR G098)
+  }
+
+A bare block introduces a scope. An empty block body of a control statement is
+WARNING G025.
+
+Declaration rules:
+  - Redeclaring a name in the SAME scope is ERROR G003.
+  - A local with the same name as a parameter of the same function is ERROR G003
+    (they share one C scope). Shadowing inside a NESTED block is fine.
+  - A local shadowing an outer-scope local is WARNING G070.
+  - A name beginning with two underscores is reserved for the compiler's own
+    temporaries: ERROR G003. This applies to every name printed as written - a
+    local, a parameter, a `for..in` variable, a match binding. One underscore is
+    yours, and is the convention for a binding deliberately left unread (see
+    WARNING G023).
+
+      let int _scratch = 1;      // fine
+      let int __scratch = 1;     // ERROR G003 - '__' is the compiler's
+
+12.2 ASSIGNMENT
+
+Assignment is a STATEMENT, never an expression.
+
+  x = 1;
+  x += 2;  x -= 2;  x *= 2;  x /= 2;  x %= 2;
+  x &= 3;  x |= 3;  x ^= 3;  x <<= 1;  x >>= 1;
+
+  if (x = 1) { }             // ERROR G045, hint "did you mean '=='?"
+  while (x = f()) { }        // ERROR G045
+  let int y = (x = 1);       // ERROR G045
+
+  - The target must be an lvalue: a variable, field, element, or deref
+    (ERROR G034).
+  - Compound bitwise/shift forms require integer operands; the arithmetic forms
+    require numeric operands (ERROR G004).
+  - `a op= b` on a class uses that class's `op` operator overload if one exists.
+  - Assigning a value to itself is WARNING G071.
+
+12.3 IF / ELSE
+
+  if (cond) { }
+  if (cond) { } else { }
+  if (a) { } else if (b) { } else { }
+  if (cond) doIt();           // a single statement is allowed, no braces
+
+  - The condition must be `bool` (ERROR G029) - there is no truthiness.
+  - A constant condition is WARNING G073; comparing a value with itself is
+    WARNING G078.
+
+12.4 WHILE
+
+  while (i < 10) { i++; }
+  while (true) { break; }     // a constant condition is allowed here
+
+12.5 C-STYLE FOR
+
+  for (let int i = 0; i < 10; i++) { }
+  for (i = 0; i < 5; i++) { }             // init may be a plain assignment
+  for (let int j = 0; j < 100; j += 7) { }
+  for (let int k = 64; k > 0; k >>= 1) { }
+  for (;;) { break; }                      // all three clauses are optional
+
+  - The body must be a BLOCK.
+  - The step clause may not declare a variable (ERROR G044).
+  - Everything declared in the init is scoped to the loop.
+
+12.6 FOR-IN
+
+No parentheses; the body must be a block.
+
+  let [3]int a = [1, 2, 3];
+  for x in a { }
+
+  let List[int] xs = new List[int]();
+  for v in xs { }
+
+Iterable means one of:
+  - a fixed array, or
+  - any class with BOTH `Length()` returning an integer and `Get(int)`.
+Anything else is ERROR G032, and the message names which half is missing.
+
+  for x in 5 { }              // ERROR G032
+  for (x in xs) { }           // ERROR G044 - a for..in loop takes no parens
+
+12.7 SWITCH
+
+  switch (n) {
+      case 0, 1 { }           // several labels per arm
+      case 2    { }
+      default   { }
+  }
+
+  - The scrutinee must be an integer or an enum (ERROR G004).
+  - Each arm is a BLOCK. THERE IS NO FALLTHROUGH and no `break` is needed;
+    `break`/`continue` inside a case target the ENCLOSING LOOP.
+  - Labels must be comparable to the scrutinee (ERROR G004).
+  - A duplicate constant label is ERROR G003; two `default` arms are ERROR G003.
+  - `default` is optional; there is no exhaustiveness requirement (unlike
+    `match`).
+
+12.8 MATCH
+
+See 9.3.
+
+12.9 BREAK / CONTINUE
+
+  while (true) { if (done) { break; } continue; }
+
+Outside a loop: ERROR G022. Inside a `defer` body: ERROR G062.
+
+12.10 RETURN
+
+  void func A() { return; }
+  int  func B() { return 1; }
+
+  - A non-void function must return on EVERY path: ERROR G027.
+  - `return;` in a non-void function is ERROR G010; `return v;` in a void one is
+    ERROR G010.
+  - A trailing `return;` at the end of a void function is WARNING G026.
+  - `return` inside a `defer` body is ERROR G062.
+
+12.11 UNSAFE
+
+  unsafe {
+      let int n = 1;
+      let int* p = &n;
+      *p = 2;
+      let int* q = p + 1;
+  }
+
+Everything that requires `unsafe`:
+  - address-of `&x`
+  - dereference `*p`
+  - pointer indexing `p[i]`
+  - pointer arithmetic `p + n`, `p - n`
+  - `p++` / `p--` on a pointer
+  - pointer casts
+  - calling the retain/release ARC intrinsics
+All are ERROR G033 outside one.
+
+`unsafe` also SUPPRESSES automatic reference counting for the whole block: no
+owning stores, no consume-retains, no scope releases. WARNING G093 fires when an
+unsafe block allocates a managed value that it therefore never releases.
+
+12.12 DEFER
+
+The deferred statement runs on EVERY exit from the enclosing block, in LIFO
+order with other defers.
+
+  unsafe {
+      let buf = alloc(1024 as usize) as char*;
+      defer free(buf);
+      // ... every path from here frees buf
+  }
+
+  defer { a(); b(); }         // a block works too
+
+Restrictions (all ERROR G062, or G072 for the declaration case):
+  - a defer body cannot `return`, `break`, `continue`, `throw`, or `assign`
+  - a defer body cannot itself `defer`
+  - a defer body cannot be a declaration (`defer let x = 1;` - it would go out
+    of scope immediately)
+
+12.13 NATIVE STATEMENT
+
+  realm kernel { entry func Main() {
+      native { /* raw C, inline here */ }
+  } }
+
+12.14 DEBUG AND PANIC
+
+  debug "reached here";      // routed to the environment's debug binding
+  panic "unrecoverable";     // routed to the environment's panic binding
+
+  - Both take a STRING LITERAL only (ERROR G044 otherwise).
+  - Both are ERROR G036 in a Release build ("remove it before shipping").
+  - `panic` is only valid in the kernel realm: ERROR G031 elsewhere.
+
+12.15 EXPRESSION STATEMENTS
+
+  DoWork();
+  x++;
+
+WARNING G072 fires when an expression statement computes a pure value and throws
+it away - including the classic `a == b;` where `a = b;` was meant, which gets a
+tailored hint.
+
+
+13. EXPRESSIONS
+
+13.1 PRECEDENCE, LOWEST TO HIGHEST
+
+   1. ?:            ternary conditional (right-associative)
+   2. ||
+   3. &&
+   4. |
+   5. ^
+   6. &
+   7. == !=
+   8. < > <= >=
+   9. << >>
+  10. + -
+  11. * / %
+  12. as           (cast - binds TIGHTER than *, LOOSER than unary)
+  13. ! ~ - & *    prefix unary
+  14. ++ -- . [] () catch     postfix
+  15. primary
+
+Consequences worth knowing:
+
+  x * y as T       ==  x * (y as T)
+  -x as T          ==  (-x) as T
+  a < b == c < d   ==  (a < b) == (c < d)
+  a & b == c       ==  a & (b == c)        // C's precedence, same trap
+
+Assignment does not appear: it is a statement (12.2).
+
+13.2 PRIMARY EXPRESSIONS
+
+  42  0xFF  1.5  2.5f  'a'  "text"  $"x={x}"  true  false  null
+  identifier
+  self
+  (expr)
+  [1, 2, 3]                  array literal
+  new T(...)                 object construction
+  sizeof(T)
+  default(T)
+  ::Name  kernel.Name  userspace.Name      scope-qualified names
+
+13.3 CALLS
+
+  f(1, 2);                   free function
+  obj.Method(1);             instance method
+  Class.Static(1);           static method
+  Module.Func(1);            module function
+  self.Helper();             sibling instance method
+  fp(1);                     through a function-pointer variable or field
+  File.func(1);              file-namespaced (see 18.3)
+  Union.Variant(1);          union construction
+
+13.4 MEMBER ACCESS AND INDEXING
+
+  p.x                        field load
+  Color.Red                  enum constant
+  a[0]                       fixed array / pointer element
+  list[0]                    class `[]` operator
+  list[0] = v;               class `[]=` operator
+
+Indexing a non-collection is ERROR G012; a non-integer index is ERROR G004.
+Assigning through `[]` when only a getter exists is ERROR G038, and using a
+compound assignment when only a setter exists is ERROR G038 too.
+
+13.5 NEW
+
+  let Point p = new Point(3, 4);
+  let List[int] a = new List[int]();
+
+Collection initializer - either brace or bracket form; requires a one-argument
+`Add` method on the class (ERROR G006 / G008 otherwise):
+
+  let List[int] xs = new List[int]() { 1, 2, 3 };
+  let List[int] ys = new List[int]() [ 1, 2, 3 ];
+  let List[int] zs = new List[int] { 1, 2, 3 };     // ctor args are optional
+
+Errors: `new` on a module (G011), a primitive (G011, "use let"), a union (G011,
+"construct a variant"), an enum (G011, "name a member"), or a class not in scope
+(G011, "import its module").
+
+13.6 ARRAY LITERALS
+
+  let [3]int a = [1, 2, 3];
+  let b = [1, 2];                 // infers [2]int
+
+  - The element type is the first element's type; the rest must be assignable to
+    it (ERROR G004).
+  - `[]` alone has no element type: ERROR G004.
+
+13.7 TERNARY
+
+  let int m = a > b ? a : b;
+  let int band = a < 2 ? 0 : (a < 5 ? 1 : 2);
+
+  - The condition must be `bool` (ERROR G029).
+  - The two arms are unified: identical types, numeric widening to the wider
+    type, String/String, pointer covariance (with `void*`), or `null` against a
+    class/pointer arm. Anything else is ERROR G004.
+  - `null : null` cannot be unified (ERROR G004).
+
+13.8 UNARY
+
+  !flag                      bool only          (ERROR G004 otherwise)
+  -n                         numeric, non-bool  (ERROR G004 otherwise)
+  ~bits                      integer            (ERROR G004 otherwise)
+  &x                         address-of, unsafe only
+  *p                         dereference, unsafe only
+
+`!`, `~` and unary `-` dispatch to a class's zero-parameter operator overload
+when one exists.
+
+13.9 POSTFIX ++ / --
+
+  i++;  i--;
+
+  - The operand must be an lvalue (ERROR G034) and numeric (ERROR G004), or a
+    pointer inside `unsafe`.
+  - On a class, they dispatch to the zero-parameter `++`/`--` overload, which
+    mutates in place and must return `void`.
+  - There is no PREFIX ++/--: `++i` does not parse as an increment.
+
+13.10 sizeof AND default
+
+  let usize n = sizeof(int);
+  let usize m = sizeof(Point);
+  let int    z = default(int);        // 0
+  let Point  p = default(Point);      // null
+  let T      t = default(T);          // zero value of a generic parameter
+
+`sizeof` always yields `usize`; `default(T)` yields T.
+
+13.11 ref ARGUMENTS
+
+`ref` is only legal as a direct call argument, matching a `ref` parameter.
+
+  void func Bump(ref int n) { n = n + 1; }
+
+  realm kernel { entry func Main() {
+      let int x = 1;
+      Bump(ref x);            // ok
+      Bump(x);                // ERROR G037 - parameter is 'ref'
+  } }
+
+  void func Take(int n) { }
+  Take(ref x);                // ERROR G037 - parameter is not 'ref'
+
+Rules:
+  - The argument must be an lvalue (ERROR G034).
+  - Its type must match EXACTLY - no conversion applies (ERROR G037).
+  - `ref` cannot be used in an indirect call through a function pointer
+    (ERROR G037), and a function with a `ref` parameter cannot be used as a
+    function-pointer value (ERROR G004).
+
+
+14. OPERATOR OVERLOADING
+
+14.1 SYNTAX
+
+  [modifiers] operator [ReturnType] func <symbol> ( params ) { body }
+
+The return type goes AFTER `operator` and before `func`; omitting it takes the
+default for that operator.
+
+  class Money {
+      int cents;
+      public operator Money func +(Money other) {
+          let Money m = new Money();
+          m.cents = self.cents + other.cents;
+          return m;
+      }
+      public operator bool func ==(Money other) { return self.cents == other.cents; }
+  }
+
+14.2 THE COMPLETE OVERLOADABLE SET
+
+  Symbol   Params  Default return   Constraint
+  -------  ------  ---------------  ------------------------------------------
+  +        1       the class        -
+  -        1       the class        binary subtraction
+  -        0       the class        unary negation (same symbol, arity decides)
+  *        1       the class        -
+  /        1       the class        -
+  %        1       the class        -
+  <        1       bool             must return bool
+  >        1       bool             must return bool
+  <=       1       bool             must return bool
+  >=       1       bool             must return bool
+  ==       1       bool             must return bool
+  !=       1       bool             must return bool
+  &        1       the class        -
+  |        1       the class        -
+  ^        1       the class        -
+  <<       1       the class        -
+  >>       1       the class        -
+  !        0       bool             must return bool
+  ~        0       the class        -
+  ++       0       void             must return void (mutates in place)
+  --       0       void             must return void (mutates in place)
+  []       1       the class        index getter
+  []=      2       void             index setter
+  as       1       the class        conversion INTO this class; implicitly static
+
+NOT overloadable: &&  ||  =  and every compound assignment (`+=` composes from
+`+` automatically), and the ternary.
+
+14.3 EXAMPLES OF EVERY SHAPE
+
+  class Vec {
+      public int x;
+
+      public operator Vec  func +(Vec o)   { return self; }   // binary
+      public operator Vec  func %(Vec o)   { return self; }
+      public operator Vec  func -()        { return self; }   // unary negate
+      public operator Vec  func -(Vec o)   { return self; }   // binary subtract
+      public operator bool func !()        { return self.x == 0; }
+      public operator Vec  func ~()        { return self; }
+      public operator func ++()            { self.x = self.x + 1; }
+      public operator func --()            { self.x = self.x - 1; }
+      public operator bool func ==(Vec o)  { return self.x == o.x; }
+      public operator bool func <(Vec o)   { return self.x < o.x; }
+      public operator bool func >(Vec o)   { return self.x > o.x; }
+      public operator int  func [](int i)  { return self.x; }
+      public operator func []=(int i, int v) { self.x = v; }
+      public operator Vec  func <<(int n)  { return self; }
+  }
+
+Conversion operators are declared on the DESTINATION class and take the source
+as their one parameter. They are static (no `self`), and are invoked by `as`:
+
+  @builtin(String)
+  class String {
+      public operator String func as(char c)   { return String.FromChar(c); }
+      public operator String func as(int n)    { return Int.ToString(n); }
+      public operator String func as(bool b)   { return b ? "true" : "false"; }
+      public operator String func as(char* r)  { return String.FromRaw(r); }
+  }
+
+  let String s = 42 as String;
+
+`as` is the ONLY operator that may be declared more than once on a class (one
+per source type). A second `as` from the same source type is ERROR G003. The
+return type, if written, must be the declaring class (ERROR G004). Conversions
+never chain.
+
+14.4 SEMANTICS AND DIAGNOSTICS
+
+  - Dispatch is on the LEFT operand's class. `int + Money` does not find
+    `Money.+`.
+  - Wrong parameter count is ERROR G008; a wrong return type for a comparison,
+    `!`, `++`/`--`, or `as` is ERROR G004.
+  - Operators obey the private-by-default rule: an unmarked operator used from
+    outside its class is ERROR G035.
+  - `==` and `!=` DERIVE from each other: declaring only `==` makes `a != b`
+    compile as `!(a == b)`, and vice versa.
+  - Relational operators do NOT derive from each other. Declaring `<` but not
+    `>` is WARNING G092, and using the missing one is ERROR G004 with a hint
+    naming the ones the class does have.
+  - `a += b` uses the class's `+` operator; `xs[i] += v` reads through `[]`,
+    applies the element type's operator, and writes through `[]=`.
+  - `+` where either side is a String is always String concatenation, with the
+    other side stringified (see 15.4) - a user `+` overload does not intercept
+    it.
+  - Comparison against the `null` LITERAL compiles to a pointer check and never
+    reaches a user `==` operator (which is what lets String's own `==` null-check
+    its operand without recursing).
+
+
+15. CONVERSIONS AND CASTS
+
+15.1 IMPLICIT CONVERSIONS
+
+Permitted without a cast:
+  - numeric WIDENING only, by promotion rank (int -> int64, short -> int64,
+    int -> double). Narrowing is ERROR G004.
+  - an integer LITERAL into any numeric type it fits in
+  - a float literal into a float type
+  - `null` into any class reference, pointer or function pointer
+  - String -> String
+  - pointer covariance where the pointees match or either side is `void*`
+
+  let int64 a = 5;           // int literal widens
+  let int64 b = someInt;     // widening
+  let int   c = someInt64;   // ERROR G004 - narrowing needs a cast
+  let byte  d = 300;         // ERROR G004 - literal does not fit (says what
+                             //   would be stored, and by how much it overflows)
+
+15.2 EXPLICIT CASTS
+
+Two forms, and they are not interchangeable:
+
+  (PrimType) expr            C-style, PRIMITIVES ONLY
+  expr as Type               the general form
+
+  let int   n = (int) 3.9;
+  let int   m = someInt64 as int;
+  let char  c = 65 as char;
+  let int   e = Dir.North as int;      // enum -> int
+  let Dir   d = 1 as Dir;              // int  -> enum
+  let String s = 42 as String;         // user-defined `as` operator
+
+WHY TWO FORMS: `(UserType) x` would be ambiguous with a parenthesised
+expression, so the parenthesised form is restricted to primitive keywords.
+
+What a cast may do:
+  - numeric <-> numeric
+  - enum <-> integer
+  - pointer <-> pointer, pointer <-> integer  (unsafe only, ERROR G033)
+  - null -> class reference or pointer
+  - anything -> a class that declares a matching `as` operator
+Everything else is ERROR G028. In particular you cannot cast a class OUT to a
+primitive; the diagnostic suggests writing a named conversion method instead.
+Casting to or from `void` is ERROR G028.
+
+WARNING G074: a cast to the type the value already has is redundant - except on
+a literal, where it is accepted as deliberate width pinning
+(`0x00100000 as int`).
+
+15.3 ARITHMETIC RESULT TYPES
+
+A binary arithmetic/bitwise expression resolves at the HIGHER-RANKED operand
+type, and both operands are converted into it before the operation - so the
+arithmetic happens in the domain Gata says, not the one C's promotions would
+pick. Shifts resolve at the LEFT operand's type.
+
+Guards:
+  - ERROR G095: mixing a signed and an unsigned operand under `/ % < > <= >=`
+    when the conversion would change the answer. The hint tells you which side
+    to cast.
+  - ERROR G079: a literal shift count outside [0, width).
+  - ERROR G075: integer division or remainder by a literal zero.
+  - ERROR G004: `%` on floating-point operands (use the library's Math function).
+  - WARNING G096: `'a' + 'b'` adds codepoints; it does not join text.
+
+15.4 CONVERSION TO String
+
+Where a String is required (interpolation parts, and the non-String side of a
+`+` with a String), the compiler converts using, in order:
+  float/double  -> @intrinsic(stringify_float)
+  char          -> @intrinsic(stringify_char)
+  bool          -> String's `as(bool)` operator
+  unsigned      -> @intrinsic(stringify_uint)
+  other numeric -> @intrinsic(stringify_int) / stringify_long (>32 bits)
+  class         -> its `String func ToString()` method
+
+A class with no `ToString` used in an interpolation is ERROR G004 naming exactly
+that signature.
+
+  class P { public int n; public String func ToString() { return "P"; } }
+  let String s = $"{new P()}";      // ok
+
+
+16. ERROR HANDLING (throws / try / catch / assign / throw)
+
+16.1 THE MODEL
+
+There are no exceptions. A `throws` function returns a `Result_T` struct
+(`value` + `has_error`); the compiler generates the checks. Failure is a plain
+signal - `throw;` carries no payload.
+
+  throws int func Parse(String s) {
+      if (s == null) { throw; }
+      return 7;
+  }
+
+  - `throws` goes before the return type: `throws int func F()`.
+  - `throws void func F()` and the return-type-less `throws func F()` are two
+    spellings of one thing: the call can fail, and on success it produces no
+    value. They behave identically everywhere, `return;` included.
+    A handler attached to such a call can only do control flow; an
+    `assign <expr>;` there is ERROR G081, which says exactly that ("this call
+    produces no value, so there is nothing for 'assign' to supply").
+  - `throw;` takes no operand and no value.
+  - `throw` outside a `throws` function or `try` block is ERROR G021.
+  - A `throws` function cannot return a pointer, a fixed array or a function
+    pointer (ERROR G066). Legal: void, primitives, enums, unions, String,
+    classes.
+  - `_init`/`_deinit` cannot be `throws` (ERROR G067); nor can an `entry func`
+    or a thread entry (ERROR G061).
+
+16.2 HANDLING: THE THREE LEGAL POSITIONS
+
+A call to a `throws` function must be in one of exactly three places, or it is
+ERROR G021:
+
+(a) inside a `try` block:
+
+      try {
+          let int v = Parse(s);
+      } catch {
+          // runs when anything in the try block threw
+      }
+
+(b) inside another `throws` function (the failure propagates):
+
+      throws int func Outer(String s) {
+          let int v = Parse(s);      // propagates automatically
+          return v;
+      }
+
+(c) with its own inline `catch` handler:
+
+      let int v = Parse(s) catch { assign 0; };
+
+16.3 THE INLINE catch HANDLER AND assign
+
+  let int v = Parse(s) catch { assign 0; };
+  v = Parse(s) catch { assign -1; };
+
+`assign <expr>;` supplies the value for the declaration or assignment the
+handler is attached to, then execution continues in the SAME scope - no new
+scope is introduced, unlike `try`.
+
+Rules:
+  - A handler must cover a WHOLE declaration or a whole plain assignment. It
+    cannot sit on a call nested inside a larger expression (ERROR G021), nor on
+    a compound assignment or an index-setter assignment (ERROR G021).
+  - Every path out of a handler must either `assign` a value or leave through
+    `return`, `throw`, `break`, or `continue`. Otherwise ERROR G082.
+  - `assign` outside a catch handler - including inside a `try` block or a
+    plain `catch { }` block - is ERROR G081.
+  - `catch` after a call that cannot fail is ERROR G021 ("remove the catch
+    block").
+  - `catch` after something that is not a call at all is ERROR G044.
+  - `assign` inside a `defer` body is ERROR G062.
+  - The assigned value must be assignable to the target type (ERROR G004).
+
+  // every legal exit from a handler
+  let int a = Parse(s) catch { assign 0; };
+  let int b = Parse(s) catch { return; };
+  while (true) { let int c = Parse(s) catch { break; }; }
+
+  // statement position: legal when the call produces no value, since there is
+  // nothing to assign. The handler is pure control flow.
+  throws void func Flush() { throw; }
+  Flush() catch { Recover(); };
+
+  // statement position with a discarded value + assign is ERROR G081
+  Parse(s) catch { assign 0; };            // ERROR G081
+
+16.4 NESTING RESTRICTION
+
+A throwing call may never appear inside a LARGER expression, because there would
+be nowhere to put the result:
+
+  let int v = Parse(a) + Parse(b);        // ERROR G021
+  let int w = f(Parse(a));                // ERROR G021
+  let int z = c ? Parse(a) : 0;           // ERROR G021
+  let String s = "n=" + Parse(a);         // ERROR G021
+  v += Parse(a);                          // ERROR G021
+
+  // do this instead
+  let int p = Parse(a) catch { assign 0; };
+  let int q = Parse(b) catch { assign 0; };
+  let int v = p + q;
+
+16.5 try / catch AS A STATEMENT
+
+  try { Risky(); } catch { Recover(); }
+
+  - Both parts are blocks; `catch` binds no error variable (ERROR G044 if you
+    try: `catch (e) { }` does not exist).
+  - `try` introduces a scope, so a variable declared inside it is not visible
+    after - which is exactly what the inline `catch` form (16.3) exists to
+    avoid.
+  - `break` inside a catch handler exits the enclosing loop.
+
+
+17. SCOPING, SHADOWING AND SCOPE STORAGE
+
+17.1 THE TWO AXES
+
+Gata has two separate name systems:
+  - LOCAL scopes: blocks, function parameters, loop and match bindings. Ordinary
+    lexical nesting.
+  - DECLARATION scopes: root (the top level of the build), each realm, and each
+    process. These form the scope TREE, and a declaration in one is a distinct
+    globally-unique name.
+
+17.2 LOCAL SCOPING
+
+  realm kernel { entry func Main() {
+      let int a = 1;
+      {
+          let int a = 2;       // WARNING G070 - shadows the outer 'a'
+      }
+      let int a = 3;           // ERROR G003 - same scope
+  } }
+
+  void func F(int p) {
+      let int p = 1;           // ERROR G003 - parameter and top-level local
+                               //   share one C scope
+      { let int p = 2; }       // fine - nested block
+  }
+
+Bindings introduced by: `let`, parameters, `for x in`, match case bindings, and
+the `for (let ...)` init clause.
+
+17.3 THE SCOPE TREE
+
+  root
+   |- kernel                    (realm)
+   |    |- P                    (process inside kernel)
+   |- userspace                 (realm)
+        |- App                  (process inside userspace)
+
+A declaration written inside a realm or a process belongs to that scope. Two
+processes may declare identical names with no collision:
+
+  realm userspace {
+      foreground process One {
+          class Shared { public int ticks; }
+          thread T { entry func Run() { } }
+      }
+      background process Two {
+          class Shared { public int frames; }    // a different type entirely
+          thread T { entry func Run() { } }
+      }
+  }
+
+What may be scoped: classes, modules, enums, unions, native types, free
+functions, and process variables. Anything else (a native block, an import) is
+not a name and holds no scope slot.
+
+17.4 A REALM IS ONE NAMESPACE
+
+Several `realm userspace { }` blocks, in one file or across files, all name the
+SAME scope:
+
+  // a.g
+  realm userspace { int func Step() { return 2; } }
+  // b.g
+  realm userspace {
+      foreground process P {
+          thread T { entry func R() { let int v = Step(); } }   // finds a.g's Step
+      }
+  }
+
+17.5 NAME LOOKUP
+
+An unqualified name is looked up OUTWARD: the current process, then its realm,
+then root. The innermost match wins.
+
+17.6 SHADOWING IS LEGAL BUT NEVER SILENT: @shadows
+
+Displacing a name from an enclosing scope requires the `@shadows` annotation. It
+is an ERROR G088 without it, and an ERROR G088 to write it when nothing is
+displaced.
+
+  int func Step() { return 1; }
+
+  realm kernel {
+      @shadows int func Step() { return 2; }         // ok, deliberate
+      foreground process P {
+          @shadows int func Step() { return 3; }     // ok, deliberate
+          thread T { entry func R() { let int z = Step(); } }   // -> 3
+      }
+      entry func Main() { }
+  }
+
+  realm userspace {
+      int func Step() { return 9; }        // ERROR G088 - unmarked shadow
+      @shadows int func Never() { }        // ERROR G088 - shadows nothing
+  }
+
+`@shadows` also counts a name declared at the top level of THIS file, and one
+reachable through this file's imports.
+
+There is one displacement outside the scope tree, and it takes the same
+annotation: a `private` free function at the top level of a file taking a name an
+imported file already declares publicly (5.4). That one is WARNING G057 rather
+than an error - a file-local helper is not making a statement about the program's
+structure, and the imported name stays reachable through its file qualifier.
+
+Everywhere else, `@shadows` may only go on a class, module, enum, union, native
+type or free function inside a realm or process. Anywhere it can displace nothing
+is ERROR G088.
+
+17.7 ONE MEANING PER NAME PER SCOPE
+
+Within one scope, a name means exactly one KIND of thing. Two functions are
+overloads and two types are a plain duplicate, but a type and a function of the
+same name in one scope is ERROR G003 - because a scoped declaration takes over
+the whole name, the outer one could not be reached.
+
+  realm kernel {
+      class Job { public int n; }
+      int func Job() { return 1; }         // ERROR G003
+  }
+
+A generic template counts as its own kind, so `Box` and `Box[T]` in one scope
+also collide.
+
+17.8 SCOPE QUALIFIERS: REACHING PAST A SHADOW
+
+Three qualifier forms:
+
+  ::Name              the root scope (the top level of the build)
+  kernel.Name         the kernel realm
+  userspace.Name      the userspace realm
+  kernel.P.Name       a process inside a realm
+
+They work in EXPRESSION position and in TYPE position:
+
+  class Cargo { public int root; }
+
+  realm kernel {
+      @shadows class Cargo { public int inr; }
+
+      class Holder { public ::Cargo held; }              // field type
+      ::Cargo func Make(::Cargo c) { return c; }         // param + return type
+      void func Take(Box[::Cargo] b) { }                 // generic argument
+
+      entry func Main() {
+          let ::Cargo    a = new ::Cargo();     let int p = a.root;
+          let kernel.Cargo b = new kernel.Cargo(); let int q = b.inr;
+          let Cargo        c = new Cargo();      let int r = c.inr;
+      }
+  }
+
+A qualifier may be followed by member access, and the compiler splits the dotted
+run for you - the longest prefix that names scopes wins:
+
+  module Algo { public static int func Min(int a, int b) { return a; } }
+  realm kernel {
+      @shadows class Algo { public int Min; }
+      foreground process P {
+          module M { public static int func G() { return 3; } }
+          thread T { entry func R() {
+              let int a = kernel.P.M.G() + ::Algo.Min(1, 2);
+          } }
+      }
+      entry func Main() { }
+  }
+
+RULES:
+  - A qualifier reaches OUTWARD ONLY. Naming a sibling realm or a sibling
+    process is ERROR G089 - the qualifier is a disambiguator, not a new
+    visibility rule.
+  - A qualifier names ONE EXACT SCOPE and stops there. `kernel.Step` does not
+    fall back to root's `Step`: ERROR G090.
+  - A realm exists as a scope whether or not the program opens a block for it,
+    so `userspace.X` from inside kernel is ERROR G089 (sideways), not "unknown".
+  - A process name is a scope segment, not a value: `kernel.P()` is ERROR G090.
+  - A qualifier reaches past a LOCAL of the same name too - a local is in no
+    declaration scope:
+
+      realm kernel {
+          @shadows int func Step() { return 2; }
+          entry func Main() {
+              let int Step = 9;
+              let int a = Step;                   // the local, 9
+              let int b = ::Step() + kernel.Step();
+          }
+      }
+  - A qualifier does not excuse an unmarked shadow (ERROR G088 still fires).
+  - A rejected qualifier reports exactly once and poisons the expression, so no
+    second error is invented about the bare name.
+  - A scope qualifier outside any realm/process is meaningless: ERROR G089.
+
+17.9 REPORTING A NAME THAT EXISTS ELSEWHERE
+
+  ERROR G087 - the name is declared inside a scope you are not in, and the
+               diagnostic names the scope.
+  ERROR G090 - the qualified scope exists but declares no such name.
+  ERROR G089 - the scope does not exist, or does not enclose this code.
+  A name declared in a scope as a different KIND reports "'X' is a function
+  here, not a type" rather than "unknown type".
+
+
+18. FILES, IMPORTS AND CROSS-FILE NAMES
+
+18.1 WHAT A FILE CAN SEE
+
+Itself plus the transitive closure of its imports. Nothing else, even if it is
+in the build.
+
+18.2 NAME COLLISIONS ACROSS FILES
+
+  - Top-level TYPE names are global to the build: two files declaring `class
+    Widget` is ERROR G003. (libgata names types for their module - `Optional`
+    rather than `Maybe` - for exactly this reason.)
+  - Free functions may overload by parameter types; identical signatures in two
+    files is ERROR G003.
+  - Two imported files each declaring a public GENERIC function of one name is
+    ERROR G069, and the message tells you to qualify.
+
+18.3 FILE-NAMESPACED CALLS
+
+The escape hatch for a collision that cannot be qualified through a class or
+module: prefix with the file's basename.
+
+  // util.g:  int func Compute() { return 1; }
+  let int n = util.Compute();
+
+This works for public functions in an in-scope file, and for a private function
+in the current file. It is also how a file reaches past its own file-local
+function to the imported one that function displaced (5.4).
+
+18.4 AMBIGUITY DIAGNOSTICS
+
+  ERROR G069 - a bare call is ambiguous between a generic function in one file
+               and a free function / method / private function elsewhere. The
+               message spells out each candidate and the qualification to use.
+  ERROR G015 - two overloads tie on the same conversion cost.
+  ERROR G016 - no overload matches the argument types.
+
+Overload resolution cost: 0 = exact, 1 = widening or pointer covariance,
+2 = narrowing. Lowest total wins; a tie is G015.
+
+
+19. ANNOTATIONS
+
+Every annotation the language has. There are exactly seven.
+
+19.1 @environment
+
+  @environment
+Top level of a file, no argument. Exactly one file per build. See 4.2.
+
+19.2 @extern
+
+  @extern void func _env_yield();
+Declares a C function. No body. See 4.5 (including the no-prototype gap).
+
+19.3 @intrinsic(role)
+
+Binds a Gata declaration to a named compiler role. The compiler NEVER hardcodes
+a runtime C name; it emits whatever symbol carries the role.
+
+  @intrinsic(alloc)
+  void* func alloc(usize n) { return _env_alloc(n); }
+
+The closed role vocabulary:
+
+  Memory / ARC (all five are REQUIRED once any class survives to codegen -
+  ERROR G019 otherwise. In practice: a program that declares ANY class must
+  import libgata's Runtime (retain/release/obj_header/obj_init) and Mem (alloc).
+  Importing a higher-level module such as String or List pulls in both):
+    alloc            raw allocation
+    retain           +1 a reference; returns it
+    release          -1 a reference; runs the destructor at zero
+    obj_header       the per-object ARC header type
+    obj_init         stamp a fresh object's header
+
+  Stringification:
+    stringify_int, stringify_long, stringify_uint,
+    stringify_float, stringify_char
+
+  Environment floor (optional - an unbound one falls back to a canonical name):
+    env_debug        (default _env_dbg)
+    env_panic        (default _env_panic)
+    env_proc_create  (default _env_proc_create)
+    env_proc_hide    (default _env_proc_hide)
+    env_thread_spawn (default _env_thread_spawn)
+    env_read         (default _env_read)
+    env_alloc        (default _env_alloc)
+    env_time         (default _env_time_ns)
+
+  - Valid on: a free function, a class method, an @extern declaration, a native
+    type, a native block's declarations.
+  - An unknown role is ERROR G017; binding one role twice is ERROR G018;
+    @intrinsic on a native BLOCK is ERROR G041 (only @preamble is valid there).
+
+19.4 @preamble(target)
+
+Marks a native block as a preamble, emitted before all other generated output
+for that translation unit.
+
+  @preamble(kernel)
+  native { #include <kernel/tty.h> }
+
+  @preamble(user)
+  native { #include <stdio.h> }
+
+  @preamble(boot)
+  native { /* boot section, kernel visibility */ }
+
+Targets: `boot`, `kernel`, `user`. Anything else is ERROR G042.
+Only on a native block (ERROR G041 elsewhere); more than one per block is
+ERROR G041.
+
+19.5 @keep
+
+Exempts a class or a free function from dead-code elimination and dense
+renaming. Use it when native C references the mangled Gata name and static
+analysis cannot see the reference.
+
+  native { void call_it(void) { gata_helper(); } }
+
+  @keep
+  void func helper() { }
+
+Valid on a class and on a free function only. On a method it is ERROR G041; on
+an enum or a native block it is ERROR G048/G041.
+
+19.6 @builtin(name)
+
+Binds a class or native type to a compiler builtin slot, so the compiler
+resolves the type from the declaration rather than by name.
+
+  @builtin(String)         class String { ... }
+  @builtin(StringBuilder)  class StringBuilder { ... }
+  @builtin(Process)        native type Process { void* _opaque; }
+  @builtin(Thread)         native type Thread { void* _opaque; }
+
+Slots: String, StringBuilder, Process, Thread. Unknown slot is ERROR G017;
+double-binding is ERROR G018; anywhere but a class or native type is ERROR G041.
+
+19.7 @shadows
+
+Declares a deliberate shadow: of an enclosing scope's name (17.6), or of an
+imported public function a file-local one displaces (5.4).
+
+19.8 WHERE ANNOTATIONS ARE REJECTED OUTRIGHT
+
+  - on an import (G048)
+  - on a field (G048)
+  - on an operator (G048)
+  - on a thread, a process, a realm, a process variable (G048)
+  - on an enum or union, except @shadows (G048)
+  - an unknown `@word` at all is ERROR G048, listing the seven valid ones
+  - `@intrinsic(...)` / `@builtin(...)` / `@preamble(...)` without a
+    parenthesised name is ERROR G048
+
+
+20. NATIVE INTEROP SUMMARY
+
+Five ways to reach C, and they are distinct:
+
+  20.1  native { ... }                 top level / realm / process / statement
+        Raw C injected verbatim into the translation unit.
+
+  20.2  @preamble(boot|kernel|user) native { ... }
+        The same, emitted before everything else in that unit.
+
+  20.3  native type Name { ... }       a C struct registered as a Gata type
+        Its fields are invisible to Gata (an opaque struct).
+
+  20.4  fields { ... }                 raw C members inside a Gata class
+        The class becomes opaque-fielded: unknown member accesses are not
+        reported.
+
+  20.5  <signature> native { ... }     a native method or function BODY
+        `self` is the C pointer; the body is not seen by flow analysis.
+
+Plus `@extern` (4.5) to name a C function, remembering that appa does not emit
+its prototype.
+
+WHAT NATIVE CODE SEES
+  - Class types are emitted as `gata_<Name>*` pointers with the ARC header
+    first, so any managed pointer aliases its header at offset 0.
+  - Type parameters are substituted TEXTUALLY (whole words) inside a native body
+    of a generic - this is the one place substitution is textual rather than
+    structural:
+
+      class Box[T] {
+          T v;
+          public usize func Size() native { return sizeof(T); }
+      }
+      // stamped as Box[int]: `sizeof(T)` becomes `sizeof(int32_t)`
+
+  - Fixed arrays are emitted as a boxed struct, so a Gata `[N]T` is not a bare C
+    array.
+  - The compiler scans native blocks for struct/typedef names and treats them as
+    pre-defined so it does not re-emit them.
+
+THREE C-NAME SAFETY NETS
+  - ERROR G003 fires when two declarations would be emitted under the same C
+    name (readable manglings join parts with '_', so `class A_B { M }` and
+    `class A { B_M }` collide).
+  - The generated process launcher is named `uapps`, and is reserved against a
+    declaration that would take it over.
+  - C's vocabulary is not Gata's, so `inline`, `register` and the rest are
+    ordinary Gata identifiers. Names the compiler owns end to end - locals,
+    parameters, class fields, union variants and their payload fields - get a
+    trailing underscore in the emitted C when they collide with a C keyword or
+    a standard macro. The declaration and every use go through one place, so
+    the rename is invisible. The one name that cannot be rescued this way is an
+    `@extern`, emitted verbatim so the linker can find it: ERROR G102.
+
+
+21. MEMORY MODEL
+
+21.1 AUTOMATIC REFERENCE COUNTING
+
+Every class instance is heap-allocated with an ARC header (refcount +
+destructor pointer) at offset 0. The compiler inserts retain/release:
+
+  - a producer (`new`, a string literal, a call returning a managed value)
+    hands back a +1 reference
+  - storing into a local, field, element or process variable takes ownership,
+    releasing whatever the target held first (through a temp, so
+    self-assignment is safe)
+  - every scope exit releases the locals it owns, on EVERY path: falling off the
+    end, `return`, `break`, `continue`, and `throw`
+  - at zero, `_deinit` runs, the object's managed fields are released, and the
+    memory is freed
+  - string literals are static: their refcount is a sentinel, so retain/release
+    leave them alone and their destructor never runs
+
+None of this is visible in the source. There is no GC.
+
+21.2 UNIONS AND ARC
+
+A union whose variants can hold a managed value gets generated retain/release
+functions of its own, which switch on the tag. They compose exactly like the
+class ones.
+
+21.3 OPTING OUT: unsafe
+
+Inside `unsafe`, reference counting is off for the whole block: no owning
+stores, no consume-retains, no scope releases. You call the ARC intrinsics
+yourself.
+
+  public void func Set(int i, T v) {
+      unsafe {
+          release(self.data[i]);
+          self.data[i] = retain(v);
+      }
+  }
+
+  - `retain(x)` returns the reference it counted. Discarding that return value
+    as a statement is ERROR G099 - the +1 would land on a temporary this scope
+    releases again.
+  - Exits still release owners from the enclosing SAFE frames.
+  - WARNING G093: an unsafe block that allocates a managed value never releases
+    it.
+
+21.4 REFERENCE CYCLES
+
+WARNING G101, computed with Tarjan's SCC over the class field graph, including
+self-loops:
+
+  class Node { public Node next; }              // WARNING G101 (self-loop)
+
+  class A { public B b; }
+  class B { public A a; }                       // WARNING G101 (cycle A,B)
+
+The fix is stated in the hint: make one field a raw pointer inside `unsafe`, or
+restructure so ownership runs one way.
+
+21.5 WHAT IS NOT REFERENCE COUNTED
+
+  - primitives, enums, pointers, function pointers
+  - fixed arrays (raw storage with no destructor - WARNING G094 when the element
+    type is managed)
+  - modules (they have no instances)
+  - anything inside `unsafe`
+
+21.6 MANUAL MEMORY
+
+  unsafe {
+      let p = alloc(1024 as usize) as char*;
+      defer free(p);
+      // ...
+  }
+
+`alloc`/`free` are ordinary libgata functions (Mem.g), bound to the
+`alloc`/`env_alloc` roles.
+
+
+22. DEAD CODE, RENAMING AND OUTPUT LAYOUT
+
+22.1 REACHABILITY
+
+After resolution the compiler walks from every entry point (`entry func`s,
+thread entries, process state initialisers) and eliminates everything
+unreachable, then densifies the surviving names. `@keep` opts a class or free
+function out of both.
+
+22.2 CAPABILITY DISCOVERY
+
+The same walk infers which platform capabilities the image needs (MEM, INPUT,
+THREADS, TIME) so a GatOS image carries only what it uses. `<CapabilityDiscovery>
+Off</CapabilityDiscovery>` assumes all of them - the escape valve for a raw
+native body that touches a capability through no Gata-visible call.
+
+22.3 EMITTED FILES
+
+  kernel realm + user realm : shared.h, kmain.c, uproc.c, uproc.h, umain.c
+  user realm only (Hosted)  : shared.h, program.c  (with a generated `main()`
+                              calling the launcher and then the validated
+                              entry func)
+  kernel realm only         : shared.h, kmain.c
+
+The generated launcher `uapps()` creates each process through the environment's
+proc-create binding, hides `background` ones, and spawns each thread with a
+user/kernel flag. No C name is hardcoded there; they all come from `@intrinsic`
+bindings, so porting the OS is an edit to env.*.g.
+
+A program that declares a process gets the launcher whatever the build shape.
+Only the split kernel+user build gives it a translation unit of its own
+(`umain.c`), because only there do the realms live in separate units; otherwise
+it is appended to the single unit that already holds the thread entries, and
+calls the floor its own preamble defined. A Hosted `main()` calls it before the
+entry func, in the order a GatOS `kernel_main` does.
+
+
+23. THINGS GATA DOES NOT HAVE
+
+Stated explicitly, because their absence is a design choice and a frequent
+question:
+
+  - no inheritance, no interfaces, no virtual dispatch
+  - no garbage collector
+  - no exceptions (failure is a Result, `throw` carries no payload)
+  - no closures or lambdas (function pointers only, no captures)
+  - no global variables (process variables are the only shared state)
+  - no static fields, no module fields
+  - no constructors other than `_init`, no destructors other than `_deinit`
+  - no prefix `++`/`--`
+  - no assignment-as-expression
+  - no switch fallthrough
+  - no truthiness (conditions must be `bool`)
+  - no implicit narrowing
+  - no generic constraints/bounds
+  - no explicit type arguments at a call site
+  - no `const`
+  - no varargs
+  - no default parameter values
+  - no named arguments
+  - no nested classes, nested functions, nested realms, nested processes,
+    nested threads
+  - no Unicode identifiers
+  - no nested block comments
+  - no user-overloadable `&&`, `||`, or compound assignment
+  - no error variable in `catch`
+  - no `for..in` over a user-defined iterator protocol other than
+    Length()/Get(int)
+
+
+24. DIAGNOSTIC CODE TABLE
+
+G000 file / project-level problem (missing file, missing or duplicate
+     @environment, missing library module)
+G001 topology declared outside its realm/process (process, thread, stray import)
+G002 no kernel realm entry point
+G003 duplicate name (type, member, parameter, overload signature, case label,
+     variant, C-name collision, reserved local name)
+G004 type mismatch
+G005 undefined variable / name
+G006 undefined method
+G007 undefined type / uninferrable type argument / void misuse
+G008 wrong argument count
+G009 argument type mismatch
+G010 return type mismatch
+G011 `new` on something that is not a class
+G012 indexing something that cannot be indexed
+G013 static member reached through an instance
+G014 instance member reached through the type
+G015 ambiguous overload
+G016 no matching overload
+G017 unknown @intrinsic role or @builtin slot
+G018 that role/slot is already bound
+G019 required intrinsic is not bound anywhere in the build
+G020 the environment preamble provides no definition of a floor symbol
+G021 throwing call outside try / throws / catch, or nested in a larger
+     expression
+G022 break/continue outside a loop
+G023 (warning) unused variable
+G024 (warning) unreachable code
+G025 (warning) empty block body
+G026 (warning) redundant trailing return
+G027 function does not return on every path
+G028 invalid cast
+G029 condition is not bool
+G030 call to (or address of) an entry point
+G031 panic outside the kernel realm
+G032 not iterable with for..in
+G033 unsafe block required
+G034 not an lvalue
+G035 private member accessed from outside
+G036 debug/panic in a release build
+G037 ref argument mismatch
+G038 index setter/getter missing
+G039 non-exhaustive match
+G040 static on a free function
+G041 annotation on the wrong kind of declaration
+G042 unknown @preamble target
+G043 foreground/background on a thread
+G044 syntax error
+G045 assignment used as an expression
+G046 unterminated literal or comment
+G047 unrecognised escape sequence
+G048 bad or unknown annotation
+G049 malformed numeric literal
+G050 missing `let`
+G051 invalid nesting (class, realm, process, thread)
+G052 trailing comma
+G053 bad declaration header
+G054 cannot infer a type
+G055 kernel realm block in a Hosted build
+G056 no userspace realm in a Hosted build
+G057 (warning) a file-local function displaces an imported one of the same name
+G058 the userspace realm declares no entry func
+G059 the realm declares more than one entry func
+G060 process declaration is missing its mode, or writes it after the name
+G061 bad entry signature (parameters, return type, or throws)
+G062 a defer body transfers control
+G063 a module declares a field
+G064 @environment inside a realm block
+G065 conflicting or duplicated modifiers
+G066 unsupported throws return type
+G067 _init/_deinit declared throws
+G068 entry func outside the kernel realm (or inside a process)
+G069 ambiguous call across files
+G070 (warning) shadowed variable
+G071 (warning) self-assignment
+G072 (warning) expression statement with no effect
+G073 (warning) constant condition
+G074 (warning) redundant cast
+G075 integer division or remainder by literal zero
+G076 (warning) unused parameter
+G077 (warning) unreachable case / redundant default
+G078 (warning) value compared against itself
+G079 shift count out of range
+G080 (warning) string looks like it should have been interpolated
+G081 assign outside a catch handler
+G082 catch handler can finish without supplying a value
+G083 (warning) union comparison compares a payload by identity
+G084 (warning) union comparison compares a float payload with ==
+G085 kernel written without realm
+G086 unknown realm name
+G087 name is declared inside a scope that is not visible here
+G088 unmarked shadow, or @shadows that displaces nothing
+G089 scope qualifier does not enclose this code / no such scope
+G090 the qualified scope declares no such name
+G091 process declares no threads
+G092 (warning) partial relational operator set
+G093 (warning) unsafe block allocates a managed temporary
+G094 (warning) fixed array of a managed element type
+G095 mixed signed/unsigned operands
+G096 (warning) arithmetic on two chars
+G097 explicit type arguments at a call site
+G098 read before assignment (local, or process variable order)
+G099 discarded retain
+G100 process variable with no initial value / catch handler returning
+G101 (warning) reference cycle
+G102 @extern name reserved by C
+
+
+25. GRAMMAR SUMMARY
+
+program        := toplevel*
+
+toplevel       := import | environment | nativeblock | nativetype | externdecl
+                | enumdecl | uniondecl | classdecl | moduledecl | funcdecl
+                | realmdecl
+
+import         := 'import' ( ident | strlit ) ';'
+environment    := '@environment'
+nativeblock    := preamble? 'native' '{' rawC '}'
+nativetype     := ann* 'native' 'type' ident '{' rawC '}'
+externdecl     := ann* '@extern' type? 'func' ident '(' params ')' ';'
+
+enumdecl       := 'enum' ident '{' [ enummember (',' enummember)* ] '}'
+enummember     := ident [ '=' constexpr ]
+
+uniondecl      := ann* 'union' ident generics? '{' [ variant (',' variant)* ] '}'
+variant        := ident [ '(' param (',' param)* ')' ]
+
+classdecl      := ann* 'class' ident generics? '{' member* '}'
+moduledecl     := ann* 'module' ident '{' member* '}'
+member         := fieldsblock | fielddecl | methoddecl | operatordecl
+fieldsblock    := 'fields' '{' rawC '}'
+fielddecl      := mods? ( type ident | ident ) [ '=' expr ] ';'
+methoddecl     := ann* mods? 'entry'? 'throws'? type? 'func' ident generics?
+                  '(' params ')' body
+operatordecl   := mods? 'operator' type? 'func' opsym '(' params ')' body
+opsym          := '+' | '-' | '*' | '/' | '%' | '<' | '>' | '==' | '!='
+                | '<=' | '>=' | '&' | '|' | '^' | '<<' | '>>' | '!' | '~'
+                | '++' | '--' | '[' ']' | '[' ']' '=' | 'as'
+
+funcdecl       := ann* mods? 'entry'? 'throws'? type? 'func' ident generics?
+                  '(' params ')' body
+body           := block | 'native' '{' rawC '}'
+
+realmdecl      := 'realm' ( 'kernel' | 'userspace' ) '{' realmitem* '}'
+realmitem      := toplevel-minus-import-minus-realm | processdecl
+processdecl    := ( 'foreground' | 'background' ) 'process' ident
+                  '{' ( threaddecl | processitem )* '}'
+processitem    := realmitem-minus-process | processvar
+processvar     := 'let' type ident '=' expr ';'
+threaddecl     := 'thread' ident '{' entryfunc '}'
+entryfunc      := 'entry' 'func' ident? '(' ')' block
+
+generics       := '[' ident (',' ident)* ']'
+params         := [ param (',' param)* ]
+param          := 'ref'? type ident
+mods           := ( 'static' | 'public' | 'private' )+
+ann            := '@intrinsic' '(' ident ')' | '@preamble' '(' ident ')'
+                | '@keep' | '@builtin' '(' ident ')' | '@shadows'
+
+type           := ( '[' intlit ']' )* ( functype | typename ) '*'*
+functype       := 'func' '(' [ type (',' type)* ] ')' '->' type
+typename       := scopequal? ident ('.' ident)* [ '[' type (',' type)* ']' ]
+                | primitive
+scopequal      := '::' | 'kernel' '.' | 'userspace' '.'
+
+block          := '{' stmt* '}'
+stmt           := block | letstmt | assignstmt | exprstmt | ifstmt | whilestmt
+                | forstmt | forinstmt | switchstmt | matchstmt | trycatch
+                | unsafeblock | deferstmt | returnstmt | 'break' ';'
+                | 'continue' ';' | 'throw' ';' | assignvalue | debugstmt
+                | panicstmt | nativestmt
+
+letstmt        := 'let' type? ident [ '=' expr ] ';'
+assignstmt     := expr assignop expr ';'
+assignop       := '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^='
+                | '<<=' | '>>='
+ifstmt         := 'if' '(' expr ')' stmt [ 'else' stmt ]
+whilestmt      := 'while' '(' expr ')' stmt
+forstmt        := 'for' '(' [ letstmt-nosemi | forclause ] ';' [ expr ] ';'
+                  [ forclause ] ')' block
+forinstmt      := 'for' ident 'in' expr block
+switchstmt     := 'switch' '(' expr ')' '{' ( case | default )* '}'
+case           := 'case' expr (',' expr)* block
+matchstmt      := 'match' '(' expr ')' '{' ( matchcase | default )* '}'
+matchcase      := 'case' ident [ '(' ident (',' ident)* ')' ] block
+default        := 'default' block
+trycatch       := 'try' block 'catch' block
+unsafeblock    := 'unsafe' block
+deferstmt      := 'defer' stmt
+returnstmt     := 'return' [ expr ] ';'
+assignvalue    := 'assign' expr ';'
+debugstmt      := 'debug' strlit ';'
+panicstmt      := 'panic' strlit ';'
+nativestmt     := 'native' '{' rawC '}'
+
+expr           := ternary
+ternary        := or [ '?' expr ':' ternary ]
+or             := and ( '||' and )*
+and            := bitor ( '&&' bitor )*
+bitor          := bitxor ( '|' bitxor )*
+bitxor         := bitand ( '^' bitand )*
+bitand         := equality ( '&' equality )*
+equality       := relational ( ( '==' | '!=' ) relational )*
+relational     := shift ( ( '<' | '>' | '<=' | '>=' ) shift )*
+shift          := additive ( ( '<<' | '>>' ) additive )*
+additive       := multiplicative ( ( '+' | '-' ) multiplicative )*
+multiplicative := ascast ( ( '*' | '/' | '%' ) ascast )*
+ascast         := unary ( 'as' type )*
+unary          := ( '!' | '~' | '-' | '&' | '*' ) unary | postfix
+postfix        := primary ( '++' | '--' | '.' ident | '[' expr ']'
+                          | '(' args ')' | 'catch' block )*
+args           := [ arg (',' arg)* ]
+arg            := 'ref'? expr
+primary        := intlit | floatlit | charlit | strlit | interpstr | boollit
+                | 'null' | ident | scopedname | '(' expr ')'
+                | '(' primtype ')' unary
+                | 'new' type [ '(' args ')' ] [ collectioninit ]
+                | 'sizeof' '(' type ')' | 'default' '(' type ')'
+                | '[' [ expr (',' expr)* ] ']'
+collectioninit := '{' [ expr (',' expr)* ] '}' | '[' [ expr (',' expr)* ] ']'
+scopedname     := scopequal ident ('.' ident)*
+
+
+26. A PROGRAM USING MOST OF THE LANGUAGE
+
+  import Console;
+  import String;
+  import List;
+  import Optional;
+
+  enum Level { Low = 1, Mid, High = Mid * 2 }
+
+  union Reading { Ok(int v), Failed(String why), Absent }
+
+  class Pair[A, B] {
+      public A first;
+      public B second;
+
+      func _init() { }
+      func _deinit() { }
+
+      public A func First() { return self.first; }
+      public operator bool func ==(Pair[A, B] o) { return self.first == o.first; }
+      public operator bool func !=(Pair[A, B] o) { return self.first != o.first; }
+  }
+
+  module Fmt {
+      public static String func Describe(Level l) {
+          switch (l) {
+              case Level.Low  { return "low"; }
+              case Level.Mid  { return "mid"; }
+              default         { return "high"; }
+          }
+      }
+  }
+
+  T func Max[T](T a, T b) { if (a > b) { return a; } return b; }
+
+  throws int func Halve(int n) {
+      if (n % 2 != 0) { throw; }
+      return n / 2;
+  }
+
+  private void func Trace(String s) { Console.PrintLine(s); }
+
+  int func Ping() { return 1; }
+
+  native { static int c_double(int n) { return n * 2; } }
+  @extern int func c_double(int n);
+
+  realm kernel {
+      entry func Main() {
+          // inference, literals, interpolation
+          let int    n     = Max(3, 9);
+          let Level  lvl   = Level.High;
+          let String label = $"n={n} level={Fmt.Describe(lvl)}";
+          Trace(label);
+
+          // inline catch, no new scope
+          let int half = Halve(n) catch { assign 0; };
+
+          // union + exhaustive match
+          let Reading r = half > 0 ? Reading.Ok(half) : Reading.Absent();
+          match (r) {
+              case Ok(v)      { Trace($"ok {v}"); }
+              case Failed(w)  { Trace(w); }
+              case Absent     { Trace("absent"); }
+          }
+
+          // generics, collection initializer, for..in, operator []
+          let List[int] xs = new List[int]() { 1, 2, 3 };
+          xs << 4;
+          for x in xs { Trace($"{x}"); }
+          let int third = xs[2];
+
+          // generic class + operator ==
+          let Pair[int, String] p = new Pair[int, String]();
+          p.first = 1;
+          if (p == p) { }
+
+          // fixed array, cast, extern call
+          let [3]int fixed = [1, 2, 3];
+          let int64 wide = fixed[0] as int64;
+          let int   dbl  = c_double(n);
+
+          // unsafe + defer
+          unsafe {
+              let buf = alloc(64 as usize) as char*;
+              defer free(buf);
+              buf[0] = 'x';
+          }
+      }
+  }
+
+  realm userspace {
+      @shadows int func Ping() { return 2; }   // displaces the root-scope Ping
+
+      foreground process App {
+          let int ticks = 0;                  // process variable, shared
+
+          class Job { public int id; }        // process-scoped type
+
+          thread Worker {
+              entry func Run() {
+                  ticks = ticks + 1;
+                  let Job j = new Job();
+                  let int outer = ::Max(1, 2);   // reach past the realm
+              }
+          }
+      }
+
+      background process Daemon {
+          class Job { public String tag; }    // a different Job entirely
+          thread Loop { entry func Run() { } }
+      }
+  }

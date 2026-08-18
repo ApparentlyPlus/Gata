@@ -1,7 +1,7 @@
 
 
 <p align="center">
-  <img src="editors/vscode/assets/gata-full.png" alt="Gata" width="700">
+  <img src="../editors/vscode/assets/gata-full.png" alt="Gata" width="700">
 </p>
 
 <h1 align="center">The Gata Programming Language</h1>
@@ -120,7 +120,7 @@ Everything else described in this book works on both targets.
 
 **Part III** is the systems material: processes and threads, shared state, memory and ownership, raw C, and the environment file that binds a build to a platform.
 
-**Part IV** is lookup: commands, diagnostics, grammar, and a tour of the standard library.
+**Part IV** is lookup: commands, diagnostics, grammar, and a pointer to the standard library's own reference.
 
 A companion document, `lang.txt`, is the complete feature reference, derived from the compiler source. When you want the exhaustive rule rather than the explanation, that is where to look.
 
@@ -295,9 +295,11 @@ After type checking, `appa` walks your program from every entry point and record
 
 Anything not reached is not compiled in.
 
-You can watch this happen. Build the two-realm starter project and note the ISO size in `build/`. Now build the kernel-only version from the end of Chapter 1 and look again. It drops noticeably, because with no `process` in the program, nothing reaches the thread-spawn primitive, and the scheduler goes with it.
+You can watch this happen. Build the two-realm starter project and note the size of `build/<name>.bin`, the linked kernel. Now build the kernel-only version from the end of Chapter 1 and look again. It drops noticeably, because with no `process` in the program, nothing reaches the thread-spawn primitive, and the scheduler goes with it.
 
-Taken to the limit, a full GatOS build with every subsystem is around 200 KB; a hello-world image is around 70 KB. Both numbers are small. The point is not the absolute size but that you did not configure anything to get there.
+Look at the `.bin`, not the `.iso` sitting next to it. The ISO is mostly GRUB and its modules, around 32 MB whatever you build; the two images below differ by half a percent inside it and by 4.3x outside it. The kernel binary is the part your program produced.
+
+Measured, `Release`: a hello-world kernel realm links to 45 KB. A two-realm program using `List`, `Map`, threads and the clock links to 193 KB. Both numbers are small. The point is not the absolute size but that you did not configure anything to get there.
 
 The table above is short, and that is not an abbreviation. It is close to the whole list. Every platform capability enters your program through one of a small, fixed set of named C functions called the floor (Chapter 21), which is precisely what makes this walk possible: `appa` is not guessing at what your program does, it is checking which of a dozen or so specific symbols are reachable.
 
@@ -2458,29 +2460,11 @@ import List;
 
 There is no umbrella import. A module you never name is never parsed and never compiled in.
 
-Modules pull in what they are built on, so `import Console;` also reaches `String` and `Int`. Import what you actually use anyway.
+Modules pull in what they are built on, so `import Console;` also reaches `String` and `Int`. Import what you actually use anyway; the other module's dependency list is not your contract.
 
-`libgata` is ordinary Gata, written with the features in this book. Reading it is the best available answer to "how is this meant to be used". Method signatures are still changing, so the current surface lives in a separate reference document rather than here.
+`libgata` is ordinary Gata, written with the features in this book. It has no privileges the language does not have, which is why Chapter 21's floor is the ceiling on what it can ever offer.
 
-| Module | What it is |
-|---|---|
-| `Runtime` | the reference-counting runtime: object header, retain, release |
-| `Mem` | heap allocation, plus `Copy`, `Fill`, `Compare`, and overlap-safe `Move` |
-| `String`, `Char` | the string type and character classification |
-| `Int`, `Long` | parsing and radix-aware formatting for `int` and `int64` |
-| `Math`, `Format` | math functions; printf-style formatting |
-| `Console` | console and TTY I/O. Output is batched, so one `Print` is one write |
-| `Sys` | yield, sleep, exit, shutdown, reboot |
-| `Time` | the monotonic clock. Using it pulls timers into the build |
-| `Sync` | `SpinLock` and `AtomicInt` (Ch. 16) |
-| `Random` | `xoshiro256**`. Seeds from the clock; `Reseed` for reproducibility. Not for keys |
-| `Misc` | startup niceties, like `PrintBanner()` |
-| `Optional` | `Optional[V]`, plus helpers |
-| `List`, `Stack`, `Queue`, `Map`, `Set`, `PriorityQueue` | the containers, one import each |
-| `Hash` | hashing primitives shared by `Map` and `Set` |
-| `Algorithms` | `Sort`, `BinarySearch`, `Min`, `Max` over `operator <`, plus `SortBy`/`MinBy`/`MaxBy` taking a comparison function |
-
-Where an operation has a natural operator reading, the type provides both: `List[T]` has `<<` for `Add`, `Set[T]` has `+` and `&` for union and intersection. Where it does not, as with `Contains` and `Length`, it stays a named method.
+**The full surface is documented in [Libgata Reference.md](Libgata%20Reference.md), in this folder**, as manual pages: one per module, with the usual NAME, SYNOPSIS, DESCRIPTION, RETURN VALUE and ERRORS sections. Look up a signature there; learn the language here.
 
 ## Appendix: A Program Using Most of the Language
 
@@ -3028,7 +3012,6 @@ Both tables are precomputed per prime at startup, which is why the inner loop ha
 | divisions | 1.9 x 10^10 | 78,492 |
 | per-prime state | 8 bytes | 41 bytes (2.5 MB, L3-resident) |
 
-That is 2.9x fewer crossings, each of them cheaper. Measured at 3.1 cycles per crossing on your 5900X, the previous version's 790 s should land somewhere near **250 s**, and the gap between that prediction and the real number is the interesting part.
 
 ### It checks itself before it starts
 
@@ -3543,26 +3526,43 @@ realm kernel {
 
 ### What it prints
 
+Real output, GatOS on a Ryzen 9 5900X, progress lines elided:
+
 ```
 sieve-xl: wheel-30 segmented sieve, one core
 limit 1000000000000, 127157 blocks of 7864320 integers
 base primes 78495, wheel 30, presieve 7/11/13
 self-test ok: 78498 primes below 1000000
-1% 1271/127157 blocks  454906730 primes  3s elapsed  248s left
 ...
-50% 63578/127157 blocks  19310362910 primes  126s elapsed  125s left
-...
-100% 127157/127157 blocks  37607912018 primes  251s elapsed  0s left
-
 primes below 1000000000000: 37607912018
 largest prime found: 999999999989
-elapsed: 251 s
-rate: 3984063 numbers/ms
+elapsed: 321 s
+rate: 3113373 numbers/ms
 RESULT: PASS (37607912018)
 powering off in 60 seconds
 ```
 
-Those timings are a prediction, not a measurement. The crossing count is exact and the 3.1 cycles per crossing is measured from your last run; everything else is arithmetic on top of that.
+The same source built hosted against libc, pinned to one core with `taskset`, run to the end:
+
+```
+sieve-xl (hosted): wheel-30 segmented sieve, one thread
+self-test ok: 78498 primes below 1000000
+limit 1000000000000, 127157 blocks of 7864320 integers
+base primes 78495, wheel 30, presieve 7/11/13
+2% 2599/127157 blocks  900722403 primes  5s elapsed  ~239s left
+...
+50% 64018/127157 blocks  19436490825 primes  145s elapsed  ~143s left
+...
+99% 126807/127157 blocks  37508413020 primes  300s elapsed  ~0s left
+
+primes below 1000000000000: 37607912018
+largest prime found: 999999999989
+elapsed: 300 s
+rate: 3323208 numbers/ms
+RESULT: PASS (37607912018)
+```
+
+Same count, same largest prime, both times.
 
 ### Where the language earns its place
 

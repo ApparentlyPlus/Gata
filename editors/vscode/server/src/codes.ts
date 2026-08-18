@@ -101,6 +101,7 @@ export const Codes = {
   DiscardedRetain: 'G099',
   UninitialisedProcessVar: 'G100',
   ReferenceCycle: 'G101',
+  CReservedCName: 'G102',
 } as const;
 
 export type Code = typeof Codes[keyof typeof Codes];
@@ -208,6 +209,7 @@ export const CODE_SUMMARIES: Readonly<Record<string, string>> = {
   G099: 'discarded retain',
   G100: 'a process variable with no initial value, or a catch handler that returns',
   G101: 'reference cycle',
+  G102: 'an @extern name that C reserves',
 };
 
 export interface Span {

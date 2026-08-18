@@ -5,7 +5,7 @@
 <h1 align="center">Gata for VS Code</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/extension-v2.0.0-00e676" alt="Extension v2.0.0">
+  <img src="https://img.shields.io/badge/extension-v2.2.0-00e676" alt="Extension v2.2.0">
   <img src="https://img.shields.io/badge/vscode-%5E1.75.0-1263cf" alt="VS Code ^1.75.0">
   <img src="https://img.shields.io/badge/languages-.g%20%7C%20.gconf-e0b34d" alt="Languages">
 </p>
@@ -26,7 +26,7 @@ There is no build step to run before using it and nothing to configure. Open a `
 - [Project Manifests](#project-manifests)
 - [Repository Layout](#repository-layout)
 - [Known Limits](#known-limits)
-- [What Changed in v2.0.0](#what-changed-in-v200)
+- [What Changed in v2.2.0](#what-changed-in-v220)
 
 ## What You Get
 
@@ -40,14 +40,14 @@ There is no build step to run before using it and nothing to configure. Open a `
 | **Hovers** | Every keyword, annotation and primitive carries an explanation of the rule behind it. Hovering a name declared in the file shows the declaration as written. |
 | **Outline and breadcrumbs** | Types, methods, operators, enum members, union variants, realms, processes and threads, each under what contains it. |
 | **Completion** | Keywords, primitives, annotations and everything the current file declares, each with the same documentation the hover shows. |
-| **A theme** | `Gata Gold`, optional. The extension does not need it: its colors are applied as an overlay on top of whatever theme you already use. |
+| **Themes** | `Gata Canopy` (dark) and `Gata Daylight` (light), both entirely optional and never selected for you. The extension does not need any of them: the palette lands as foreground-only defaults on top of whatever theme you already use, and follows it from dark to light. |
 
 ## Installing
 
 If you have a `.vsix`:
 
 ```bash
-code --install-extension gata-highlighting-2.0.0.vsix
+code --install-extension gata-highlighting-2.2.0.vsix
 ```
 
 For development against a checkout, link it into your extensions folder and build the server once:
@@ -74,7 +74,7 @@ npm install
 npm run package
 ```
 
-That runs [`@vscode/vsce`](https://github.com/microsoft/vscode-vsce), which triggers `vscode:prepublish`, which installs the server's dependencies and bundles it with esbuild before packaging. The result is `gata-highlighting-2.0.0.vsix` in the same folder.
+That runs [`@vscode/vsce`](https://github.com/microsoft/vscode-vsce), which triggers `vscode:prepublish`, which installs the server's dependencies and bundles it with esbuild before packaging. The result is `gata-highlighting-2.2.0.vsix` in the same folder.
 
 To do it by hand, or to pin a version of `vsce`:
 
@@ -107,50 +107,70 @@ Two layers, in this order.
 
 **The language server** then classifies the same file properly and sends semantic tokens back. This is where guessing stops. `class Box[Element]` gives `Element` the generic-parameter color everywhere it appears, no matter how many letters it has. `Shape.Circle` is a union variant because `Shape` is a union that declares it. `Dir.North` is an enum member for the same reason. A call is a function, a member is a property, a `let` binds a variable, a parameter list binds parameters.
 
-The extension writes both sets of colors into your global settings as an overlay. Every TextMate scope it writes ends in `.gata` and every semantic rule is qualified with `:gata`, neither of which any other grammar produces, so nothing outside a Gata file can be affected. Re-running the extension replaces its own rules and leaves any you wrote alone.
+Both sets of colors ship as configuration *defaults*, contributed from `package.json`. Nothing is written to your `settings.json`, no color theme is selected for you, and your current theme keeps every one of its own colors: the extension only adds foreground rules whose TextMate scopes all end in `.gata` and whose semantic selectors are all qualified with `:gata`, neither of which any other grammar produces. Outside a `.g` file nothing changes at all.
+
+Because they are defaults, they are also the lowest-priority value there is. Put an `editor.tokenColorCustomizations` or `editor.semanticTokenColorCustomizations` of your own in `settings.json` and yours wins outright — which is the supported way to recolor a role you disagree with.
+
+The palette ships twice. The dark ramp is the base; the light one sits under a `"[*Light*]"` key,
+which VS Code matches against the name of the theme you have selected. Every built-in light theme —
+`Light Modern`, `Light+`, `Quiet Light`, `Solarized Light` — carries `Light` in its name and picks it
+up, and so do almost all third-party ones. A light theme that does not say so in its name will get
+the dark ramp; adding a key for it by name in your own settings is a two-line fix, and yours wins.
+
+Builds up to 2.0.0 did write the palette into global settings instead. Upgrading takes those entries back out once, so you get your `settings.json` back; anything in there that was not written by the extension is left alone.
 
 It also turns off VS Code's bracket pair colorization for `.g` files only, so parentheses and brackets keep the grammar's color instead of cycling by nesting depth.
 
 ## The Palette
 
-Gata reads in green and gold. Gold is what the program is made of: types, values, literals. Green and the blues either side of it are what the program does: control flow, functions, declarations. The split is the point, and it is why a `.g` file can be skimmed for shape before it is read for detail.
+Gata reads in green. The logo's hues — `#00c795` through `#00e676` — are the centre of gravity, and
+almost everything the program *is* sits in that family: types, calls, declaration keywords, control
+flow. What is left of green is used sparingly and on purpose, so each remaining hue means one thing.
 
-**The gold half: data.**
+The palette exists twice, as one table with two grounds. The dark ramp is `Canopy Azure`, tuned
+against `#1f1f1f`; the light ramp is `Daylight`, tuned against `#ffffff`. VS Code picks between them
+from the theme you are using, so nothing needs setting.
 
-| Color | Meaning |
-|---|---|
-| Bright gold | Declared type names: `class Point`, `enum Dir`, `union Shape` |
-| Gold | Type references, and the standard library's types |
-| Muted gold | Primitive types: `int`, `bool`, `usize`, ... |
-| Amber gold | Union variants |
-| Bronze, italic | Generic parameters |
-| Champagne | Enum members, and `true` / `false` / `null` |
-| Amber | Strings, chars and numbers |
+**Green: what the program is made of.**
 
-**The green and blue half: behavior.**
+| Dark | Light | Meaning |
+|---|---|---|
+| Turquoise | Deep turquoise | Declared type names: `class Point`, `enum Dir`, `union Shape` |
+| Darker turquoise | Teal | Type references |
+| Sage | Moss | The standard library's types, and generic parameters |
+| Spring green | Forest green | Functions and methods, and operator symbols in a declaration |
+| Deep teal | Pine | Declaration keywords: `let`, `class`, `func`, `new`, `import`, ... and `self`, in italic |
+| Mid teal | Green | Control flow: `if`, `while`, `for`, `match`, `try`, `catch`, `return`, `assign`, ... |
+| Lime | Olive | Primitive types: `int`, `bool`, `usize`, ... |
 
-| Color | Meaning |
-|---|---|
-| Sage green | Control flow: `if`, `while`, `for`, `switch`, `match`, `try`, `catch`, `return`, `assign`, ... |
-| Teal | Functions, methods, and operator symbols in a declaration |
-| Cobalt blue | Declaration keywords: `let`, `class`, `func`, `new`, `import`, ... and `self` |
-| Steel blue | Modifiers: `public`, `private`, `static`, `entry`, `ref`, and the `as` and `sizeof` operators |
+**The other hues, one meaning each.**
 
-**Everything else.**
+| Dark | Light | Meaning |
+|---|---|---|
+| Steel cyan | Deep cyan | Module names in front of a dot, and a `kernel.` qualifier |
+| Violet | Purple | Topology: `realm`, `kernel`, `userspace`, `process`, `thread`, `foreground`, `background` |
+| Pale violet | Indigo | Realm, process and thread names, and the `::` qualifier |
+| Dusty rose | Rose | The seven annotations, and their arguments a shade lighter |
+| Coral | Brick | The risk surface: `unsafe`, `defer`, `throw`, `throws`, `panic`, `native`, `fields`, and only the outermost braces of `unsafe { }` and `native { }` |
+| Cream | Ochre | Enum members, union variants, and `true` / `false` / `null` in bold |
+| Amber | Ochre | Strings, chars and numbers |
+| Grey-green | Grey-green | Modifiers: `public`, `private`, `static`, `entry`, `ref` |
+| Off-white | Near-black | Variables, parameters and properties |
+| Grey | Grey | Braces, brackets, commas, accessors, operators, comments, and raw C inside a native block |
+| Red | Red | Shapes the compiler rejects outright |
 
-| Color | Meaning |
-|---|---|
-| Violet | Topology: `realm`, `kernel`, `userspace`, `process`, `thread`, `foreground`, `background`, and the seven annotations |
-| Light violet | Realm, process and thread names, and a `::` or `kernel.` qualifier |
-| Maroon | The risk surface: `unsafe`, `defer`, `throw`, `throws`, `panic`, `native`, `fields`, and only the outermost braces of `unsafe { }` and `native { }` |
-| Off-white | Variables, properties and operators. Parameters are the same color, in italic |
-| Citrine | Parentheses and brackets, a cooler yellow than the golds so `List[String]()` does not blur into one smear |
-| Grey | Braces, commas, accessors, and raw C inside a native block |
-| Red | Shapes the compiler rejects outright |
+Only foreground colors and font styles are ever set. Nothing sets a background. The only italics are
+comments and `self`; the only bold is `true` / `false` / `null`.
 
-Only foreground colors and font styles are ever set. Nothing sets a background.
+Two distinctions are worth naming, because both were collisions in the v2.0 palette and both are
+fixed by the server rather than by guesswork. A primitive can never read as a type: `int` is lime and
+`Ring` is turquoise, far enough apart to be told apart at a glance. And `realm kernel` can never read
+as `Console.PrintLine`: a `namespace` token carries the `declaration` modifier when it names a realm,
+a process or a thread, and does not when it is the module in front of a dot, so the two take
+different colors from the same token type.
 
-The `Gata Gold` theme carries this whole palette, greens and blues included, as a full color theme with the editor chrome to match, if you would rather switch to it than overlay it. Pick it from `Preferences: Color Theme`.
+`Gata Canopy` and `Gata Daylight` carry the whole palette as full color themes, with editor chrome to
+match, if you would rather switch to one than overlay it. Pick either from `Preferences: Color Theme`.
 
 ### Why the risk regions survive nesting
 
@@ -162,7 +182,7 @@ The `Gata Gold` theme carries this whole palette, greens and blues included, as 
 
 This layer runs in process with no external dependency, so it works on a loose `.g` file that belongs to no project at all.
 
-**Semantics, on open and on save, in project files.** `server/src/semantic.ts` walks upward for a `*.gconf`. If it finds one, it runs `appa check` over that project, which is the full front end with no emission, and turns its output back into squiggles tagged `appa`. Type errors, undefined names, unmarked shadows, non-exhaustive matches and everything else in the `G000` to `G101` table come from the real compiler. Nothing about them is approximated here.
+**Semantics, on open and on save, in project files.** `server/src/semantic.ts` walks upward for a `*.gconf`. If it finds one, it runs `appa check` over that project, which is the full front end with no emission, and turns its output back into squiggles tagged `appa`. Type errors, undefined names, unmarked shadows, non-exhaustive matches and everything else in the `G000` to `G102` table come from the real compiler. Nothing about them is approximated here.
 
 ## Settings
 
@@ -195,7 +215,7 @@ An XSD ships in `schemas/gconf.xsd` for anyone who would rather point the Red Ha
 
 ```
 editors/vscode/
-├── extension.js                     Activation, the color overlay, the language client
+├── extension.js                     Activation, the language client, the 2.0.0 settings cleanup
 ├── package.json                     Contributions and settings
 ├── assets/                          The extension icon, the file icon, the wordmark
 ├── gata-config.json                 Comments, brackets, auto-closing pairs for .g
@@ -204,14 +224,15 @@ editors/vscode/
 │   ├── gata.tmLanguage.json         The grammar
 │   └── gconf.tmLanguage.json        A thin wrapper over the built-in XML grammar
 ├── themes/
-│   └── gata-gold.json               The optional full theme
+│   ├── gata-canopy.json             The optional full theme, dark
+│   └── gata-daylight.json           The same palette as a light theme
 ├── schemas/
 │   └── gconf.xsd                    A manifest schema for external XML tooling
 └── server/
     ├── src/lexer.ts                 Port of Appa's Lexer.cs
     ├── src/parser.ts                Port of Appa's Parser.cs, diagnostics only
     ├── src/token.ts                 Port of Appa's TK enum
-    ├── src/codes.ts                 The G000 to G101 table, with one-line meanings
+    ├── src/codes.ts                 The G000 to G102 table, with one-line meanings
     ├── src/semtokens.ts             Semantic classification, behind the colors
     ├── src/symbols.ts               Declarations, behind the outline and the hovers
     ├── src/language.ts              Keyword, annotation and primitive documentation
@@ -229,6 +250,27 @@ Both layers read one file at a time and neither is a type checker, so a few thin
 - The syntax layer reports the first error in a file, exactly as the compiler's parser does, rather than recovering and continuing.
 
 None of this affects the compiler. It is all cosmetic, or it is a diagnostic the real one repeats.
+
+## What Changed in v2.2.0
+
+- **A new palette, on both grounds.** `Canopy Azure` on dark and `Daylight` on light, built from the
+  logo's greens rather than around them. Roughly half the colored ink on a page is now green, where
+  the v2.0 palette put more than half of it in blue and amber.
+- **Two collisions gone.** A primitive can no longer be mistaken for a type, and a realm name can no
+  longer be mistaken for a module: `namespace.declaration` and `namespace` are now colored apart. No
+  pair of roles that has to be told apart sits closer than ΔE 18 on either ground.
+- **It follows your theme from dark to light.** The light ramp is a separate table tuned against
+  white, not an inversion — every role clears 4.5:1 there, which no previous palette did.
+- **Fewer italics.** Parameters and generic parameters stand upright now. Comments and `self` are the
+  only slanted things left.
+- **Two optional themes.** `Gata Canopy` and `Gata Daylight` carry the palette as full themes, with
+  editor chrome to match.
+
+## What Changed in v2.1.0
+
+- **The palette stopped touching your settings.** It ships as contributed defaults now, so no color theme is ever selected for you and `settings.json` is never written. Entries an older build left behind are removed once, on the first launch after the upgrade.
+- **Squiggles land on the right span.** `appa` reports the width of the offending span only as the caret row under the source snippet, which the client used to throw away, underlining a single character at the start of the statement instead. It reads the carets now, so `undefinedThing` is underlined, not the `l` of the `let` in front of it.
+- **A smaller file icon.** The mark was 13px wide in a 16px slot, wider than every icon around it in the explorer and flush against the left edge. Its canvas grew so the mark lands at 11.5px, with the same left bearing as the rest of the tree.
 
 ## What Changed in v2.0.0
 
