@@ -182,7 +182,7 @@ match, if you would rather switch to one than overlay it. Pick either from `Pref
 
 This layer runs in process with no external dependency, so it works on a loose `.g` file that belongs to no project at all.
 
-**Semantics, on open and on save, in project files.** `server/src/semantic.ts` walks upward for a `*.gconf`. If it finds one, it runs `appa check` over that project, which is the full front end with no emission, and turns its output back into squiggles tagged `appa`. Type errors, undefined names, unmarked shadows, non-exhaustive matches and everything else in the `G000` to `G101` table come from the real compiler. Nothing about them is approximated here.
+**Semantics, on open and on save, in project files.** `server/src/semantic.ts` walks upward for a `*.gconf`. If it finds one, it runs `appa check` over that project, which is the full front end with no emission, and turns its output back into squiggles tagged `appa`. Type errors, undefined names, unmarked shadows, non-exhaustive matches and everything else in the `G000` to `G102` table come from the real compiler. Nothing about them is approximated here.
 
 ## Settings
 
@@ -232,7 +232,7 @@ editors/vscode/
     ├── src/lexer.ts                 Port of Appa's Lexer.cs
     ├── src/parser.ts                Port of Appa's Parser.cs, diagnostics only
     ├── src/token.ts                 Port of Appa's TK enum
-    ├── src/codes.ts                 The G000 to G101 table, with one-line meanings
+    ├── src/codes.ts                 The G000 to G102 table, with one-line meanings
     ├── src/semtokens.ts             Semantic classification, behind the colors
     ├── src/symbols.ts               Declarations, behind the outline and the hovers
     ├── src/language.ts              Keyword, annotation and primitive documentation
