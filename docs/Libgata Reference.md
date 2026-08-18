@@ -8,6 +8,7 @@ The language itself is documented in [The Gata Programming Language](The%20Gata%
 |---|---|
 | [libgata(7)](#libgata7) | library overview and conventions |
 | [algorithms(3)](#algorithms3) | sort, search, min/max |
+| [args(3)](#args3) | command-line argument access |
 | [bigint(3)](#bigint3) | arbitrary-precision integers |
 | [char(3)](#char3) | character classification |
 | [console(3)](#console3) | text I/O and screen control |
@@ -90,7 +91,7 @@ Reaching these links the matching GatOS subsystem into the image. Everything els
 | File | Imports |
 |---|---|
 | `Char.g`, `Mem.g`, `Optional.g`, `Result.g`, `Runtime.g`, `Span.g`, `Sync.g`, `Sys.g`, `Time.g` | — |
-| `Format.g`, `Hash.g` | `String` |
+| `Args.g`, `Format.g`, `Hash.g` | `String` |
 | `Algorithms.g` | `List`, `Span` |
 | `Math.g` | `Algorithms` |
 | `Random.g` | `Time` |
@@ -182,6 +183,52 @@ These are generic methods, not members of a generic class, so each is stamped on
 ### SEE ALSO
 
 [list(3)](#list3), [span(3)](#span3), [math(3)](#math3)
+
+---
+
+## args(3)
+
+### NAME
+
+Args, Argc, Arg — command-line argument access
+
+### LIBRARY
+
+libgata (`Args.g`)
+
+### SYNOPSIS
+
+```go
+import Args;
+
+module Args
+
+public int    func Argc()
+public String func Arg(int i)
+```
+
+### DESCRIPTION
+
+**`Argc()`** — The process's argument count, `argv[0]` (the program name) included.
+
+**`Arg()`** — Argument *i*, or an empty string if *i* is out of range.
+
+Hosted only, and deliberately its own file rather than folded into [sys(3)](#sys3): floor validation walks every declared method body in every *imported* file looking for `_env_*` references, and it runs before dead-code elimination decides what's actually reachable - so it does not matter whether `Argc()`/`Arg()` are ever called, only whether they are declared anywhere the build imports. `Sys.g` is imported by nearly every GatOS project too (for `Yield`/`Sleep`/`Exit`), and `env.GatOS.g` correctly has no `_env_argc`/`_env_argv` bind - a kernel has no argv. Had `Argc`/`Arg` lived in `Sys.g`, importing `Sys.g` at all - not calling `Argc()`/`Arg()`, merely importing the file - would fail every such GatOS build. Keeping this as a separate, explicit import means only a program that actually wants argv pulls in the requirement for it.
+
+Calling `Argc()`/`Arg()` from a `kernel` realm (having imported `Args.g` there, which nothing stops you from doing) fails at `appa check`, before it ever reaches C, naming exactly what's missing:
+
+```
+<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argc'; add one
+<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argv'; add one
+```
+
+### NOTES
+
+`Argc()`/`Arg()` read two globals (`gata_argc`, `gata_argv`) that a Hosted build's generated `main(int argc, char** argv)` populates before anything else runs - unconditionally, for every Hosted build, regardless of whether the program reads them back. There is nothing to gate there: `main()` with this shape is only ever emitted for a pure Hosted build in the first place, so a GatOS image never carries it regardless of what it imports.
+
+### SEE ALSO
+
+[sys(3)](#sys3)
 
 ---
 
@@ -1912,9 +1959,6 @@ public void func Sleep(int ms)
 public void func Exit()
 public void func Shutdown()
 public void func Reboot()
-
-public int    func Argc()
-public String func Arg(int i)
 ```
 
 ### DESCRIPTION
@@ -1929,28 +1973,13 @@ public String func Arg(int i)
 
 `Process` and `Thread` are opaque handles with no Gata-visible fields, which the compiler resolves to a bare pointer. You do not construct them; the generated launcher does, from the `process` and `thread` declarations in your realms.
 
-**`Argc()`** — The process's argument count, `argv[0]` (the program name) included. Hosted only: a batch process has argv, a kernel does not, so a GatOS environment binds no `_env_argc`/`_env_argv` at all. Calling `Argc()`/`Arg()` from a `kernel` realm fails at `appa check`, before it ever reaches C, naming exactly what's missing:
-
-```
-<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argc'; add one
-<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argv'; add one
-```
-
-That's the same unbound-floor diagnostic every other capability an environment doesn't provide gets - not a special case, just what `Sys.g`'s ordinary `@extern` declarations plus `ValidateFloor` already do for a call with nothing behind it.
-
-**`Arg()`** — Argument *i*, or an empty string if *i* is out of range.
-
 ### RETURN VALUE
 
 `Sleep()` treats a negative *ms* as zero. `Exit()` is a no-op in the kernel realm, where there is no process to end.
 
-### NOTES
-
-`Argc()`/`Arg()` read two globals (`gata_argc`, `gata_argv`) that a Hosted build's generated `main(int argc, char** argv)` populates before anything else runs - unconditionally, for every Hosted build, not gated on whether the program actually reads them back. There is nothing to gate: `main()` with this shape is only ever emitted for a pure Hosted build in the first place, so a GatOS image never carries it regardless.
-
 ### SEE ALSO
 
-[time(3)](#time3), [sync(3)](#sync3)
+[args(3)](#args3), [time(3)](#time3), [sync(3)](#sync3)
 
 ---
 
