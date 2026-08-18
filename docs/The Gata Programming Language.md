@@ -1,7 +1,7 @@
 
 
 <p align="center">
-  <img src="editors/vscode/assets/gata-full.png" alt="Gata" width="700">
+  <img src="../editors/vscode/assets/gata-full.png" alt="Gata" width="700">
 </p>
 
 <h1 align="center">The Gata Programming Language</h1>
@@ -120,7 +120,7 @@ Everything else described in this book works on both targets.
 
 **Part III** is the systems material: processes and threads, shared state, memory and ownership, raw C, and the environment file that binds a build to a platform.
 
-**Part IV** is lookup: commands, diagnostics, grammar, and a tour of the standard library.
+**Part IV** is lookup: commands, diagnostics, grammar, and a pointer to the standard library's own reference.
 
 A companion document, `lang.txt`, is the complete feature reference, derived from the compiler source. When you want the exhaustive rule rather than the explanation, that is where to look.
 
@@ -2460,29 +2460,11 @@ import List;
 
 There is no umbrella import. A module you never name is never parsed and never compiled in.
 
-Modules pull in what they are built on, so `import Console;` also reaches `String` and `Int`. Import what you actually use anyway.
+Modules pull in what they are built on, so `import Console;` also reaches `String` and `Int`. Import what you actually use anyway; the other module's dependency list is not your contract.
 
-`libgata` is ordinary Gata, written with the features in this book. Reading it is the best available answer to "how is this meant to be used". Method signatures are still changing, so the current surface lives in a separate reference document rather than here.
+`libgata` is ordinary Gata, written with the features in this book. It has no privileges the language does not have, which is why Chapter 21's floor is the ceiling on what it can ever offer.
 
-| Module | What it is |
-|---|---|
-| `Runtime` | the reference-counting runtime: object header, retain, release |
-| `Mem` | heap allocation, plus `Copy`, `Fill`, `Compare`, and overlap-safe `Move` |
-| `String`, `Char` | the string type and character classification |
-| `Int`, `Long` | parsing and radix-aware formatting for `int` and `int64` |
-| `Math`, `Format` | math functions; printf-style formatting |
-| `Console` | console and TTY I/O. Output is batched, so one `Print` is one write |
-| `Sys` | yield, sleep, exit, shutdown, reboot |
-| `Time` | the monotonic clock. Using it pulls timers into the build |
-| `Sync` | `SpinLock` and `AtomicInt` (Ch. 16) |
-| `Random` | `xoshiro256**`. Seeds from the clock; `Reseed` for reproducibility. Not for keys |
-| `Misc` | startup niceties, like `PrintBanner()` |
-| `Optional` | `Optional[V]`, plus helpers |
-| `List`, `Stack`, `Queue`, `Map`, `Set`, `PriorityQueue` | the containers, one import each |
-| `Hash` | hashing primitives shared by `Map` and `Set` |
-| `Algorithms` | `Sort`, `BinarySearch`, `Min`, `Max` over `operator <`, plus `SortBy`/`MinBy`/`MaxBy` taking a comparison function |
-
-Where an operation has a natural operator reading, the type provides both: `List[T]` has `<<` for `Add`, `Set[T]` has `+` and `&` for union and intersection. Where it does not, as with `Contains` and `Length`, it stays a named method.
+**The full surface is documented in [Libgata Reference.md](Libgata%20Reference.md), in this folder**, as manual pages: one per module, with the usual NAME, SYNOPSIS, DESCRIPTION, RETURN VALUE and ERRORS sections. Look up a signature there; learn the language here.
 
 ## Appendix: A Program Using Most of the Language
 
