@@ -4,7 +4,7 @@
  * Author: u/ApparentlyPlus
  */
 
-import Runtime;
+import "selfhostlib/Runtime.g";
 
 /*
  * A Span borrows memory it does not own: it never retains or releases what it points at, and
