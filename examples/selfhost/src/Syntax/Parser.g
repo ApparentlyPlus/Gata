@@ -12,6 +12,7 @@ import "src/Diagnostics/TextSpan.g";
 import "src/Diagnostics/Diagnostic.g";
 import "src/Syntax/Token.g";
 import "src/Syntax/Ast.g";
+import "src/Backend/Mangler.g";
 
 /*
  * Everything a speculative parse may advance, so it can be put back exactly.
@@ -56,7 +57,12 @@ class Parser {
     // Lexer (see ParseError in Diagnostic.g).
     public ParseError lastErr;
 
-    func _init(List[Token] tokens) {
+    // Composes the internal name of every generic instantiation the parser meets, and files it in
+    // the NameTable so a diagnostic can spell 'List_int' back as 'List[int]'.
+    Mangler mangler;
+
+    func _init(List[Token] tokens, Mangler mangler) {
+        self.mangler = mangler;
         self.tokens = tokens;
         self.pp = 0;
         self.pe = 0;
@@ -604,7 +610,7 @@ class Parser {
             }
             self.Expect(TK.RBrack);
             self.gu.Add(new GenericUse(name, generics.Clone(), self.To(ns), Optional[List[NamedSpec]].None()));
-            name = GenericInstance(name, generics);
+            name = self.mangler.GenericInstance(name, generics);
         }
         self.Expect(TK.LBrace);
         let List[ClassMember] members = new List[ClassMember]();
@@ -717,7 +723,7 @@ class Parser {
             }
             self.Expect(TK.RBrack);
             self.gu.Add(new GenericUse(name, generics.Clone(), self.To(ns), Optional[List[NamedSpec]].None()));
-            name = GenericInstance(name, generics);
+            name = self.mangler.GenericInstance(name, generics);
         }
 
         self.Expect(TK.LBrace);
@@ -837,6 +843,7 @@ class Parser {
         let List[String] mangledArgs = new List[String]();
         let int i = 0;
         while (i < args.Length()) { mangledArgs.Add(args.Get(i).Mangled()); i = i + 1; }
+        self.mangler.GenericInstance(name, mangledArgs);
         let GenericUse use = new GenericUse(name, mangledArgs, self.To(s), Optional.Some(args.Clone()));
         use.scope = scope;
         self.gu.Add(use);
@@ -2112,6 +2119,7 @@ class Parser {
         let List[String] outerArgs = new List[String]();
         let int i = 0;
         while (i < typeArgs.Length()) { outerArgs.Add(typeArgs.Get(i).Mangled()); i = i + 1; }
+        self.mangler.GenericInstance(id.name, outerArgs);
         self.gu.Add(new GenericUse(id.name, outerArgs, self.To(s), Optional.Some(typeArgs.Clone())));
 
         return Expr.GenericTypeRefExpr(new GenericTypeRefExpr(id.name, typeArgs, indexForm, self.To(s)));
@@ -2577,25 +2585,6 @@ String func StripQuotes(String raw) {
     while (start < end && raw.CharAt(start) == '"') { start = start + 1; }
     while (end > start && raw.CharAt(end - 1) == '"') { end = end - 1; }
     return raw.Substring(start, end - start);
-}
-
-/*
- * GenericInstance - The mangled name of a generic instantiation: Base_Arg1_Arg2
- *
- * TODO(Mangler.g): C#'s Mangler.GenericInstance also files the composed name in the NameTable so
- * diagnostics can spell it back as 'Base[Arg1, Arg2]'. Same gap as Specs.Flatten in Ast.g; route
- * both through Mangler.GenericInstance once Backend/Mangler.g lands.
- */
-String func GenericInstance(String baseName, List[String] args) {
-    let StringBuilder sb = new StringBuilder();
-    sb.Put(baseName);
-    let int i = 0;
-    while (i < args.Length()) {
-        sb.AppendChar('_');
-        sb.Put(args.Get(i));
-        i = i + 1;
-    }
-    return sb.ToString();
 }
 
 /*

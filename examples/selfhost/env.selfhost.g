@@ -9,7 +9,7 @@
 // Console surface, the monotonic clock, and the new File trio libselfhost's File.g binds to.
 //
 // Cross-platform AND Windows XP: every Windows-specific body below uses only Win32 API surface
-// that has existed since Windows NT (GetStdHandle, SetConsoleTextAttribute,
+// that has existed since Windows NT (GetStdHandle, WriteFile, SetConsoleTextAttribute,
 // FillConsoleOutputCharacter/Attribute, GetConsoleCursorInfo, GetConsoleScreenBufferInfo,
 // QueryPerformanceCounter, SwitchToThread, Sleep) - nothing that requires
 // ENABLE_VIRTUAL_TERMINAL_PROCESSING (Windows 10 1511+ only) or any other post-XP feature. Color,
@@ -92,20 +92,35 @@
     #endif
     }
 
+    #ifdef GATA_HOST_WINDOWS
+    static inline void _gata_win_write(DWORD which, const char* d, int n) {
+        HANDLE h = GetStdHandle(which);
+        DWORD put = 0;
+        if (h == INVALID_HANDLE_VALUE || h == NULL) return;
+        WriteFile(h, d, (DWORD)n, &put, NULL);
+    }
+    #endif
+
     static inline void _env_write(const char* d, int n) {
         if (!d || n <= 0) return;
         _gata_console_init();
+    #ifdef GATA_HOST_WINDOWS
+        _gata_win_write(STD_OUTPUT_HANDLE, d, n);
+    #else
         fwrite(d, 1, (size_t)n, stdout);
         fflush(stdout);
+    #endif
     }
 
-    /* Same as _env_write, but stderr - so `2>` redirection sees diagnostics separately from
-       ordinary output, and a piped stdout doesn't swallow them. */
     static inline void _env_write_err(const char* d, int n) {
         if (!d || n <= 0) return;
         _gata_console_init();
+    #ifdef GATA_HOST_WINDOWS
+        _gata_win_write(STD_ERROR_HANDLE, d, n);
+    #else
         fwrite(d, 1, (size_t)n, stderr);
         fflush(stderr);
+    #endif
     }
 
     static inline int _env_read(char* buf, int max) {

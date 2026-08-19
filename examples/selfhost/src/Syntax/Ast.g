@@ -352,12 +352,6 @@ module Specs {
     /*
      * Flatten - Flattens a name and its type arguments the way the rest of the compiler
      * identifies the type: Base, or Base_Arg1_Arg2.
-     *
-     * TODO(Mangler.g): C#'s Mangler.GenericInstance ALSO files the composed name in the
-     * NameTable's Composed map, which is what later lets Mangler.DisplayName spell a flat name
-     * back as 'Box[int]'. That side effect has nowhere to live until Backend/Mangler.g and
-     * Backend/NameTable.g are ported; this routes through the string composition only. Wire it
-     * through Mangler.GenericInstance when they land.
      */
     public String func Flatten(String name, List[NamedSpec] args) {
         if (args.Length() == 0) { return name; }

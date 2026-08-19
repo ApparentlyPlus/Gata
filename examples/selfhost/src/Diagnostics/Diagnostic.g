@@ -8,7 +8,10 @@
 import "selfhostlib/String.g";
 import "selfhostlib/List.g";
 import "selfhostlib/Optional.g";
+import "selfhostlib/Set.g";
+import "selfhostlib/Int.g";
 import "src/Diagnostics/TextSpan.g";
+import "src/Diagnostics/SourceText.g";
 
 /*
  * Severity of a diagnostic, either warning or error. Warnings do not prevent compilation, but
@@ -332,4 +335,268 @@ module Suggest {
         }
         return prev.Get(b.Length());
     }
+}
+
+/*
+ * The ANSI colours diagnostics render with. Ports the C class in Appa/src/CLI/AppaConsts.cs; it
+ * lives here rather than in a CLI module because Render is the only thing in the front end that
+ * needs it.
+ */
+module C {
+    public String func Esc() { return String.FromChar(27 as char); }
+    public String func NC()     { return C.Esc() + "[0m"; }
+    public String func BOLD()   { return C.Esc() + "[1m"; }
+    public String func DIM()    { return C.Esc() + "[2m"; }
+    public String func EMBER()  { return C.Esc() + "[1;38;5;209m"; }
+    public String func GOLD()   { return C.Esc() + "[1;38;5;221m"; }
+    public String func SAND()   { return C.Esc() + "[38;5;180m"; }
+    public String func CYAN()   { return C.Esc() + "[1;38;5;80m"; }
+    public String func YELLOW() { return C.Esc() + "[1;38;5;214m"; }
+    public String func RED()    { return C.Esc() + "[1;38;5;203m"; }
+}
+
+/*
+ * The bag every pass reports into: the diagnostics in the order they were added, the running
+ * error and warning counts, and the sources needed to render one with its snippet.
+ */
+class DiagnosticBag {
+    SourceSet sources;
+    List[Diagnostic] d;
+    int errCount;
+    int warnCount;
+
+    // The generic instantiation currently being resolved, or "" outside one. Set by the resolver
+    // as it walks a stamped instance's members.
+    String instanceScope;
+    StringSet instanceSeen;
+
+    func _init(SourceSet sources) {
+        self.sources = sources;
+        self.d = new List[Diagnostic]();
+        self.errCount = 0;
+        self.warnCount = 0;
+        self.instanceScope = "";
+        self.instanceSeen = new StringSet();
+    }
+
+    /*
+     * Sources - The source set diagnostics are rendered against
+     */
+    public SourceSet func Sources() { return self.sources; }
+
+    /*
+     * All - Every diagnostic, in the order it was added
+     */
+    public List[Diagnostic] func All() { return self.d; }
+
+    public bool func HasErrors() { return self.errCount > 0; }
+    public int func ErrorCount() { return self.errCount; }
+    public int func WarningCount() { return self.warnCount; }
+    public int func Count() { return self.d.Length(); }
+
+    /*
+     * TruncateTo - Drops every diagnostic added after the given count
+     */
+    public void func TruncateTo(int count) {
+        if (count >= self.d.Length()) { return; }
+        while (self.d.Length() > count) {
+            let Diagnostic last = self.d.Last();
+            if (Diags.Severity(last) == Severity.Error) { self.errCount = self.errCount - 1; }
+            else { self.warnCount = self.warnCount - 1; }
+            self.d.RemoveLast();
+        }
+    }
+
+    /*
+     * PushInstance - Marks diagnostics until the matching PopInstance as coming from one generic
+     * instantiation, where the same complaint is reported once: a stamped instance is a copy, so
+     * one bad type argument is one mistake however many lines touch it. Errors only. Hands back
+     * the previous scope, which the caller passes to PopInstance.
+     */
+    public String func PushInstance(String instance) {
+        let String previous = self.instanceScope;
+        self.instanceScope = instance;
+        return previous;
+    }
+
+    /*
+     * PopInstance - Restores the scope PushInstance handed back
+     */
+    public void func PopInstance(String previous) { self.instanceScope = previous; }
+
+    /*
+     * Error - Adds an error diagnostic. Hints are optional "= help:" lines rendered after the
+     * source snippet.
+     */
+    public void func Error(String code, String file, TextSpan span, String message, List[String] hints) {
+        if (self.instanceScope.Length() > 0) {
+            let String key = self.instanceScope + "|" + code + "|" + message;
+            if (!self.instanceSeen.AddNew(key)) { return; }
+        }
+        self.d.Add(Diagnostic.D(Severity.Error, code, message, Loc.At(file, span), hints));
+        self.errCount = self.errCount + 1;
+    }
+
+    /*
+     * Error - Adds an error diagnostic with no hints
+     */
+    public void func Error(String code, String file, TextSpan span, String message) {
+        self.Error(code, file, span, message, new List[String]());
+    }
+
+    /*
+     * Warn - Adds a warning diagnostic. Hints are optional "= help:" lines rendered after the
+     * source snippet.
+     */
+    public void func Warn(String code, String file, TextSpan span, String message, List[String] hints) {
+        self.d.Add(Diagnostic.D(Severity.Warning, code, message, Loc.At(file, span), hints));
+        self.warnCount = self.warnCount + 1;
+    }
+
+    /*
+     * Warn - Adds a warning diagnostic with no hints
+     */
+    public void func Warn(String code, String file, TextSpan span, String message) {
+        self.Warn(code, file, span, message, new List[String]());
+    }
+
+    /*
+     * LineOf - The 1-indexed line a diagnostic points at, or 0 when its file was never read or it
+     * carries no span
+     */
+    public int func LineOf(Diagnostic dg) {
+        let Loc l = Diags.Loc(dg);
+        if (TS.IsNone(Locs.Span(l))) { return 0; }
+        match (self.sources.Find(Locs.File(l))) {
+            case Some(src) { return LC.Line(src.LineColOf(TS.Start(Locs.Span(l)))); }
+            case None { return 0; }
+        }
+    }
+
+    /*
+     * Render - A diagnostic as a string, with source code context and ANSI colours. If the source
+     * file is not available, it renders only the file name and message.
+     */
+    public String func Render(Diagnostic dg) {
+        let String label = Diags.Severity(dg) == Severity.Error ? "error" : "warning";
+        let String color = Diags.Severity(dg) == Severity.Error ? C.RED() : C.YELLOW();
+
+        let Loc loc = Diags.Loc(dg);
+        let String file = Locs.File(loc);
+        let TextSpan span = Locs.Span(loc);
+        let List[String] hints = Diags.Hints(dg);
+
+        // The file name alone, from the last '/' or '\'
+        let String name = BaseName(file);
+
+        let StringBuilder sb = new StringBuilder();
+
+        let SourceText src = null;
+        match (self.sources.Find(file)) { case Some(s) { src = s; } case None { } }
+
+        if (src == null || TS.IsNone(span)) {
+            sb.Put(name).Put(": ").Put(color).Put(label).Put("[").Put(Diags.Code(dg)).Put("]")
+              .Put(C.NC()).Put(": ").Put(Diags.Message(dg));
+            let int i = 0;
+            while (i < hints.Length()) {
+                sb.Put("\n  ").Put(C.SAND()).Put("=").Put(C.NC()).Put(" ")
+                  .Put(C.CYAN()).Put("help").Put(C.NC()).Put(": ").Put(hints.Get(i));
+                i = i + 1;
+            }
+            return sb.ToString();
+        }
+
+        let LineCol lc = src.LineColOf(TS.Start(span));
+        let int line = LC.Line(lc);
+        let int col = LC.Col(lc);
+
+        // Header, like "file.g:12:34: error[G001]: message"
+        sb.Put(name).Put(":").Put(Int.ToString(line)).Put(":").Put(Int.ToString(col)).Put(": ")
+          .Put(color).Put(label).Put("[").Put(Diags.Code(dg)).Put("]").Put(C.NC()).Put(": ")
+          .Put(Diags.Message(dg)).Put("\n");
+
+        let String tspn = src.LineTextOf(line);
+        let int gutterlen = DigitCount(line);
+
+        // Empty gutter line
+        sb.Put(Spaces(gutterlen)).Put(" ").Put(C.SAND()).Put("|").Put(C.NC()).Put("\n");
+
+        // Source line with line number and gutter
+        sb.Put(C.SAND()).Put(Int.ToString(line)).Put(" |").Put(C.NC()).Put(" ").Put(tspn).Put("\n");
+
+        // Caret underline, clamped to what is left of the line
+        let int room = tspn.Length() - (col - 1);
+        if (room < 0) { room = 0; }
+        let int caretLen = TS.Length(span) < room ? TS.Length(span) : room;
+        if (caretLen < 1) { caretLen = 1; }
+
+        sb.Put(Spaces(gutterlen)).Put(" ").Put(C.SAND()).Put("|").Put(C.NC()).Put(" ");
+
+        // Padding that keeps a tab in the source line lined up under the caret
+        let int i2 = 0;
+        while (i2 < col - 1) {
+            if (i2 < tspn.Length() && tspn.CharAt(i2) == '\t') { sb.AppendChar('\t'); }
+            else { sb.AppendChar(' '); }
+            i2 = i2 + 1;
+        }
+        sb.Put(color);
+        let int c2 = 0;
+        while (c2 < caretLen) { sb.AppendChar('^'); c2 = c2 + 1; }
+        sb.Put(C.NC());
+
+        // Each hint as a rustc-style "= help: ..." line under a blank gutter row
+        if (hints.Length() > 0) {
+            sb.Put("\n").Put(Spaces(gutterlen)).Put(" ").Put(C.SAND()).Put("|").Put(C.NC());
+            let int h = 0;
+            while (h < hints.Length()) {
+                sb.Put("\n").Put(Spaces(gutterlen)).Put(" ").Put(C.SAND()).Put("=").Put(C.NC())
+                  .Put(" ").Put(C.CYAN()).Put("help").Put(C.NC()).Put(": ").Put(hints.Get(h));
+                h = h + 1;
+            }
+        }
+
+        return sb.ToString();
+    }
+}
+
+/*
+ * BaseName - The file name alone, from the last '/' or '\'
+ */
+String func BaseName(String path) {
+    let int last = -1;
+    let int i = 0;
+    while (i < path.Length()) {
+        let char ch = path.CharAt(i);
+        if (ch == '/' || ch == '\\') { last = i; }
+        i = i + 1;
+    }
+    if (last < 0) { return path; }
+    return path.Substring(last + 1, path.Length() - (last + 1));
+}
+
+/*
+ * Spaces - A run of n spaces
+ */
+String func Spaces(int n) {
+    let StringBuilder sb = new StringBuilder();
+    let int i = 0;
+    while (i < n) { sb.AppendChar(' '); i = i + 1; }
+    return sb.ToString();
+}
+
+/*
+ * DigitCount - The number of digits in a positive integer
+ */
+int func DigitCount(int value) {
+    if (value < 0) { value = value == Int.MinValue() ? Int.MaxValue() : -value; }
+    if (value < 10) { return 1; }
+    if (value < 100) { return 2; }
+    if (value < 1000) { return 3; }
+    if (value < 10000) { return 4; }
+    if (value < 100000) { return 5; }
+    if (value < 1000000) { return 6; }
+    if (value < 10000000) { return 7; }
+    if (value < 100000000) { return 8; }
+    if (value < 1000000000) { return 9; }
+    return 10;
 }
