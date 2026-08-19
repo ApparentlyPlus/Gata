@@ -21,11 +21,7 @@ class Lexer {
     int ts;
     List[Token] tokens;
     StringMap[TK] kw;
-
-    public TextSpan lastErrSpan;
-    public String lastErrMessage;
-    public String lastErrCode;
-    public List[String] lastErrHints;
+    public ParseError lastErr;
 
     func _init(String source) {
         self.src = source;
@@ -33,10 +29,7 @@ class Lexer {
         self.ts = 0;
         self.tokens = new List[Token]();
         self.kw = new StringMap[TK]();
-        self.lastErrSpan = TS.NoneSpan();
-        self.lastErrMessage = "";
-        self.lastErrCode = "";
-        self.lastErrHints = new List[String]();
+        self.lastErr = PErr.Nothing();
 
         self.kw.Put("import", TK.Import);
         self.kw.Put("realm", TK.Realm);
@@ -123,21 +116,22 @@ class Lexer {
         self.tokens.Add(Token.Tok(kind, value, TextSpan.Span(self.ts, self.pp - self.ts)));
     }
 
-    throws void func Fail(String m, String code) {
+    /*
+     * ErrSpan - The span a failure at the current position points at: the token so far, never
+     * narrower than one character (C#'s Math.Max(1, _pp - _ts))
+     */
+    TextSpan func ErrSpan() {
         let int len = (self.pp - self.ts) > 1 ? (self.pp - self.ts) : 1;
-        self.lastErrSpan = TextSpan.Span(self.ts, len);
-        self.lastErrMessage = m;
-        self.lastErrCode = code;
-        self.lastErrHints = new List[String]();
+        return TextSpan.Span(self.ts, len);
+    }
+
+    throws void func Fail(String m, String code) {
+        self.lastErr = PErr.Make(self.ErrSpan(), code, m);
         throw;
     }
 
     throws void func FailHint(String m, String code, List[String] hints) {
-        let int len = (self.pp - self.ts) > 1 ? (self.pp - self.ts) : 1;
-        self.lastErrSpan = TextSpan.Span(self.ts, len);
-        self.lastErrMessage = m;
-        self.lastErrCode = code;
-        self.lastErrHints = hints;
+        self.lastErr = ParseError.At(self.ErrSpan(), code, m, hints);
         throw;
     }
 
@@ -203,7 +197,7 @@ class Lexer {
                     let String body = self.ReadBalanced();
 
                     // C#'s "\x1F" (ASCII Unit Separator) isn't spellable as a Gata string escape
-                    self.Emit(TK.NativeTypeDecl, tname + (31 as char) as String + body);
+                    self.Emit(TK.NativeTypeDecl, tname + String.FromChar(31 as char) + body);
                     return;
                 }
             }
@@ -318,7 +312,7 @@ class Lexer {
         self.SkipWS();
         if (self.CurChar() != '(') {
             self.FailHint("'" + ann + "' requires a parenthesized argument", Codes.BadAnnotation(),
-                          ListOf1("e.g. " + ann + "(name)"));
+                          HintList.Of1("e.g. " + ann + "(name)"));
         }
         self.Advance();
         self.SkipWS();
@@ -328,7 +322,7 @@ class Lexer {
         let String arg = self.src.Substring(s, self.pp - s);
         if (arg.Length() == 0) {
             self.FailHint("'" + ann + "' argument must be a name", Codes.BadAnnotation(),
-                          ListOf1("e.g. " + ann + "(name)"));
+                          HintList.Of1("e.g. " + ann + "(name)"));
         }
         self.SkipWS();
         if (self.CurChar() != ')') {
@@ -581,8 +575,7 @@ class Lexer {
 
         if (self.CurChar() != '\'') { self.Fail("char literal must hold exactly one character", Codes.UnterminatedLiteral()); }
         self.Advance(); // closing '
-
-        self.Emit(TK.CharLit, String.FromChar(val));
+        self.Emit(TK.CharLit, (val as int) as String);
     }
 }
 
@@ -612,14 +605,4 @@ bool func IsIdentPart(char c) {
 
 bool func IsHexDigit(char c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-}
-
-/*
- * ListOf1 - A one-element List[String]; ReadParenArg's hint helper (C#'s [$"..."] array literal
- * has no direct Gata equivalent as an inline expression)
- */
-List[String] func ListOf1(String s) {
-    let List[String] result = new List[String]();
-    result.Add(s);
-    return result;
 }

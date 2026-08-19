@@ -68,6 +68,88 @@ module Diags {
 }
 
 /*
+ * Builders for the small literal hint lists the lexer and parser hand to Fail. C#'s ["a", "b"]
+ * collection expression has no inline Gata equivalent, and every diagnostic site wants one.
+ */
+module HintList {
+    public List[String] func Of1(String a) {
+        let List[String] r = new List[String]();
+        r.Add(a);
+        return r;
+    }
+
+    public List[String] func Of2(String a, String b) {
+        let List[String] r = HintList.Of1(a);
+        r.Add(b);
+        return r;
+    }
+
+    public List[String] func Of3(String a, String b, String c) {
+        let List[String] r = HintList.Of2(a, b);
+        r.Add(c);
+        return r;
+    }
+
+    public List[String] func Of4(String a, String b, String c, String d) {
+        let List[String] r = HintList.Of3(a, b, c);
+        r.Add(d);
+        return r;
+    }
+}
+
+/*
+ * A lex/parse-time failure, carried out of band. Ports Appa/src/Syntax/Lexer.cs's ParseException:
+ * Gata's `throw;` has no payload, so the thrower stores the detail here and the catcher reads it
+ * back. Shared by the Lexer and the Parser so one shape, and one set of accessors, covers both.
+ */
+union ParseError { At(TextSpan span, String code, String message, List[String] hints) }
+
+module PErr {
+
+    /*
+     * Nothing - The zero ParseError, for a sink that has not been written to yet
+     */
+    public ParseError func Nothing() {
+        return ParseError.At(TS.NoneSpan(), "", "", new List[String]());
+    }
+
+    /*
+     * Make - A ParseError with no hints (C#'s `hints = null` default)
+     */
+    public ParseError func Make(TextSpan span, String code, String message) {
+        return ParseError.At(span, code, message, new List[String]());
+    }
+
+    public TextSpan func Span(ParseError e) {
+        match (e) { case At(span, code, message, hints) { return span; } }
+    }
+
+    public String func Code(ParseError e) {
+        match (e) { case At(span, code, message, hints) { return code; } }
+    }
+
+    public String func Message(ParseError e) {
+        match (e) { case At(span, code, message, hints) { return message; } }
+    }
+
+    public List[String] func Hints(ParseError e) {
+        match (e) { case At(span, code, message, hints) { return hints; } }
+    }
+
+    /*
+     * ToDiagnostic - The error as a reportable Diagnostic against the file it was read from.
+     * Ports Pipeline.cs's `catch (ParseException)` to `diag.Error(...)` conversion.
+     */
+    public Diagnostic func ToDiagnostic(ParseError e, String file) {
+        match (e) {
+            case At(span, code, message, hints) {
+                return Diagnostic.D(Severity.Error, code, message, Loc.At(file, span), hints);
+            }
+        }
+    }
+}
+
+/*
  * This module contains all the diagnostic codes used in the compiler. Each code is a string that
  * starts with "G" followed by a three digit number.
  */
