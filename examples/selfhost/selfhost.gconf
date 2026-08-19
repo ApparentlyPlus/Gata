@@ -1,5 +1,0 @@
-<appa>
-    <ProjectName>selfhost</ProjectName>
-    <TargetBackend>Hosted</TargetBackend>
-    <BuildMode>Debug</BuildMode>
-</appa>
