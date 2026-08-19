@@ -10,6 +10,8 @@ import "selfhostlib/Result.g";
 import "selfhostlib/File.g";
 import "selfhostlib/Dir.g";
 import "selfhostlib/Sys.g";
+import "selfhostlib/Args.g";
+import "src/Syntax/Lexer.g";
 
 realm userspace {
     entry func Main() {
@@ -48,10 +50,13 @@ realm userspace {
         Console.PrintLine("gone=" + (!Dir.IsDir(dir) as String));
         Dir.DeleteFile(path);
 
-        Console.PrintLine("argc=" + (Sys.Argc() as String));
+        Console.PrintLine("argc=" + (Args.Argc() as String));
         let int a = 0;
-        while (a < Sys.Argc()) { Console.PrintLine("argv[" + (a as String) + "]=" + Sys.Arg(a)); a = a + 1; }
+        while (a < Args.Argc()) { Console.PrintLine("argv[" + (a as String) + "]=" + Args.Arg(a)); a = a + 1; }
 
         Sys.Exit(0);
+
+        let Lexer lex = new Lexer("type Foo { bar: int; }");
+        let tk = lex.Tokenize() catch { return;};
     }
 }

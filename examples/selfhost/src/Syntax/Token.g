@@ -4,7 +4,7 @@
  * Ports Appa/src/Syntax/Token.cs.
  */
 
-import String;
+import "selfhostlib/String.g";
 import "src/Diagnostics/TextSpan.g";
 
 enum TK {
@@ -58,14 +58,16 @@ enum TK {
  */
 union Token { Tok(TK kind, String value, TextSpan span) }
 
-TK func TokKind(Token t) {
-    match (t) { case Tok(kind, value, span) { return kind; } }
-}
+module Toks {
+    public TK func Kind(Token t) {
+        match (t) { case Tok(kind, value, span) { return kind; } }
+    }
 
-String func TokValue(Token t) {
-    match (t) { case Tok(kind, value, span) { return value; } }
-}
+    public String func Value(Token t) {
+        match (t) { case Tok(kind, value, span) { return value; } }
+    }
 
-TextSpan func TokSpan(Token t) {
-    match (t) { case Tok(kind, value, span) { return span; } }
+    public TextSpan func Span(Token t) {
+        match (t) { case Tok(kind, value, span) { return span; } }
+    }
 }

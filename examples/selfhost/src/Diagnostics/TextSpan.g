@@ -6,45 +6,47 @@
 
 union TextSpan { Span(int start, int length) }
 
-/*
- * NoneSpan - The absence of a span; SpanIsNone(NoneSpan()) is true
- */
-TextSpan func NoneSpan() { return TextSpan.Span(-1, 0); }
+module TS {
 
-/*
- * SpanStart - The span's starting offset
- */
-int func SpanStart(TextSpan s) {
-    match (s) { case Span(start, length) { return start; } }
-}
+    /*
+     * NoneSpan - The absence of a span; TS.IsNone(TS.NoneSpan()) is true
+     */
+    public TextSpan func NoneSpan() { return TextSpan.Span(-1, 0); }
 
-/*
- * SpanLength - The span's length in characters
- */
-int func SpanLength(TextSpan s) {
-    match (s) { case Span(start, length) { return length; } }
-}
+    /*
+     * Start - The span's starting offset
+     */
+    public int func Start(TextSpan s) {
+        match (s) { case Span(start, length) { return start; } }
+    }
 
-/*
- * SpanEnd - The offset one past the span's last character (SpanStart + SpanLength)
- */
-int func SpanEnd(TextSpan s) {
-    match (s) { case Span(start, length) { return start + length; } }
-}
+    /*
+     * Length - The span's length in characters
+     */
+    public int func Length(TextSpan s) {
+        match (s) { case Span(start, length) { return length; } }
+    }
 
-/*
- * SpanIsNone - True for the absent span (a negative SpanStart)
- */
-bool func SpanIsNone(TextSpan s) { return SpanStart(s) < 0; }
+    /*
+     * End - The offset one past the span's last character (Start + Length)
+     */
+    public int func End(TextSpan s) {
+        match (s) { case Span(start, length) { return start + length; } }
+    }
 
-/*
- * SpanMerge - The smallest span containing both a and b; either side alone if the other is
- * SpanIsNone
- */
-TextSpan func SpanMerge(TextSpan a, TextSpan b) {
-    if (SpanIsNone(a)) { return b; }
-    if (SpanIsNone(b)) { return a; }
-    let int ss = SpanStart(a) < SpanStart(b) ? SpanStart(a) : SpanStart(b);
-    let int ee = SpanEnd(a) > SpanEnd(b) ? SpanEnd(a) : SpanEnd(b);
-    return TextSpan.Span(ss, ee - ss);
+    /*
+     * IsNone - True for the absent span (a negative Start)
+     */
+    public bool func IsNone(TextSpan s) { return TS.Start(s) < 0; }
+
+    /*
+     * Merge - The smallest span containing both a and b; either side alone if the other is IsNone
+     */
+    public TextSpan func Merge(TextSpan a, TextSpan b) {
+        if (TS.IsNone(a)) { return b; }
+        if (TS.IsNone(b)) { return a; }
+        let int ss = TS.Start(a) < TS.Start(b) ? TS.Start(a) : TS.Start(b);
+        let int ee = TS.End(a) > TS.End(b) ? TS.End(a) : TS.End(b);
+        return TextSpan.Span(ss, ee - ss);
+    }
 }
