@@ -10,6 +10,7 @@ import "selfhostlib/List.g";
 import "selfhostlib/Optional.g";
 import "selfhostlib/Set.g";
 import "selfhostlib/Int.g";
+import "selfhostlib/Console.g";
 import "src/Diagnostics/TextSpan.g";
 import "src/Diagnostics/SourceText.g";
 
@@ -101,9 +102,7 @@ module HintList {
 }
 
 /*
- * A lex/parse-time failure, carried out of band. Ports Appa/src/Syntax/Lexer.cs's ParseException:
- * Gata's `throw;` has no payload, so the thrower stores the detail here and the catcher reads it
- * back. Shared by the Lexer and the Parser so one shape, and one set of accessors, covers both.
+ * A lex/parse-time failure, carried out of band.
  */
 union ParseError { At(TextSpan span, String code, String message, List[String] hints) }
 
@@ -290,8 +289,6 @@ module Suggest {
 
     /*
      * Hints - A one-element "did you mean 'X'?" hints list, or empty if nothing is close enough.
-     * Goes to an Error's hints parameter, not the message - it renders on its own "= help:" line
-     * rather than appended to the error text.
      */
     public List[String] func Hints(String typed, List[String] candidates) {
         let List[String] result = new List[String]();
@@ -303,9 +300,7 @@ module Suggest {
     }
 
     /*
-     * Distance - Classic iterative Levenshtein edit distance between two strings. C#'s version
-     * uses stackalloc'd Span<int> rows; Gata has no stack-scratch-buffer equivalent, so this uses
-     * two List[int] rows instead - heap-allocated, same result, just not stack-allocated.
+     * Distance - Classic iterative Levenshtein edit distance between two strings.
      */
     private int func Distance(String a, String b) {
         let int w = b.Length() + 1;
@@ -338,21 +333,42 @@ module Suggest {
 }
 
 /*
- * The ANSI colours diagnostics render with. Ports the C class in Appa/src/CLI/AppaConsts.cs; it
- * lives here rather than in a CLI module because Render is the only thing in the front end that
- * needs it.
+ * The colours diagnostics render with.
  */
 module C {
-    public String func Esc() { return String.FromChar(27 as char); }
-    public String func NC()     { return C.Esc() + "[0m"; }
-    public String func BOLD()   { return C.Esc() + "[1m"; }
-    public String func DIM()    { return C.Esc() + "[2m"; }
-    public String func EMBER()  { return C.Esc() + "[1;38;5;209m"; }
-    public String func GOLD()   { return C.Esc() + "[1;38;5;221m"; }
-    public String func SAND()   { return C.Esc() + "[38;5;180m"; }
-    public String func CYAN()   { return C.Esc() + "[1;38;5;80m"; }
-    public String func YELLOW() { return C.Esc() + "[1;38;5;214m"; }
-    public String func RED()    { return C.Esc() + "[1;38;5;203m"; }
+
+    // The slots Install programs. 0, 7, 8 and 15 are left alone - they are the structural greys.
+    int func SlotEmber()  { return 1; }
+    int func SlotGold()   { return 2; }
+    int func SlotSand()   { return 3; }
+    int func SlotCyan()   { return 4; }
+    int func SlotYellow() { return 5; }
+    int func SlotRed()    { return 6; }
+
+    /*
+     * Install - Program the six tones, once, at startup. Skipped when neither stream is a terminal:
+     * with nothing to colour there is no reason to touch a screen the compiler is not drawing on.
+     */
+    public void func Install() {
+        if (!Console.IsTty() && !Console.IsTtyErr()) { return; }
+        Console.SetPalette(C.SlotEmber(),  255, 135,  95);   // xterm 209
+        Console.SetPalette(C.SlotGold(),   255, 215,  95);   // xterm 221
+        Console.SetPalette(C.SlotSand(),   215, 175, 135);   // xterm 180
+        Console.SetPalette(C.SlotCyan(),    95, 215, 215);   // xterm 80
+        Console.SetPalette(C.SlotYellow(), 255, 175,   0);   // xterm 214
+        Console.SetPalette(C.SlotRed(),    255,  95,  95);   // xterm 203
+    }
+
+    public String func NC()     { return Console.NoStyle(); }
+    public String func BOLD()   { return Console.Fg(Vga.White()); }
+    public String func DIM()    { return Console.Fg(Vga.DarkGray()); }
+
+    public String func EMBER()  { return Console.Fg(Console.HasPalette() ? C.SlotEmber()  : Vga.Brown()); }
+    public String func GOLD()   { return Console.Fg(Console.HasPalette() ? C.SlotGold()   : Vga.Yellow()); }
+    public String func SAND()   { return Console.Fg(Console.HasPalette() ? C.SlotSand()   : Vga.Brown()); }
+    public String func CYAN()   { return Console.Fg(Console.HasPalette() ? C.SlotCyan()   : Vga.LightCyan()); }
+    public String func YELLOW() { return Console.Fg(Console.HasPalette() ? C.SlotYellow() : Vga.Yellow()); }
+    public String func RED()    { return Console.Fg(Console.HasPalette() ? C.SlotRed()    : Vga.LightRed()); }
 }
 
 /*
@@ -365,8 +381,7 @@ class DiagnosticBag {
     int errCount;
     int warnCount;
 
-    // The generic instantiation currently being resolved, or "" outside one. Set by the resolver
-    // as it walks a stamped instance's members.
+    // The generic instantiation currently being resolved, or "" outside one
     String instanceScope;
     StringSet instanceSeen;
 
@@ -409,9 +424,7 @@ class DiagnosticBag {
 
     /*
      * PushInstance - Marks diagnostics until the matching PopInstance as coming from one generic
-     * instantiation, where the same complaint is reported once: a stamped instance is a copy, so
-     * one bad type argument is one mistake however many lines touch it. Errors only. Hands back
-     * the previous scope, which the caller passes to PopInstance.
+     * instantiation, where the same complaint is reported once.
      */
     public String func PushInstance(String instance) {
         let String previous = self.instanceScope;

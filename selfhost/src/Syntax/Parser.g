@@ -53,8 +53,7 @@ class Parser {
     // declares nothing scoped still needs its rewrite sweep.
     bool scopedRef;
 
-    // Where a failed parse leaves its detail; `throw;` carries no payload. Shared shape with the
-    // Lexer (see ParseError in Diagnostic.g).
+    // Where a failed parse leaves its detail; `throw;` carries no payload.
     public ParseError lastErr;
 
     // Composes the internal name of every generic instantiation the parser meets, and files it in
@@ -91,8 +90,7 @@ class Parser {
     void func ExitDepth() { self.depth = self.depth - 1; }
 
     /*
-     * Cur - The token at the current position. Safe without a bounds check because Advance()
-     * clamps pp to [0, Length-1].
+     * Cur - The token at the current position.
      */
     Token func Cur() { return self.tokens.Get(self.pp); }
 
@@ -175,9 +173,7 @@ class Parser {
     bool func At(TK k) { return self.CurKind() == k; }
 
     /*
-     * AtValue - True if the current token is an identifier spelled exactly as given. The test for
-     * a contextual keyword - a word that only means something in one grammatical position, and is
-     * an ordinary identifier everywhere else.
+     * AtValue - True if the current token is an identifier spelled exactly as given.
      */
     bool func AtValue(String word) {
         return self.CurKind() == TK.Ident && Toks.Value(self.Cur()) == word;
@@ -246,8 +242,7 @@ class Parser {
     }
 
     /*
-     * GuTake - The generic uses recorded from index `from` onward, as a fresh list (C#'s
-     * _gu.GetRange)
+     * GuTake - The generic uses recorded from index `from` onward, as a fresh list (C#'s _gu.GetRange)
      */
     List[GenericUse] func GuTake(int from) {
         let List[GenericUse] r = new List[GenericUse]();
@@ -257,8 +252,7 @@ class Parser {
     }
 
     /*
-     * GuTruncate - Drops every generic use recorded at or after index `from` (C#'s
-     * _gu.RemoveRange)
+     * GuTruncate - Drops every generic use recorded at or after index `from` (C#'s  _gu.RemoveRange)
      */
     void func GuTruncate(int from) {
         while (self.gu.Length() > from) { self.gu.RemoveLast(); }
@@ -298,10 +292,7 @@ class Parser {
     }
 
     /*
-     * RejectAnns - Verifies that no invalid annotations were attached to a declaration that cannot
-     * use them. @intrinsic and @preamble bind only to native blocks, native types and functions;
-     * @keep and @builtin are what a class or module may carry, and everything else rejects all of
-     * them.
+     * RejectAnns - Verifies that no invalid annotations were attached to a declaration that cannot use them.
      */
     throws void func RejectAnns(List[Annotation] anns, String what, bool allowKeep, bool allowBuiltin, bool allowShadows) {
         let int i = 0;
@@ -338,9 +329,7 @@ class Parser {
     }
 
     /*
-     * ParseFreeFuncDecl - Parses a free function declaration. Handles optional modifiers, an
-     * optional return type using ParseOptionalReturnType, and an optional generic parameter list
-     * between the name and the opening paren.
+     * ParseFreeFuncDecl - Parses a free function declaration. 
      */
     throws TopLevel func ParseFreeFuncDecl(List[Annotation] anns, int s) {
         let TextSpan modSpan = Toks.Span(self.Cur());
@@ -355,8 +344,7 @@ class Parser {
                 if (self.At(TK.LBrace)) {
                     let String shown = Specs.ToSpecString(r);
                     self.Fail("expected 'func', found '{'", Codes.BadDeclHeader(),
-                              HintList.Of2("did you forget 'process' before '" + shown + "'?",
-                                           "e.g. 'foreground process " + shown + " { ... }'"));
+                              HintList.Of2("did you forget 'process' before '" + shown + "'?", "e.g. 'foreground process " + shown + " { ... }'"));
                 }
             }
             case None { }
@@ -368,8 +356,7 @@ class Parser {
         let List[Param] parms = self.ParseParamList();
         self.Expect(TK.RParen);
         if (self.At(TK.Arrow)) {
-            self.Fail("'" + name + "': return type goes before 'func', not after the parameter list",
-                      Codes.BadDeclHeader());
+            self.Fail("'" + name + "': return type goes before 'func', not after the parameter list", Codes.BadDeclHeader());
         }
         let MethodBody body = self.ParseMethodBody();
         return TopLevel.FuncDecl(new FuncDecl(mods, anns, ret, name, generics, parms, isEntry, isThrow, body, self.To(s)));
@@ -386,9 +373,7 @@ class Parser {
     }
 
     /*
-     * ParseGenericParamList - Parses an optional generic parameter list like [T, U]. Returns an
-     * empty list if there is no leading bracket. Used by class declarations, free function
-     * declarations, and class/module method declarations.
+     * ParseGenericParamList - Parses an optional generic parameter list like [T, U].
      */
     throws List[String] func ParseGenericParamList() {
         let List[String] gp = new List[String]();
@@ -439,10 +424,7 @@ class Parser {
     }
 
     /*
-     * RejectModifierOnType - Reports a visibility or 'static' modifier written on a top-level type
-     * declaration. Only a free function takes one there; without this the modifier is read as the
-     * start of a function and the error lands on the 'class' keyword, naming the wrong thing
-     * entirely.
+     * RejectModifierOnType - Reports a visibility or 'static' modifier written on a top-level type declaration.
      */
     throws void func RejectModifierOnType() {
         let TK k = self.CurKind();
@@ -465,8 +447,7 @@ class Parser {
     }
 
     /*
-     * ParseImport - Parses an import declaration. A string literal import is a filesystem path; a
-     * bare identifier is a module name.
+     * ParseImport - Parses an import declaration. A string literal import is a filesystem path; a bare identifier is a module name.
      */
     throws TopLevel func ParseImport() {
         let int s = self.CurStart();
@@ -483,8 +464,7 @@ class Parser {
     }
 
     /*
-     * ParseNativeType - Parses a native type declaration. The lexer encodes the type name and body
-     * separated by the ASCII unit separator in a single NativeTypeDecl token value.
+     * ParseNativeType - Parses a native type declaration.
      */
     throws TopLevel func ParseNativeType(List[Annotation] anns, int s) {
         let Token t = self.Advance();
@@ -496,8 +476,7 @@ class Parser {
     }
 
     /*
-     * ParseExternDecl - Parses an @extern function pre-declaration. Tells the compiler a C
-     * function exists so it can be called from Gata without a Gata body.
+     * ParseExternDecl - Parses an @extern function pre-declaration.
      */
     throws TopLevel func ParseExternDecl(List[Annotation] anns, int s) {
         self.Advance(); // @extern
@@ -516,9 +495,7 @@ class Parser {
     }
 
     /*
-     * ParseRealmDecl - Parses a 'realm kernel { ... }' or 'realm userspace { ... }' block. There
-     * are exactly two realms; 'kernel' is a keyword, 'userspace' is matched by value since nothing
-     * else may follow 'realm'.
+     * ParseRealmDecl - Parses a 'realm kernel { ... }' or 'realm userspace { ... }' block. 
      */
     throws TopLevel func ParseRealmDecl() {
         let int s = self.CurStart();
@@ -532,8 +509,7 @@ class Parser {
                 let List[String] realms = HintList.Of2("kernel", "userspace");
                 hints = Suggest.Hints(Toks.Value(self.Cur()), realms);
             }
-            self.Fail("unknown realm " + self.Found() + "; the only realms are 'kernel' and 'userspace'",
-                      Codes.UnknownRealm(), hints);
+            self.Fail("unknown realm " + self.Found() + "; the only realms are 'kernel' and 'userspace'", Codes.UnknownRealm(), hints);
         }
         self.Expect(TK.LBrace);
         let List[TopLevel] items = new List[TopLevel]();
@@ -546,9 +522,7 @@ class Parser {
     }
 
     /*
-     * RequireRealmKeyword - Reports a bare 'kernel' that is missing its 'realm' prefix. Kept as a
-     * dedicated diagnostic so the pre-'realm' spelling produces advice rather than a generic
-     * syntax error.
+     * RequireRealmKeyword - Reports a bare 'kernel' that is missing its 'realm' prefix.
      */
     throws void func RequireRealmKeyword() {
         self.Fail("expected 'realm' before 'kernel'", Codes.MissingRealmKeyword(),
@@ -557,7 +531,6 @@ class Parser {
 
     /*
      * ParseContextItem - Dispatches to the correct parser for a single item inside a realm block.
-     * Realm blocks cannot be nested, so a nested 'realm' is a hard error here.
      */
     throws TopLevel func ParseContextItem() {
         if (self.At(TK.Realm)) { self.Fail("a 'realm' block cannot be nested inside another", Codes.InvalidNesting()); }
@@ -591,8 +564,7 @@ class Parser {
 
     /*
      * ParseClassDecl - Parses a class declaration. The name is mangled with the generic parameter
-     * list so the Monomorphizer can match self-references: "class List[T]" becomes "List_T" in the
-     * AST, with baseName holding the "List" the user wrote.
+     * list so the Monomorphizer can match self-references.
      */
     throws TopLevel func ParseClassDecl(List[Annotation] anns, int s) {
         self.Expect(TK.Class);
@@ -625,9 +597,7 @@ class Parser {
     }
 
     /*
-     * ExpectBareGenericParam - Reads a single bare identifier as a generic parameter name. Type
-     * arguments at use sites may nest (List[Map[K,V]]); class parameter declarations may not
-     * (class Foo[Bar[Baz]] is rejected).
+     * ExpectBareGenericParam - Reads a single bare identifier as a generic parameter name.
      */
     throws String func ExpectBareGenericParam() {
         if (!self.At(TK.Ident)) {
@@ -642,8 +612,7 @@ class Parser {
     }
 
     /*
-     * ParseModuleDecl - Parses a module declaration. Modules are classes where all members are
-     * implicitly static.
+     * ParseModuleDecl - Parses a module declaration. Modules are classes where all members are implicitly static.
      */
     throws TopLevel func ParseModuleDecl(List[Annotation] anns, int s) {
         self.Expect(TK.Module);
@@ -660,8 +629,7 @@ class Parser {
 
     /*
      * ParseEnumDecl - Parses an enum declaration. Members may carry explicit integer values; if
-     * absent the C compiler applies the usual increment rule. A trailing comma after the last
-     * member is a hard error.
+     * absent the C compiler applies the usual increment rule.
      */
     throws TopLevel func ParseEnumDecl(List[Annotation] anns, int s) {
         self.Expect(TK.Enum);
@@ -701,17 +669,13 @@ class Parser {
 
     /*
      * ParseUnionDecl - Parses a union declaration. Each variant is a name followed by an optional
-     * parenthesised field list. A variant with no parens carries no payload. A trailing comma
-     * after the last variant is a hard error.
+     * parenthesised field list.
      */
     throws TopLevel func ParseUnionDecl(List[Annotation] anns, int s) {
         self.Expect(TK.Union);
         let int ns = self.CurStart();
         let String name = self.ExpectValue(TK.Ident);
         let String baseName = name;
-
-        // Type parameters, registered and mangled exactly as ParseClassDecl does, so the
-        // Monomorphizer discovers the template through the same GenericUse channel.
         let List[String] generics = new List[String]();
         if (self.At(TK.LBrack)) {
             self.Advance();
@@ -733,8 +697,7 @@ class Parser {
             variants.Add(v0);
             while (self.Try(TK.Comma)) {
                 if (self.At(TK.RBrace)) {
-                    self.Fail("trailing comma not allowed after the last union variant; remove it",
-                              Codes.TrailingComma());
+                    self.Fail("trailing comma not allowed after the last union variant; remove it", Codes.TrailingComma());
                 }
                 let UnionVariant vn = self.ParseUnionVariant();
                 variants.Add(vn);
@@ -758,9 +721,7 @@ class Parser {
     }
 
     /*
-     * ParseUnionFieldList - Parses a union variant's parenthesised field list. A trailing comma
-     * right before the closing paren is a hard error with a specific message, since the shared
-     * ParseParamList used for function parameters does not check for one.
+     * ParseUnionFieldList - Parses a union variant's parenthesised field list.
      */
     throws List[Param] func ParseUnionFieldList() {
         self.Advance(); // opening (
@@ -802,7 +763,6 @@ class Parser {
                     path.Add(seg);
                     more = self.Try(TK.Dot);
                 }
-                // The scope is everything but the final segment; that last one is the name.
                 let List[String] outer = sc.Clone();
                 let int i = 0;
                 while (i < path.Length() - 1) { outer.Add(path.Get(i)); i = i + 1; }
@@ -906,8 +866,7 @@ class Parser {
     }
 
     /*
-     * ParseTypeSpec - Parses a full type specifier. Fixed-array prefix [N], function pointer type,
-     * plain type name, and optional pointer suffixes.
+     * ParseTypeSpec - Parses a full type specifier.
      */
     throws TypeSpec func ParseTypeSpec() {
         self.EnterDepth();
@@ -919,7 +878,6 @@ class Parser {
     throws TypeSpec func ParseTypeSpecInner() {
         let int s = self.CurStart();
 
-        // [N]elem, brackets come before the element type.
         if (self.At(TK.LBrack) && self.PeekKind(1) == TK.IntLit && self.PeekKind(2) == TK.RBrack) {
             self.Advance();
             let Token nt = self.Advance();
@@ -990,9 +948,6 @@ class Parser {
         if (!isEntry) { isEntry = self.Try(TK.Entry); }
 
         if (self.At(TK.Operator)) { let ClassMember r21 = self.ParseOperatorDecl(anns, mods, isEntry, isThrow, s); return r21; }
-
-        // If we reach here, it must be either a method or a field. Fields don't support
-        // entry, throws, or annotations.
         if (self.LooksLikeMethod()) {
             if (isEntry) { self.Fail("'entry' has no meaning on a class method", Codes.BadDeclHeader()); }
             let Optional[TypeSpec] ret = self.ParseOptionalReturnType();
@@ -1009,15 +964,10 @@ class Parser {
             let MethodBody body = self.ParseMethodBody();
             return ClassMember.MethodDecl(new MethodDecl(mods, anns, ret, name, generics, parms, isEntry, isThrow, body, self.To(s)));
         }
-
-        // Field. Entry, throws, annotations, and static are all meaningless here.
         if (isEntry) { self.Fail("'entry' has no meaning on a field", Codes.BadDeclHeader()); }
         if (isThrow) { self.Fail("'throws' has no meaning on a field", Codes.BadDeclHeader()); }
         if (anns.Length() > 0) { self.Fail("annotations have no effect on a field", Codes.BadAnnotation()); }
         if (Mods.Has(mods, Modifiers.Static)) { self.Fail("'static' has no meaning on a field", Codes.BadDeclHeader()); }
-
-        // 'name = expr;' declares a field whose type is inferred from its initializer, same as
-        // 'let name = expr;'. Anything else starts with a type spec.
         let Optional[TypeSpec] ftype = Optional[TypeSpec].None();
         let String fname = "";
         if (self.At(TK.Ident) && self.PeekKind(1) == TK.Eq) {
@@ -1057,8 +1007,7 @@ class Parser {
         let List[Param] parms = self.ParseParamList();
         self.Expect(TK.RParen);
         if (self.At(TK.Arrow)) {
-            self.Fail("'" + op + "': return type goes after 'operator', not after the parameter list",
-                      Codes.BadDeclHeader());
+            self.Fail("'" + op + "': return type goes after 'operator', not after the parameter list", Codes.BadDeclHeader());
         }
         let MethodBody body = self.ParseMethodBody();
         return ClassMember.OperatorDecl(new OperatorDecl(mods, op, parms, ret, body, self.To(s)));
@@ -1102,7 +1051,6 @@ class Parser {
 
     /*
      * LooksLikeMethod - True if the current position looks like the start of a method declaration.
-     * 'func Name' with no return type is a method; 'func(' starts a func-pointer type (a field).
      */
     bool func LooksLikeMethod() {
         if (self.At(TK.Func) && self.PeekKind(1) == TK.Ident) { return true; }
@@ -1111,8 +1059,7 @@ class Parser {
     }
 
     /*
-     * ParseOptionalReturnType - Parses an optional return type before 'func'. Returns None when
-     * 'func' is immediately followed by an identifier (no return type).
+     * ParseOptionalReturnType - Parses an optional return type before 'func'.
      */
     throws Optional[TypeSpec] func ParseOptionalReturnType() {
         if (self.At(TK.Func) && self.PeekKind(1) == TK.Ident) { return Optional[TypeSpec].None(); }
@@ -1133,8 +1080,7 @@ class Parser {
     }
 
     /*
-     * ParseMods - Parses zero or more access/storage modifiers into a single flags value. A
-     * repeated modifier and the contradictory 'public private' pair are hard errors.
+     * ParseMods - Parses zero or more access/storage modifiers into a single flags value. 
      */
     throws Modifiers func ParseMods() {
         let Modifiers mods = Modifiers.None;
@@ -1158,9 +1104,7 @@ class Parser {
     }
 
     /*
-     * ParseProcessDeclTop - Parses a process declaration. The mode is written before 'process' and
-     * is mandatory: it owns TTY focus and scheduling visibility, so it is not allowed to default
-     * silently.
+     * ParseProcessDeclTop - Parses a process declaration. 
      */
     throws TopLevel func ParseProcessDeclTop() {
         let int s = self.CurStart();
@@ -1177,8 +1121,7 @@ class Parser {
         if (self.At(TK.Colon)) {
             self.Fail("'" + name + "': the deployment mode is written before 'process'",
                       Codes.MissingProcessMode(),
-                      HintList.Of1("write 'foreground process " + name + " { ... }' or 'background process "
-                                   + name + " { ... }'"));
+                      HintList.Of1("write 'foreground process " + name + " { ... }' or 'background process " + name + " { ... }'"));
         }
 
         if (!modeExplicit) {
@@ -1209,8 +1152,6 @@ class Parser {
 
     /*
      * RejectStrayImport - Reports an 'import' written anywhere but the top level of a file.
-     * Otherwise it reaches the free-function parser and comes back as "expected a type name,
-     * found 'import'".
      */
     throws void func RejectStrayImport() {
         if (self.At(TK.Import)) {
@@ -1220,8 +1161,7 @@ class Parser {
     }
 
     /*
-     * RejectStrayThread - Reports a 'thread' outside a process body. 'thread' is contextual, so a
-     * stray one otherwise parses as a type name and reports a missing 'func'.
+     * RejectStrayThread - Reports a 'thread' outside a process body.
      */
     throws void func RejectStrayThread() {
         if (self.AtValue("thread") && self.PeekKind(1) == TK.Ident && self.PeekKind(2) == TK.LBrace) {
@@ -1231,9 +1171,7 @@ class Parser {
     }
 
     /*
-     * AtThreadStart - True if a thread declaration starts here. A foreground/background prefix is
-     * accepted so the resolver can reject it as G043 with a message about modes, rather than the
-     * parser rejecting it as an unknown declaration.
+     * AtThreadStart - True if a thread declaration starts here.
      */
     bool func AtThreadStart() {
         return self.AtValue("thread") || self.At(TK.Foreground) || self.At(TK.Background);
@@ -1251,8 +1189,7 @@ class Parser {
     }
 
     /*
-     * ParseProcessItem - Dispatches a single non-thread declaration inside a process body. A
-     * process holds the same declaration forms a realm does, minus the two that cannot nest.
+     * ParseProcessItem - Dispatches a single non-thread declaration inside a process body. 
      */
     throws TopLevel func ParseProcessItem() {
         if (self.At(TK.Realm)) { self.Fail("a 'realm' block cannot appear inside a process", Codes.InvalidNesting()); }
@@ -1310,10 +1247,7 @@ class Parser {
     }
 
     /*
-     * ParseThreadDecl - Parses a thread declaration inside a process body. A foreground or
-     * background keyword before 'thread' is syntactically accepted and captured in mode; the type
-     * resolver rejects it as G043, since threads don't have their own deployment mode, only the
-     * process does.
+     * ParseThreadDecl - Parses a thread declaration inside a process body.
      */
     throws ThreadDecl func ParseThreadDecl() {
         let int s = self.CurStart();
@@ -1337,9 +1271,7 @@ class Parser {
     }
 
     /*
-     * ParseThreadEntry - Parses the entry function of a thread. Threads are pure topology, not
-     * scopes, so a nested thread or helper function in the body is a hard error, and the fixed
-     * void(*)(void*) ABI means return types and access modifiers are rejected too.
+     * ParseThreadEntry - Parses the entry function of a thread.
      */
     throws EntryFuncDecl func ParseThreadEntry() {
         let int s = self.CurStart();
@@ -1463,16 +1395,14 @@ class Parser {
         if (self.At(TK.Break)) { self.Advance(); self.Expect(TK.Semi); return Stmt.BreakStmt(new BreakStmt(self.To(s))); }
         if (self.At(TK.Continue)) { self.Advance(); self.Expect(TK.Semi); return Stmt.ContinueStmt(new ContinueStmt(self.To(s))); }
 
-        // Throw and debug statements are not expressions, so they must be handled here instead of
-        // in ParseExprOrAssign.
+        // Throw and debug statements are not expressions, so they must be handled here
         if (self.At(TK.Throw)) {
             self.Advance();
             self.Expect(TK.Semi);
             return Stmt.ThrowStmt(new ThrowStmt(self.To(s)));
         }
 
-        // `assign v;` terminates a catch handler. Parsed here rather than in ParseExprOrAssign
-        // for the same reason as throw: it transfers control, it is not an expression.
+        // `assign v;` terminates a catch handler
         if (self.At(TK.Assign)) {
             self.Advance();
             let Expr value = self.ParseExpr();
@@ -1489,8 +1419,7 @@ class Parser {
             return Stmt.DebugStmt(new DebugStmt(Toks.Value(t), self.To(s)));
         }
 
-        // Panic is a statement, not an expression, so it must be handled here instead of in
-        // ParseExprOrAssign.
+        // Panic is a statement, not an expression, so it must be handled here
         if (self.At(TK.Panic)) {
             self.Advance();
             if (!self.At(TK.StrLit)) {
@@ -1509,9 +1438,7 @@ class Parser {
     }
 
     /*
-     * ParseLetStmt - Parses a let declaration. The type is optional; LooksLikeTypeAndIdent is the
-     * single lookahead deciding whether a declared type precedes the name, shared with the
-     * for-init form so the two positions can never disagree.
+     * ParseLetStmt - Parses a let declaration.
      */
     throws Stmt func ParseLetStmt(int s) {
         let LetStmt ls = self.ParseLetCore(s);
@@ -1618,8 +1545,7 @@ class Parser {
 
     /*
      * LooksLikeMissingLet - True if the current position looks like a type spec immediately
-     * followed by an identifier, which is always a missing 'let' and never valid expression
-     * syntax. Pure lookahead; never consumes tokens.
+     * followed by an identifier, which is always a missing 'let' and never valid expression syntax.
      */
     bool func LooksLikeMissingLet() {
         if (!self.At(TK.Ident) && !self.At(TK.LBrack)) { return false; }
@@ -1678,13 +1604,12 @@ class Parser {
 
     /*
      * ParseForStmt - Parses a for loop. Disambiguates between 'for x in col { }' (ForInStmt, no
-     * parens) and the C-style 'for (init; cond; step) { }' (ForStmt) by peeking for the 'in'
-     * keyword.
+     * parens) and the C-style 'for (init; cond; step) { }' (ForStmt) by peeking for the 'in' keyword.
      */
     throws Stmt func ParseForStmt(int s) {
         self.Expect(TK.For);
 
-        // for x in col { } -- range loop, no parens
+        // for x in col { }
         if (self.At(TK.Ident) && self.PeekKind(1) == TK.In) {
             let Token vt = self.Advance();
             self.Advance(); // consume 'in'
@@ -1782,9 +1707,7 @@ class Parser {
     }
 
     /*
-     * ParseExprOrAssign - Parses an expression statement or assignment. After parsing the
-     * left-hand expression, any assignment operator promotes the result to an AssignStmt;
-     * otherwise it's an ExprStmt.
+     * ParseExprOrAssign - Parses an expression statement or assignment.
      */
     throws Stmt func ParseExprOrAssign(int s) {
         let Expr expr = self.ParseExpr();
@@ -1805,8 +1728,7 @@ class Parser {
     public throws Expr func ParseExpr() { let Expr r40 = self.ParseTernary(); return r40; }
 
     /*
-     * ParseTernary - Parses a ternary conditional. Right-associative so nested ternaries chain
-     * without parens. '?' falls through to TK.Punct since it has no dedicated token kind.
+     * ParseTernary - Parses a ternary conditional.
      */
     throws Expr func ParseTernary() {
         self.EnterDepth();
@@ -1916,8 +1838,7 @@ class Parser {
     }
 
     /*
-     * ParseRelational - Parses relational comparisons: less-than, greater-than, and their equal
-     * variants
+     * ParseRelational - Parses relational comparisons: less-than, greater-than, and their equal variants
      */
     throws Expr func ParseRelational() {
         let int s = self.CurStart();
@@ -1977,9 +1898,7 @@ class Parser {
     }
 
     /*
-     * ParseAs - Parses 'expr as Type' casts. Tighter than '*' so 'x * y as T' means
-     * 'x * (y as T)'. User-defined type casts use 'as'; primitive casts use the C-style
-     * '(PrimType)' form.
+     * ParseAs - Parses 'expr as Type' casts. Tighter than '*' so 'x * y as T' means 'x * (y as T)'.
      */
     throws Expr func ParseAs() {
         let int s = self.CurStart();
@@ -1993,8 +1912,7 @@ class Parser {
     }
 
     /*
-     * ParseUnary - Parses prefix unary operators. '&' and '*' are only legal inside unsafe blocks
-     * but are accepted here; the type checker enforces the restriction.
+     * ParseUnary - Parses prefix unary operators.
      */
     throws Expr func ParseUnary() {
         self.EnterDepth();
@@ -2054,8 +1972,7 @@ class Parser {
 
     /*
      * ParseBracketed - Parses '[ ... ]' after an expression: an index, a generic type reference,
-     * or a node carrying both for the resolver. Only 'Ident[...].' can be a type, and a failed
-     * reading is rolled back whole - cursor, depth and generic-use registrations.
+     * or a node carrying both for the resolver.
      */
     throws Expr func ParseBracketed(Expr expr, int s) {
         self.RejectExplicitTypeArgs();
@@ -2068,9 +1985,6 @@ class Parser {
         if (id == null) { let Expr r42 = self.ParseIndexRest(expr, s); return r42; }
 
         let Snapshot start = self.Mark();
-
-        // The type reading. It needs a '.' after the brackets: 'Maybe[int]' on its own is a type
-        // in value position, which is never legal, and reading it as one only worsens the error.
         let List[NamedSpec] typeArgs = null;
         let Snapshot typeEnd = start;
         let List[GenericUse] typeUses = new List[GenericUse]();
@@ -2111,8 +2025,7 @@ class Parser {
             // not an expression
         }
 
-        // Back to the end of the TYPE reading, but with the generic uses it recorded dropped, so
-        // re-adding them below cannot double-count.
+        // Back to the end of the TYPE reading, but with the generic uses it recorded dropped
         self.RewindParts(typeEnd.pos, typeEnd.end, typeEnd.depth, start.uses);
         self.gu.AddRange(typeUses);
 
@@ -2126,8 +2039,7 @@ class Parser {
     }
 
     /*
-     * RejectExplicitTypeArgs - Reports an attempt to pass explicit type arguments to a call, as in
-     * 'Sort[int](xs)'
+     * RejectExplicitTypeArgs - Reports an attempt to pass explicit type arguments to a call, as in'Sort[int](xs)'
      */
     throws void func RejectExplicitTypeArgs() {
         let int i = self.pp + 1;
@@ -2161,15 +2073,12 @@ class Parser {
     Snapshot func Mark() { return new Snapshot(self.pp, self.pe, self.depth, self.gu.Length()); }
 
     /*
-     * Rewind - Restores the parser to a snapshot. Depth is part of it because a failed parse
-     * unwinds past every ExitDepth, and the leak is cumulative: 195 ordinary 'a[0].x' expressions
-     * reached MaxDepth and were rejected as nested too deeply.
+     * Rewind - Restores the parser to a snapshot.
      */
     void func Rewind(Snapshot m) { self.RewindParts(m.pos, m.end, m.depth, m.uses); }
 
     /*
-     * RewindParts - Rewind to an explicit set of components. Stands in for C#'s
-     * `typeEnd with { Uses = start.Uses }`, which Gata has no record-copy syntax for.
+     * RewindParts - Rewind to an explicit set of components. 
      */
     void func RewindParts(int pos, int end, int depth, int uses) {
         self.pp = pos;
@@ -2204,8 +2113,7 @@ class Parser {
     }
 
     /*
-     * ParseArg - Parses a single call argument. 'ref' is only valid at the call-argument level,
-     * not as a general unary prefix, so it is handled here rather than in ParseUnary.
+     * ParseArg - Parses a single call argument.
      */
     throws Expr func ParseArg() {
         let int s = self.CurStart();
@@ -2234,28 +2142,26 @@ class Parser {
     throws Expr func ParsePrimaryInner() {
         let int s = self.CurStart();
 
-        // A scope qualifier swallows the dotted run after it: which segment ends the scope, which
-        // is the name, and which are member accesses is a question only the scope tree can answer.
+        // A scope qualifier swallows the dotted run after it
         match (self.ParseScopeQualifier()) {
             case Some(scope) { let Expr r45 = self.ParseScopedName(scope, s); return r45; }
             case None { }
         }
 
-        // Literals and identifiers are all single-token forms.
+        // Literals and identifiers are all single-token forms
         if (self.At(TK.IntLit)) { let Token t = self.Advance(); return Expr.IntLitExpr(new IntLitExpr(Toks.Value(t), Toks.Span(t))); }
         if (self.At(TK.FloatLit)) { let Token t = self.Advance(); return Expr.FloatLitExpr(new FloatLitExpr(Toks.Value(t), Toks.Span(t))); }
         if (self.At(TK.BoolLit)) { let Token t = self.Advance(); return Expr.BoolLitExpr(new BoolLitExpr(Toks.Value(t), Toks.Span(t))); }
         if (self.At(TK.CharLit)) {
             let Token t = self.Advance();
-            // The lexer stores a char literal's decoded CODEPOINT as decimal text.
+            // The lexer stores a char literal's decoded CODEPOINT as decimal text
             return Expr.CharLitExpr(new CharLitExpr(Int.Parse(Toks.Value(t)), Toks.Span(t)));
         }
         if (self.At(TK.StrLit)) { let Token t = self.Advance(); return Expr.StrLitExpr(new StrLitExpr(Toks.Value(t), Toks.Span(t))); }
         if (self.At(TK.Null)) { self.Advance(); return Expr.NullExpr(new NullExpr(self.To(s))); }
         if (self.At(TK.InterpStrStart)) { let Expr r46 = self.ParseInterpStr(s); return r46; }
 
-        // sizeof(Type) and default(Type) are special forms that take a type specifier in
-        // parentheses.
+        // sizeof(Type) and default(Type) are special forms that take a type specifier in parentheses
         if (self.At(TK.Sizeof)) {
             self.Advance();
             self.Expect(TK.LParen);
@@ -2271,10 +2177,10 @@ class Parser {
             return Expr.DefaultExpr(new DefaultExpr(t, self.To(s)));
         }
 
-        // 'new Type(...)' or 'new Type[...]' or 'new Type' for fixed-size arrays.
+        // 'new Type(...)' or 'new Type[...]' or 'new Type' for fixed-size arrays
         if (self.At(TK.New)) { let Expr r47 = self.ParseNewExpr(s); return r47; }
 
-        // [elem1, elem2, ...] or [] for an empty array.
+        // [elem1, elem2, ...] or [] for an empty array
         if (self.At(TK.LBrack)) {
             self.Advance();
             let List[Expr] elems = new List[Expr]();
@@ -2289,12 +2195,9 @@ class Parser {
             return Expr.ArrayLitExpr(new ArrayLitExpr(elems, self.To(s)));
         }
 
-        // Parenthesised expression or primitive cast. Unambiguous because the type must be a
-        // primitive keyword or identifier and the cast must be followed by a unary expression.
-        // User-defined types are not allowed here - they would collide with a grouped expression.
+        // Parenthesised expression or primitive cast
         if (self.At(TK.LParen)) {
             self.Advance();
-            // (PrimType) expr is an unambiguous C-style cast. User-type casts use 'as'.
             if (IsPrim(self.CurKind())) {
                 let TypeSpec targetType = self.ParseTypeSpec();
                 self.Expect(TK.RParen);
@@ -2344,9 +2247,7 @@ class Parser {
     }
 
     /*
-     * ParseInterpStr - Parses an interpolated string. The lexer emits InterpStrStart, then
-     * alternating StrLit and Punct("{") ... Punct("}") pairs for embedded expressions, then
-     * InterpStrEnd.
+     * ParseInterpStr - Parses an interpolated string.
      */
     throws Expr func ParseInterpStr(int s) {
         self.Advance(); // consume InterpStrStart
@@ -2373,8 +2274,7 @@ class Parser {
 
     /*
      * ParseNewExpr - Parses a 'new' expression. An optional constructor arg list and an optional
-     * collection initializer may each follow the type spec, independently. A bare 'new Type'
-     * parses too; the resolver rejects it with NewOnNonClass for anything but a class.
+     * collection initializer may each follow the type spec, independently.
      */
     throws Expr func ParseNewExpr(int s) {
         self.Expect(TK.New);
@@ -2415,9 +2315,7 @@ class Parser {
     }
 
     /*
-     * ParseSwitchStmt - Parses a switch statement. Each 'case' arm carries one or more
-     * comma-separated labels and a block body. An optional 'default' arm catches all unmatched
-     * values.
+     * ParseSwitchStmt - Parses a switch statement.
      */
     throws Stmt func ParseSwitchStmt(int s) {
         self.Expect(TK.Switch);
@@ -2525,8 +2423,7 @@ bool func IsAssignTk(TK k) {
 }
 
 /*
- * AssignOpOf - Maps an assignment-operator token kind to its AssignOp value. C# throws on any
- * other kind; every caller guards with IsAssignTk first, so plain '=' is the safe fallback.
+ * AssignOpOf - Maps an assignment-operator token kind to its AssignOp value.
  */
 AssignOp func AssignOpOf(TK k) {
     if (k == TK.PlusEq)    { return AssignOp.AddAssign; }
@@ -2560,8 +2457,7 @@ bool func IsTypeKeyword(TK k) {
 }
 
 /*
- * PrimName - Maps a primitive token to its canonical type name string. TPrim tokens carry their
- * own value (eg. "uint64"), so those fall through to the default.
+ * PrimName - Maps a primitive token to its canonical type name string.
  */
 String func PrimName(Token t) {
     let TK k = Toks.Kind(t);

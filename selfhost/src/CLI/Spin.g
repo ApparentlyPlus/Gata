@@ -2,11 +2,6 @@
  * Spin.g - the spinner and the "step done" lines
  *
  * Ports Appa/src/CLI/Spin.cs.
- *
- * NOT PORTED: the Task/thread overloads (While, WhileRunning) and the process-exit cursor-restore
- * hook. All three exist for work that blocks - extracting a toolchain, waiting on gcc, waiting on
- * QEMU - and none of that is reachable from a transpile-only compiler, which does its work inline.
- * Step and Done, the two the front end actually uses, are here.
  */
 
 import "selfhostlib/String.g";

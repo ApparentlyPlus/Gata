@@ -2,24 +2,6 @@
  * ManagedTypes.g - which IR types are ARC-managed (classes, unions that may hold one)
  *
  * Ports Appa/src/IR/ManagedTypes.cs.
- *
- * Two passes ask this question and they must agree: Ownership decides where to insert retain and
- * release, and the Emitter decides which unions get a generated retain/release pair. If the two
- * ever disagreed the emitted C would call a function nobody defined, or leak. So the answer lives
- * here once and both construct it from the same module.
- *
- * The interesting half is unions. A union is managed when it can hold a managed value, and it can
- * do that indirectly: a variant field whose type is ANOTHER union which is itself managed. That is
- * a reachability question over the union-holds-union graph, so the constructor seeds the set with
- * the unions holding a class directly and then closes over it with a worklist. Direct recursion is
- * impossible - a union cannot contain itself by value (G004) - but a chain A holds B holds C is
- * not, and one pass over the declaration list would miss it whenever the list happens to be in the
- * wrong order.
- *
- * The port follows C# exactly here, including the deliberate omission: a fixed array of a managed
- * element type is NOT managed. An array is raw storage the author counts by hand (WARNING G094
- * says so at the declaration), and making it managed here would be a feature rather than a
- * consistency fix.
  */
 
 import "selfhostlib/String.g";
@@ -30,10 +12,11 @@ import "selfhostlib/Queue.g";
 import "src/IR/Ir.g";
 
 class ManagedTypes {
-    // Every non-module class name. A module has no instances, so it is never managed.
+
+    // Every non-module class name. A module has no instances, so it is never managed
     StringSet classes;
 
-    // Every union name that can hold a managed value, directly or through another union.
+    // Every union name that can hold a managed value, directly or through another union
     StringSet unions;
 
     func _init(IrModule m) {
@@ -47,8 +30,7 @@ class ManagedTypes {
             ci = ci + 1;
         }
 
-        // holders: union name -> the unions that hold it by value in some variant field. Built on
-        // the way past, so the closure below never has to re-walk the variant lists.
+        // holders: union name -> the unions that hold it by value in some variant field
         let StringMap[List[String]] holders = new StringMap[List[String]]();
         let Queue[String] work = new Queue[String]();
 
@@ -87,7 +69,7 @@ class ManagedTypes {
             ui = ui + 1;
         }
 
-        // Anything holding a managed union is itself managed, transitively.
+        // Anything holding a managed union is itself managed, transitively
         while (!work.IsEmpty()) {
             let String held = work.Dequeue();
             match (holders.Find(held)) {
@@ -105,9 +87,7 @@ class ManagedTypes {
     }
 
     /*
-     * IsManaged - True if values of this type carry reference counts the compiler maintains. Fixed
-     * arrays are excluded even with a managed element type - an array is raw storage the author
-     * counts by hand, and managing it here would be a feature, not a consistency fix.
+     * IsManaged - True if values of this type carry reference counts the compiler maintains.
      */
     public bool func IsManaged(IrType t) {
         match (t) {

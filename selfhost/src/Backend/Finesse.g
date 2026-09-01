@@ -2,22 +2,6 @@
  * Finesse.g - the decorative header comment stamped on top of every emitted file
  *
  * Ports Appa/src/Backend/Finesse.cs.
- *
- * Cosmetic, and yet load-bearing for byte-identical output: the header text lands in the emitted C,
- * so reproducing the C# compiler's output means reproducing exactly which template it picked and
- * which lines it drew from each table. That rests on three things being identical, and all three
- * are:
- *
- *   1. the generator - .NET's seeded System.Random, reproduced in NetRandom.g and checked against
- *      a real .NET run;
- *   2. the seed - SHA-256 of the emitted sections, in Sha256.g, taken the same way Layout does;
- *   3. the TABLE ORDER below, because Pick() indexes into these lists. Moving one entry moves
- *      every subsequent header in the build. They are transcribed in declaration order from
- *      Finesse.cs and must not be sorted, deduped, or tidied.
- *
- * The templates use C# raw string interpolation; here they are Line calls into a writer, which is
- * the same text. The box-drawing characters are UTF-8 byte sequences, so Sep() repeats a STRING
- * rather than a char - a multi-byte glyph has to repeat as a glyph, not as a broken byte.
  */
 
 import "selfhostlib/String.g";
@@ -37,8 +21,7 @@ class Finesse {
     String func Pick(List[String] values) { return values.Get(self.random.Next(values.Length())); }
 
     /*
-     * Sep - One string repeated. C# uses new string(char, n); a box-drawing glyph is more than one
-     * byte in UTF-8, so this repeats the whole sequence.
+     * Sep - One string repeated.
      */
     public static String func Sep(String c, int width) {
         let StringBuilder sb = new StringBuilder();
@@ -50,8 +33,7 @@ class Finesse {
     public static int func Max2(int a, int b) { return a > b ? a : b; }
 
     /*
-     * GenerateKewlHeader - The header for one output file. One call in a thousand returns the
-     * legendary one; the rest pick from sixteen templates.
+     * GenerateKewlHeader - The header for one output file. 
      */
     public String func GenerateKewlHeader(String fileName) {
         if (self.random.Next(1000) == 0) { return self.LegendaryHeader(fileName); }
@@ -77,8 +59,7 @@ class Finesse {
     }
 
     /*
-     * Taglines - 45 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Taglines - 45 entries, in declaration order.
      */
     List[String] func Taglines() {
         let List[String] r = new List[String]();
@@ -131,8 +112,7 @@ class Finesse {
     }
 
     /*
-     * Facts - 39 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Facts - 39 entries, in declaration order.
      */
     List[String] func Facts() {
         let List[String] r = new List[String]();
@@ -179,8 +159,7 @@ class Finesse {
     }
 
     /*
-     * Observations - 31 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Observations - 31 entries, in declaration order.
      */
     List[String] func Observations() {
         let List[String] r = new List[String]();
@@ -219,8 +198,7 @@ class Finesse {
     }
 
     /*
-     * Greetings - 12 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Greetings - 12 entries, in declaration order.
      */
     List[String] func Greetings() {
         let List[String] r = new List[String]();
@@ -240,8 +218,7 @@ class Finesse {
     }
 
     /*
-     * EmotionalStates - 12 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * EmotionalStates - 12 entries, in declaration order.
      */
     List[String] func EmotionalStates() {
         let List[String] r = new List[String]();
@@ -261,8 +238,7 @@ class Finesse {
     }
 
     /*
-     * AiLines - 16 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * AiLines - 16 entries, in declaration order.
      */
     List[String] func AiLines() {
         let List[String] r = new List[String]();
@@ -286,8 +262,7 @@ class Finesse {
     }
 
     /*
-     * LoadingLines - 21 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * LoadingLines - 21 entries, in declaration order.
      */
     List[String] func LoadingLines() {
         let List[String] r = new List[String]();
@@ -316,8 +291,7 @@ class Finesse {
     }
 
     /*
-     * StatusLines - 14 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * StatusLines - 14 entries, in declaration order.
      */
     List[String] func StatusLines() {
         let List[String] r = new List[String]();
@@ -339,8 +313,7 @@ class Finesse {
     }
 
     /*
-     * WarningLines - 11 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * WarningLines - 11 entries, in declaration order.
      */
     List[String] func WarningLines() {
         let List[String] r = new List[String]();
@@ -359,8 +332,7 @@ class Finesse {
     }
 
     /*
-     * Discoveries - 12 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Discoveries - 12 entries, in declaration order.
      */
     List[String] func Discoveries() {
         let List[String] r = new List[String]();
@@ -380,8 +352,7 @@ class Finesse {
     }
 
     /*
-     * Quotes - 18 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Quotes - 18 entries, in declaration order.
      */
     List[String] func Quotes() {
         let List[String] r = new List[String]();
@@ -407,8 +378,7 @@ class Finesse {
     }
 
     /*
-     * Forecasts - 8 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Forecasts - 8 entries, in declaration order.
      */
     List[String] func Forecasts() {
         let List[String] r = new List[String]();
@@ -424,8 +394,7 @@ class Finesse {
     }
 
     /*
-     * NightEntries - 8 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * NightEntries - 8 entries, in declaration order.
      */
     List[String] func NightEntries() {
         let List[String] r = new List[String]();
@@ -441,8 +410,7 @@ class Finesse {
     }
 
     /*
-     * Absurdisms - 19 entries, in declaration order. The ORDER IS LOAD-BEARING: Pick indexes
-     * into it with a seeded Random, so moving one entry changes every emitted header.
+     * Absurdisms - 19 entries, in declaration order.
      */
     List[String] func Absurdisms() {
         let List[String] r = new List[String]();
@@ -939,8 +907,6 @@ class Finesse {
 
     /*
      * AncientArtifact - A discovery report whose separator scales to the file name.
-     * The two Picks run BEFORE the text, matching the order C# evaluates them in - the
-     * generator is a sequence, so evaluation order is part of the output.
      */
     String func AncientArtifact(String fileName) {
         let StringBuilder sb = new StringBuilder();
@@ -1062,13 +1028,6 @@ class Finesse {
 
     /*
      * Card - A boxed identity card whose width adapts to the longest content line.
-     *
-     * The three Picks run first and in this order, because the generator is a sequence: swapping
-     * them would still produce a valid card and a different one from the C# compiler's.
-     *
-     * The width arithmetic counts CHARACTERS in C#, where every row is ASCII, so counting bytes
-     * here agrees. The bars are not ASCII - PadRight pads the ASCII row to w, while the bar repeats
-     * a three-byte box-drawing glyph w + 2 times, which is why Sep takes a string.
      */
     String func Card(String fileName) {
         let String tagline     = self.Pick(self.Taglines());

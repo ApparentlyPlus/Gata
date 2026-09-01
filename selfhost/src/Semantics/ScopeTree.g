@@ -36,8 +36,7 @@ module QN {
 
 /*
  * One node of the scope tree. suffix is precomputed at intern time rather than rebuilt per
- * lookup, since qualification happens once per declaration and per type reference. token is its
- * C-safe rendering, which costs the same to precompute and saves a hash per emitted name.
+ * lookup, since qualification happens once per declaration and per type reference.
  */
 class ScopeNode {
     public ScopeId parent;
@@ -132,8 +131,6 @@ class ScopeTree {
 
     /*
      * Qualify - The globally unique name a declaration written as `name` in this scope gets.
-     * Root-scope names are returned unchanged, so a program using no realm-scoped declarations
-     * produces byte-identical output to one compiled before scopes existed.
      */
     public String func Qualify(ScopeId s, String name) {
         if (Sc.IsRoot(s)) { return name; }
@@ -150,8 +147,7 @@ class ScopeTree {
 
     /*
      * TryUnqualify - The scope and written name a qualified spelling was composed from, for the
-     * passes that meet it flat. None for an ordinary root-scope name, which is its own written
-     * form.
+     * passes that meet it flat.
      */
     public Optional[QualifiedName] func TryUnqualify(String qualified) {
         return self.qualified.Find(qualified);
@@ -169,8 +165,6 @@ class ScopeTree {
 
     /*
      * Candidates - The readable paths of every scope declaring this bare name, ordinally sorted.
-     * Empty when nothing scoped declares it, which is the ordinary case. Sorted because these
-     * reach the user, and declaration order is not something a diagnostic should expose.
      */
     public List[String] func Candidates(String bare) {
         let List[String] paths = new List[String]();
@@ -189,8 +183,7 @@ class ScopeTree {
     }
 
     /*
-     * Display - The readable, fully-qualified form for diagnostics: "kernel.P1.Config". Never the
-     * raw suffixed name, which must not reach a user.
+     * Display - The readable, fully-qualified form for diagnostics: "kernel.P1.Config".
      */
     public String func Display(ScopeId s, String name) {
         if (Sc.IsRoot(s)) { return name; }
@@ -205,8 +198,7 @@ class ScopeTree {
     }
 
     /*
-     * Child - The child scope for a segment, or None when this scope has no such child. Lookup
-     * only: a written qualifier must not bring a scope into existence.
+     * Child - The child scope for a segment, or None when this scope has no such child.
      */
     public Optional[ScopeId] func Child(ScopeId parent, String segment) {
         match (self.index.Find(self.ChildKey(parent, segment))) {
@@ -216,9 +208,7 @@ class ScopeTree {
     }
 
     /*
-     * Encloses - True when `outer` is `inner` or encloses it. The whole visibility rule for a
-     * written qualifier: outward is a disambiguator, inward would be a new way to see into a
-     * sibling.
+     * Encloses - True when `outer` is `inner` or encloses it.
      */
     public bool func Encloses(ScopeId outer, ScopeId inner) {
         let ScopeId s = inner;
@@ -237,10 +227,6 @@ bool func StrLess(String a, String b) { return a.CompareTo(b) < 0; }
 
 /*
  * FnvHash - FNV-1a over a string, as eight lowercase hex digits.
- *
- * It lives here because ScopeTree is what needs it first, and Mangle.Hash calls it rather than
- * keeping a second copy - a scope token that disagreed with the mangler's would split one name
- * in two. Do not inline a copy anywhere else for the same reason.
  */
 String func FnvHash(String s) {
     let uint h = 2166136261u;
@@ -254,7 +240,7 @@ String func FnvHash(String s) {
 }
 
 /*
- * Hex8 - A uint as exactly eight lowercase hex digits (C#'s ToString("x8"))
+ * Hex8 - A uint as exactly eight lowercase hex digits
  */
 String func Hex8(uint v) {
     let String digits = "0123456789abcdef";

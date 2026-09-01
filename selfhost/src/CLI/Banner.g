@@ -2,14 +2,6 @@
  * Banner.g - the Appa wordmark and the sky-bison art
  *
  * Ports Appa/src/CLI/Banner.cs.
- *
- * Every measurement here counts CODEPOINTS, not bytes: the art is drawn from Unicode block and
- * sextant glyphs, and a byte count would put the wordmark in the wrong column and the gradient on
- * the wrong character. Gata's String is raw bytes, so Utf8 below walks the encoding - that is the
- * one real difference from the C# original, which gets EnumerateRunes from the base library.
- *
- * The gradient is 24-bit colour where COLORTERM advertises it, and the nearest of three xterm-256
- * golds where it does not - the same downsampling the environment already does for one tty profile.
  */
 
 import "selfhostlib/String.g";
@@ -75,10 +67,9 @@ module Utf8 {
 
 module Banner {
 
-    int func Steps() { return 32; }
     int func Gap() { return 4; }
 
-    // The gradient endpoints, and the three xterm-256 golds it collapses to without truecolor.
+    // The gradient endpoints, verbatim from Banner.cs.
     int func StartR() { return 255; }
     int func StartG() { return 211; }
     int func StartB() { return 92; }
@@ -86,46 +77,100 @@ module Banner {
     int func EndG()   { return 122; }
     int func EndB()   { return 77; }
 
+    // How many slots the gradient gets, and where they start
+    int func Stops() { return 6; }
+    int func Slot0() { return 9; }
+
+    /*
+     * InstallPalette - Program the gradient into slots 9-14, once, at startup.
+     */
+    public void func InstallPalette() {
+        if (!Console.IsTty()) { return; }
+        let int n = Banner.Stops();
+        let int i = 0;
+        while (i < n) {
+            let double t = n > 1 ? ((i as double) / ((n - 1) as double)) : 0.0;
+            Console.SetPalette(Banner.Slot0() + i,
+                               Banner.Mix(Banner.StartR(), Banner.EndR(), t),
+                               Banner.Mix(Banner.StartG(), Banner.EndG(), t),
+                               Banner.Mix(Banner.StartB(), Banner.EndB(), t));
+            i = i + 1;
+        }
+    }
+
+    /*
+     * Mix - One channel, linearly interpolated, rounded the way C# rounds it: half away from zero
+     */
+    int func Mix(int a, int b, double t) {
+        let double v = (a as double) + (((b - a) as double) * t);
+        return ((v < 0.0 ? v - 0.5 : v + 0.5) as int);
+    }
+
+    /*
+     * Ramp - The slots the gradient is painted from.
+     */
     List[int] func Ramp() {
         let List[int] r = new List[int]();
-        r.Add(221); r.Add(215); r.Add(209);
+        if (Console.HasPalette()) {
+            let int i = 0;
+            while (i < Banner.Stops()) { r.Add(Banner.Slot0() + i); i = i + 1; }
+            return r;
+        }
+        r.Add(Vga.Yellow()); r.Add(Vga.LightRed());
         return r;
     }
 
     /*
-     * Logo - 12 rows, verbatim from Banner.cs
+     * At - The ramp colour at a point down the gradient
+     */
+    int func At(double t) {
+        let List[int] ramp = Banner.Ramp();
+        let int idx = (t * (ramp.Length() as double)) as int;
+        if (idx < 0) { idx = 0; }
+        if (idx > ramp.Length() - 1) { idx = ramp.Length() - 1; }
+        return ramp.Get(idx);
+    }
+
+    /*
+     * Logo - the sky bison, 15 rows by 42 columns.
      */
     List[String] func Logo() {
         let List[String] r = new List[String]();
-        r.Add("      🬭🬵🬹🬻████████🬹🬹🬭🬏                ");
-        r.Add("   🬞🬹█████████████████🬺🬱              ");
-        r.Add("  🬵█████████████████████🬺🬏            ");
-        r.Add(" 🬻██████🬎🬂🬂🬂🬂🬊🬬██████████🬺            ");
-        r.Add("🬷█████🬝🬀       🬊██████████▌           ");
-        r.Add("██████🬀         ███████████           ");
-        r.Add("██████🬏         ▐██████████🬓          ");
-        r.Add("🬨█████🬺🬏        🬉███████████🬏         ");
-        r.Add(" 🬬██████🬹🬭🬭🬭     🬨███████████🬺🬱🬭🬏     ");
-        r.Add("  🬊█████████████🬱 🬊█████████████████🬺🬱");
-        r.Add("   🬁🬎████████████  🬁🬊█████████████████");
-        r.Add("      🬂🬊🬎🬎█████🬎🬀     🬁🬊🬎🬎██████████🬎🬀");
+        r.Add("        :::::::::::                       ");
+        r.Add("      :::::::::::::::----                 ");
+        r.Add("    :::::::::::::::--------               ");
+        r.Add("  :::::::::::::::-----------              ");
+        r.Add(" :::::::::::::::-------------             ");
+        r.Add(" ::::::::       :------------             ");
+        r.Add("::::::::         -------------            ");
+        r.Add("::::::::          ------------            ");
+        r.Add("::::::::          ------------=           ");
+        r.Add(" ::::::-:         -----------=-=          ");
+        r.Add("  :::::----------  --------=============  ");
+        r.Add("   ::-------------- -----=-============== ");
+        r.Add("    ---------------  ---=-================");
+        r.Add("      -------------    ================== ");
+        r.Add("            -----           ============  ");
         return r;
     }
 
     /*
-     * AppaText - 9 rows, verbatim from Banner.cs
+     * AppaText - the wordmark, 11 rows by 40 columns. ASCII, in the same face as Logo.
      */
     List[String] func AppaText() {
+        
         let List[String] r = new List[String]();
-        r.Add("   ░███                                     ");
-        r.Add("  ░██░██                                    ");
-        r.Add(" ░██  ░██  ░████████  ░████████   ░██████   ");
-        r.Add("░█████████ ░██    ░██ ░██    ░██       ░██  ");
-        r.Add("░██    ░██ ░██    ░██ ░██    ░██  ░███████  ");
-        r.Add("░██    ░██ ░███   ░██ ░███   ░██ ░██   ░██  ");
-        r.Add("░██    ░██ ░██░█████  ░██░█████   ░█████░██ ");
-        r.Add("           ░██        ░██                   ");
-        r.Add("           ░██        ░██                   ");
+        r.Add("  /$$$$$$                               ");
+        r.Add(" /$$__  $$                              ");
+        r.Add("| $$  \\ $$  /$$$$$$   /$$$$$$   /$$$$$$ ");
+        r.Add("| $$$$$$$$ /$$__  $$ /$$__  $$ |____  $$");
+        r.Add("| $$__  $$| $$  \\ $$| $$  \\ $$  /$$$$$$$");
+        r.Add("| $$  | $$| $$  | $$| $$  | $$ /$$__  $$");
+        r.Add("| $$  | $$| $$$$$$$/| $$$$$$$/|  $$$$$$$");
+        r.Add("|__/  |__/| $$____/ | $$____/  \\_______/");
+        r.Add("          | $$      | $$                ");
+        r.Add("          | $$      | $$                ");
+        r.Add("          |__/      |__/                ");
         return r;
     }
 
@@ -155,8 +200,7 @@ module Banner {
     }
 
     /*
-     * Lockup - Sets the wordmark beside the bison, vertically centred against it. With an odd
-     * number of rows left over the extra one goes ABOVE, which is what puts "Appa" on the third row.
+     * Lockup - Sets the wordmark beside the bison, vertically centred against it.
      */
     List[String] func Lockup() {
         let List[String] logo = Banner.Logo();
@@ -262,9 +306,7 @@ module Banner {
     }
 
     /*
-     * Paint - Colours one row, walking the gradient left to right while rowT carries how far down
-     * it already is. A new escape is emitted only when the step actually changes, which is what
-     * keeps the art from being mostly escape bytes.
+     * Paint - Colours one row, walking the gradient left to right while rowT carries how far down it already is.
      */
     String func Paint(String row, double rowT, int width) {
         let StringBuilder sb = new StringBuilder();
@@ -277,10 +319,10 @@ module Banner {
             let double t = 0.5 * across + 0.5 * rowT;
             if (t < 0.0) { t = 0.0; }
             if (t > 1.0) { t = 1.0; }
-            let int step = Banner.RoundToInt((Banner.Steps() as double) * t);
-            if (step != last) {
-                sb.Append(Banner.Code((step as double) / (Banner.Steps() as double)));
-                last = step;
+            let int c = Banner.At(t);
+            if (c != last) {
+                sb.Append(Console.Fg(c));
+                last = c;
             }
             sb.Append(runes.Get(i));
             col = col + 1;
@@ -289,39 +331,4 @@ module Banner {
         sb.Append(C.NC());
         return sb.ToString();
     }
-
-    /*
-     * RoundToInt - Math.Round's half-away-from-zero, which is what C# uses here
-     */
-    int func RoundToInt(double v) { return ((v < 0.0 ? v - 0.5 : v + 0.5) as int); }
-
-    /*
-     * Code - The SGR escape for a point on the gradient
-     */
-    String func Code(double t) {
-        if (!Banner.TrueColor()) {
-            let List[int] ramp = Banner.Ramp();
-            let int idx = (t * (ramp.Length() as double)) as int;
-            if (idx < 0) { idx = 0; }
-            if (idx > ramp.Length() - 1) { idx = ramp.Length() - 1; }
-            return C.Esc() + "[38;5;" + Int.ToString(ramp.Get(idx)) + "m";
-        }
-        return C.Esc() + "[38;2;" + Int.ToString(Banner.Mix(Banner.StartR(), Banner.EndR(), t)) +
-               ";" + Int.ToString(Banner.Mix(Banner.StartG(), Banner.EndG(), t)) +
-               ";" + Int.ToString(Banner.Mix(Banner.StartB(), Banner.EndB(), t)) + "m";
-    }
-
-    int func Mix(int a, int b, double t) {
-        return Banner.RoundToInt((a as double) + (((b - a) as double) * t));
-    }
-
-    /*
-     * TrueColor - Whether COLORTERM advertises 24-bit colour.
-     *
-     * The floor has no getenv bind, so this port cannot read COLORTERM the way C# does. It answers
-     * TRUE, which is the branch a modern terminal takes and the one the C# compiler takes on the
-     * machines this is compared against; a 16-colour terminal gets truecolor escapes it will ignore
-     * rather than the 256-colour ramp. Adding _env_getenv to the floor is the real fix.
-     */
-    bool func TrueColor() { return true; }
 }

@@ -61,8 +61,7 @@ class NameTable {
     }
 
     /*
-     * SetDense - Adopts the dense name map the Densifier produced, dropping the spellings it
-     * supersedes
+     * SetDense - Adopts the dense name map the Densifier produced, dropping the spellings it supersedes
      */
     public void func SetDense(StringMap[String] map) {
         self.dense = map;
@@ -70,8 +69,7 @@ class NameTable {
     }
 
     /*
-     * BeginRound - Drops what one front-end round decided, for the round replacing it. A round
-     * starts from the unstamped programs again; what a name means does not change between them.
+     * BeginRound - Drops what one front-end round decided, for the round replacing it.
      */
     public void func BeginRound() {
         self.scopes = Optional[ScopeTree].None();
@@ -83,8 +81,7 @@ class NameTable {
     }
 
     /*
-     * AddStamped - Records a stamped instance under its base name, keeping the bucket ordinally
-     * sorted
+     * AddStamped - Records a stamped instance under its base name, keeping the bucket ordinally sorted
      */
     public void func AddStamped(String mangled, GenericKey key) {
         if (self.stamped.Has(mangled)) { return; }

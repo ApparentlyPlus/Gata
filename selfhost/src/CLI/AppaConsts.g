@@ -2,13 +2,6 @@
  * AppaConsts.g - the version string, the SGR colour codes, and the indented output helpers
  *
  * Ports the parts of Appa/src/CLI/AppaConsts.cs a transpile-only compiler reaches.
- *
- * NOT PORTED, and deliberately: the Urls and AppaPaths regions. Both exist only to serve
- * `appa install` / `appa update` / the GatOS image build - downloading a toolchain bundle, locating
- * a cross-gcc, finding QEMU. None of that is reachable from a transpile-only compiler (selfhost.txt
- * section 4 scopes them out), and a path table that pointed at binaries this compiler never runs
- * would be a promise it could not keep. `appa --stdlib <dir>` is the supported way to say where
- * libgata is; see Pipeline.FindLibgata for what that costs.
  */
 
 import "selfhostlib/String.g";
@@ -19,6 +12,7 @@ import "src/CLI/Fmt.g";
 import "src/CLI/Spin.g";
 
 module AppaVersion {
+
     /*
      * Current - Kept in step with AppaConsts.cs by hand. `appa --version` prints it verbatim, so a
      * drift here shows up immediately in the command comparison.
@@ -27,9 +21,8 @@ module AppaVersion {
 }
 
 /*
- * The SGR escapes live in Diagnostics/Diagnostic.g's `C` module, next to the renderer that is the
- * front end's only other user of them. Named once, used from both sides - a second copy here would
- * be one more thing to keep in step with AppaConsts.cs for no gain.
+ * The colour names live in Diagnostics/Diagnostic.g's `C` module, next to the renderer that is the
+ * front end's only other user of them.
  */
 
 module Out {
@@ -48,19 +41,18 @@ module Out {
     public void func Note(String message) { Console.PrintLine(Fmt.Indent() + message); }
 
     /*
-     * Para - A paragraph, wrapped to the terminal at the standard indent
+     * Redraw - Redraws a single line in place, by returning to column 0 and overwriting what was there.
      */
-    public void func Para(String message) { Fmt.Para(message, Fmt.Indent()); }
-
-    /*
-     * Redraw - Redraws a single line in place, by returning to column 0 and clearing to end of line
-     */
-    public void func Redraw(String s) { Console.Print("\r" + s + C.Esc() + "[K"); }
+    public void func Redraw(String s) {
+        let int pad = Fmt.Width() - Fmt.Visible(s);
+        if (pad < 0) { pad = 0; }
+        Console.Print("\r" + s + " ".Repeat(pad));
+    }
 
     /*
      * ClearRedraw - Clears the current in-place redraw line
      */
-    public void func ClearRedraw() { Console.Print("\r" + C.Esc() + "[K"); }
+    public void func ClearRedraw() { Console.ClearLine(); }
 
     /*
      * Child - A line nested one level deeper than Note and Step
@@ -69,9 +61,6 @@ module Out {
 }
 
 module Log {
-    public void func Info(String m) { Console.PrintLine(m); }
-    public void func Ok(String m)   { Console.PrintLine(C.EMBER() + "✓" + C.NC() + " " + m); }
-    public void func Step(String m) { Console.PrintLine(C.GOLD() + m + C.NC()); }
 
     /*
      * Warn - A warning, wrapped under its own label

@@ -2,28 +2,6 @@
  * Emitter.g - IR to C: the pass that actually generates the emitted C source
  *
  * Ports Appa/src/Backend/Emitter.cs.
- *
- * Ten writers, one per section of the output, which Layout then composes into translation units.
- * Which writer a declaration lands in IS the translation-unit decision: kernel-visible things go to
- * the _k* writers, user-visible ones to the _u* writers, and anything both realms can see goes to
- * the shared header. A library class small enough to be self-contained goes there whole.
- *
- * PORTING NOTES
- *
- * C#'s `using (w.Block(...))` becomes an explicit `w.Block(...)` / `w.End(...)` pair; see the note
- * at the top of CodeWriter.g. The pairs are kept adjacent so the shape stays readable without the
- * compiler enforcing them.
- *
- * `HashSet<EmitKey>` keys on the WRITER's identity, so two units may each carry their own copy of
- * one typedef. Gata has no object identity hash, so each writer is given a stable name at
- * construction and the key is that name plus the kind plus the declaration name - the same
- * partition, spelled differently.
- *
- * `EmitAggregateTypes` uses a local recursive function closing over `pending` and `visiting`; with
- * no closures those two become fields for the duration of the walk.
- *
- * The C# `Write` overloads take a StringBuilder; here they take the CodeWriter and append through
- * Put, because a line under composition is already writing into the writer's own buffer.
  */
 
 import "selfhostlib/String.g";
@@ -92,8 +70,7 @@ class NamedWriter {
 }
 
 /*
- * One aggregate awaiting emission in EmitAggregateTypes' dependency walk. C# holds `object` and
- * type-switches; a union names the three possibilities outright.
+ * One aggregate awaiting emission in EmitAggregateTypes' dependency walk.
  */
 union Aggregate {
     ArrayAgg(IrType t),
@@ -118,8 +95,7 @@ class Emitter {
     public NamedWriter uFwd;
     public NamedWriter uFunc;
 
-    // Per-writer type dedup: each distinct (writer, kind, name) is emitted exactly once into that
-    // translation unit.
+    // Per-writer type dedup: each distinct (writer, kind, name) is emitted exactly once into that translation unit.
     StringSet emitted;
 
     ManagedTypes managed;
@@ -146,15 +122,15 @@ class Emitter {
         self.mangler = mangler;
         self.t = t;
         self.sharedH = new NamedWriter("sharedH");
-        self.kPre    = new NamedWriter("kPre");
-        self.kTypes  = new NamedWriter("kTypes");
-        self.kFwd    = new NamedWriter("kFwd");
-        self.kFuncs  = new NamedWriter("kFuncs");
-        self.kBoot   = new NamedWriter("kBoot");
-        self.uPre    = new NamedWriter("uPre");
-        self.uTypes  = new NamedWriter("uTypes");
-        self.uFwd    = new NamedWriter("uFwd");
-        self.uFunc   = new NamedWriter("uFunc");
+        self.kPre = new NamedWriter("kPre");
+        self.kTypes = new NamedWriter("kTypes");
+        self.kFwd = new NamedWriter("kFwd");
+        self.kFuncs = new NamedWriter("kFuncs");
+        self.kBoot = new NamedWriter("kBoot");
+        self.uPre = new NamedWriter("uPre");
+        self.uTypes = new NamedWriter("uTypes");
+        self.uFwd = new NamedWriter("uFwd");
+        self.uFunc = new NamedWriter("uFunc");
         self.emitted = new StringSet();
         self.managed = new ManagedTypes(m);
         self.missingRoles = new StringSet();
@@ -258,8 +234,6 @@ class Emitter {
             self.m.processes, self.m.HasKernelRealm(), self.m.HasUserRealm(), userEntry);
     }
 
-    // --- Reference-counting mode -------------------------------------------------------------
-
     /*
      * EmitRefCountMode - Tells the runtime whether its reference counts have to be atomic, by
      * defining GATA_RC_ATOMIC in the shared header when this program contains any concurrency
@@ -278,8 +252,6 @@ class Emitter {
         w.Line("");
     }
 
-    // --- Forward typedefs --------------------------------------------------------------------
-
     /*
      * EmitForwardTypedefs - Forward-declares every Gata class struct in the shared header, so any
      * file can use a class pointer before its full struct is defined
@@ -297,8 +269,6 @@ class Emitter {
         }
         if (any) { self.sharedH.w.Line(""); }
     }
-
-    // --- Enums and unions --------------------------------------------------------------------
 
     /*
      * EmitEnums - One C typedef enum per declared Gata enum, into the shared header
@@ -371,8 +341,6 @@ class Emitter {
         w.End("} " + u.cName + ";");
     }
 
-    // --- Fixed-array types -------------------------------------------------------------------
-
     /*
      * EmitArrayType - The C struct wrapper for one fixed-array type
      */
@@ -386,15 +354,12 @@ class Emitter {
         }
     }
 
-    // --- Result types ------------------------------------------------------------------------
-
     /*
      * EmitResultTypedefs - A Result_T struct per throws return type, forward-declaring any class
      * pointer they reference so the shared header stays self-contained
      */
     void func EmitResultTypedefs() {
         let StringSet forwarded = new StringSet();
-        // Registration order, not hash order - see SymbolTable.resultTypedefOrder.
         let List[String] keys = self.m.symbols.resultTypedefOrder;
         let int i = 0;
         while (i < keys.Length()) {
@@ -421,8 +386,6 @@ class Emitter {
         }
         if (keys.Length() > 0) { self.sharedH.w.Line(""); }
     }
-
-    // --- Function pointer types --------------------------------------------------------------
 
     /*
      * EmitFuncPtrType - The C typedef for one function-pointer type
@@ -452,8 +415,6 @@ class Emitter {
             default { }
         }
     }
-
-    // --- Aggregate type ordering -------------------------------------------------------------
 
     /*
      * EmitAggregateTypes - Every fixed-array, function-pointer and union typedef, in dependency
@@ -503,10 +464,6 @@ class Emitter {
 
     /*
      * EmitAggregate - One aggregate and everything it depends on first.
-     *
-     * 'visiting' holds the names currently on the DFS stack. A cycle among them means a struct that
-     * contains itself, which the resolver already rejected; breaking here only stops this pass from
-     * recursing forever on IR it was handed anyway.
      */
     bool func EmitAggregate(String cname) {
         match (self.pending.Find(cname)) {
@@ -519,7 +476,6 @@ class Emitter {
                 while (i < deps.Length()) { self.EmitAggregate(deps.Get(i)); i = i + 1; }
                 self.visiting.Remove(cname);
 
-                // Re-check: a cycle can bring us back here after the dependency walk.
                 if (!self.pending.Has(cname)) { return false; }
                 self.pending.Remove(cname);
 
@@ -568,9 +524,7 @@ class Emitter {
     }
 
     /*
-     * EmitUnionArc - The retain/release pair for every managed union. The tag decides what to
-     * count, so the pair is per type and generated like a class destructor. By value, so retain
-     * composes in expression position; prototypes first, as a union may hold one.
+     * EmitUnionArc - The retain/release pair for every managed union.
      */
     void func EmitUnionArc() {
         let List[IrUnion] managedUnions = new List[IrUnion]();
@@ -602,8 +556,7 @@ class Emitter {
     }
 
     /*
-     * EmitUnionArcBody - One half of a managed union's retain/release pair. The two differ only in
-     * the per-field call and the return, so they share this body rather than drifting apart.
+     * EmitUnionArcBody - One half of a managed union's retain/release pair.
      */
     void func EmitUnionArcBody(IrUnion u, bool retain) {
         let String name = retain ? self.mangler.UnionRetain(u.name) : self.mangler.UnionRelease(u.name);
@@ -624,8 +577,6 @@ class Emitter {
                 f = f + 1;
             }
             if (managedFields.Length() > 0) {
-                // The variant INDEX, not the tag enumerator: __tag is a plain int, and every other
-                // site that writes or tests it uses the index too.
                 let StringBuilder sb = new StringBuilder();
                 sb.Append("case ");
                 sb.Append(Int.ToString(i));
@@ -643,8 +594,6 @@ class Emitter {
             }
             i = i + 1;
         }
-        // Variants holding nothing managed land here. Always emitted: a switch whose every case was
-        // skipped above would otherwise be an empty statement.
         w.Line("default: break;");
         w.End("}");
         if (retain) { w.Line("return _v;"); }
@@ -654,8 +603,7 @@ class Emitter {
 
     /*
      * EmitUnionEq - Each union's structural equality: tags first, then one comparison per field of
-     * the live variant, by whatever '==' already means for that field's own type. memcmp would be
-     * wrong, not just slow - it reads the payload's inactive members and its padding.
+     * the live variant, by whatever '==' already means for that field's own type.
      */
     void func EmitUnionEq() {
         if (self.m.unions.Length() == 0) { return; }
@@ -678,9 +626,7 @@ class Emitter {
     }
 
     /*
-     * EqEmittableIn - True when every '==' this union's equality calls is declared in the given
-     * inRealm. A class inside 'userspace { }' is emitted only into uproc.c, so a kernel-side body
-     * would call an undeclared function - a warning on the pinned gcc 7, fatal on anything newer.
+     * EqEmittableIn - True when every '==' this union's equality calls is declared in the given inRealm.
      */
     bool func EqEmittableIn(IrUnion u, Visibility inRealm) {
         return self.EqVisit(u, new StringSet(), inRealm);
@@ -752,7 +698,6 @@ class Emitter {
             }
             i = i + 1;
         }
-        // Payload-free variants, and any variant whose fields all compared trivially.
         w.Line("default: return true;");
         w.End("}");
         w.End("}");
@@ -836,8 +781,6 @@ class Emitter {
         }
     }
 
-    // --- Native blocks -----------------------------------------------------------------------
-
     /*
      * EmitNativeBlock - Raw C into the preamble, types or boot section its tag names, then routed to
      * the kernel or user writer by visibility
@@ -883,11 +826,8 @@ class Emitter {
         w.Blank();
     }
 
-    // --- Classes -----------------------------------------------------------------------------
-
     /*
-     * EmitClass - Routes a class to the right emitter: module, self-contained library class, or
-     * concrete class
+     * EmitClass - Routes a class to the right emitter: module, self-contained library class, or concrete class
      */
     void func EmitClass(IrClass cls) {
         if (cls.isModule) { self.EmitModule(cls); return; }
@@ -901,14 +841,14 @@ class Emitter {
         }
 
         let bool toKernel = cls.vis != Visibility.User;
-        let bool toUser   = cls.vis != Visibility.Kernel;
+        let bool toUser = cls.vis != Visibility.Kernel;
 
         if (Emitter.CanLiveInSharedHeader(cls) && toKernel && toUser) {
             self.EmitLibClass(cls);
             return;
         }
         if (toKernel) { self.EmitConcreteClass(cls, self.kTypes, self.kFwd, self.kFuncs, true); }
-        if (toUser)   { self.EmitConcreteClass(cls, self.uTypes, self.uFwd, self.uFunc, true); }
+        if (toUser) { self.EmitConcreteClass(cls, self.uTypes, self.uFwd, self.uFunc, true); }
     }
 
     /*
@@ -934,8 +874,7 @@ class Emitter {
     }
 
     /*
-     * EmitConcreteClass - A class into the given writers. A library class uses static-inline
-     * functions; a context class uses ordinary linkage with separate forward declarations.
+     * EmitConcreteClass - A class into the given writers.
      */
     void func EmitConcreteClass(IrClass cls, NamedWriter typesNW, NamedWriter fwdNW,
                                 NamedWriter funcsNW, bool isLib) {
@@ -1109,11 +1048,8 @@ class Emitter {
         }
     }
 
-    // --- Allocators and destructors ----------------------------------------------------------
-
     /*
-     * EmitAllocator - The allocator for one class: raw memory, zeroed, header stamped, field
-     * initialisers, then _init
+     * EmitAllocator - The allocator for one class: raw memory, zeroed, header stamped, field initialisers, then _init
      */
     void func EmitAllocator(IrClass cls, CodeWriter w, bool isLib) {
         let String prefix = isLib ? "static inline " : "";
@@ -1222,8 +1158,6 @@ class Emitter {
     void func EmitObjHeader(CodeWriter w) {
         w.Line(self.Intrinsic(Roles.ObjHeader()) + " __gata_obj; /* arc header */");
     }
-
-    // --- Signatures --------------------------------------------------------------------------
 
     /*
      * ParamCType - A parameter's C type, with one more level of indirection for a ref parameter
@@ -1349,12 +1283,9 @@ class Emitter {
         return sb.ToString();
     }
 
-    // --- Free functions ----------------------------------------------------------------------
-
     /*
      * EmitFreeFunc - A free function into the units its flags call for: an entry function into its
-     * own inRealm, which is what lets a Hosted user entry become program.c's main(); a library
-     * function static-inline into both; anything else into its inRealm.
+     * own inRealm, which is what lets a Hosted user entry become program.c's main().
      */
     void func EmitFreeFunc(IrFunction fn) {
         if (fn.isEntry) {
@@ -1488,8 +1419,7 @@ class Emitter {
     public static String func EnterName(IrFunction stateInit) { return stateInit.cName + "_enter"; }
 
     /*
-     * EmitThread - A thread's entry function into its inRealm writer, with a forward declaration
-     * alongside it
+     * EmitThread - A thread's entry function into its inRealm writer, with a forward declaration alongside it
      */
     void func EmitThread(IrThread th, IrProcess owner) {
         match (th.entryFunc) {
@@ -1514,8 +1444,6 @@ class Emitter {
             }
         }
     }
-
-    // --- Blocks and statements ---------------------------------------------------------------
 
     /*
      * EmitFunctionBody - A method body, native C text or a lowered IR block
@@ -1576,12 +1504,12 @@ class Emitter {
      */
     void func EmitStmt(IrStmt s, CodeWriter w) {
         match (s) {
-            case IrGoto(g)        { w.Line("goto " + g.label + ";"); }
-            case IrLabel(l)       { w.Line(l.name + ":;"); }
+            case IrGoto(g) { w.Line("goto " + g.label + ";"); }
+            case IrLabel(l) { w.Line(l.name + ":;"); }
             case IrNativeStmt(ns) { w.Line(Emitter.TrimC(ns.c)); }
-            case IrBlock(b)       { self.EmitBlock(b, w); }
+            case IrBlock(b) { self.EmitBlock(b, w); }
             case IrUnsafeBlock(u) { self.EmitBlock(u.body, w); }
-            case IrDeclVar(dv)    { self.EmitDeclVar(dv, w); }
+            case IrDeclVar(dv) { self.EmitDeclVar(dv, w); }
             case IrAssign(a) {
                 w.Open();
                 self.WriteAssign(a, w);
@@ -1606,11 +1534,11 @@ class Emitter {
                     }
                 }
             }
-            case IrBreak(x)    { w.Line("break;"); }
+            case IrBreak(x) { w.Line("break;"); }
             case IrContinue(x) { w.Line("continue;"); }
-            case IrDebug(d)    { w.Line(self.m.symbols.FloorName(Roles.EnvDebug()) + "(" + Emitter.NoTrigraphs(d.raw) + ");"); }
-            case IrPanic(p)    { w.Line(self.m.symbols.FloorName(Roles.EnvPanic()) + "(" + Emitter.NoTrigraphs(p.raw) + ");"); }
-            case IrIf(ifs)     { self.EmitIf(ifs, w); }
+            case IrDebug(d) { w.Line(self.m.symbols.FloorName(Roles.EnvDebug()) + "(" + Emitter.NoTrigraphs(d.raw) + ");"); }
+            case IrPanic(p) { w.Line(self.m.symbols.FloorName(Roles.EnvPanic()) + "(" + Emitter.NoTrigraphs(p.raw) + ");"); }
+            case IrIf(ifs) { self.EmitIf(ifs, w); }
             case IrWhile(ws) {
                 w.Open();
                 w.Put("while (");
@@ -1619,8 +1547,7 @@ class Emitter {
                 w.Close();
                 self.EmitBlock(ws.body, w);
             }
-            case IrFor(fr)     { self.EmitFor(fr, w); }
-            // Desugar and Ownership removed match, switch, try and defer before this pass ran.
+            case IrFor(fr) { self.EmitFor(fr, w); }
             default { }
         }
     }
@@ -1636,9 +1563,7 @@ class Emitter {
     }
 
     /*
-     * WriteDecl - A declaration without its terminator. A statement declaration with no initialiser
-     * still takes a default, so no local is read before it is written; a for-init does not, which is
-     * the only reason this is a parameter.
+     * WriteDecl - A declaration without its terminator.
      */
     void func WriteDecl(IrDeclVar dv, CodeWriter w, bool withDefault) {
         w.Put(self.CT(dv.type));
@@ -1720,8 +1645,6 @@ class Emitter {
         w.Close();
         self.EmitBlock(fr.body, w);
     }
-
-    // --- Expressions -------------------------------------------------------------------------
 
     /*
      * Write - One IR expression to C. Every node kind must be fully resolved before it gets here.
@@ -1942,8 +1865,7 @@ class Emitter {
 
     /*
      * NarrowTo - The C type an operator result is pinned to, so the arithmetic happens in the domain
-     * Gata says rather than the one C's own promotions would pick. None when the type is boolean or
-     * not numeric and C already agrees.
+     * Gata says rather than the one C's own promotions would pick.
      */
     Optional[String] func NarrowTo(IrType ty) {
         match (ty) {
@@ -2019,8 +1941,6 @@ class Emitter {
         }
     }
 
-    // --- Intrinsic prototypes ----------------------------------------------------------------
-
     /*
      * EmitIntrinsicProtos - A static-inline prototype in the shared header for every free function
      * carrying an @intrinsic role binding, so any unit can call the runtime through it
@@ -2047,8 +1967,6 @@ class Emitter {
         }
         if (any) { self.sharedH.w.Line(""); }
     }
-
-    // --- Utilities ---------------------------------------------------------------------------
 
     /*
      * NoTrigraphs - Escapes '?' inside a string literal handed to C, so '??/' and friends are not
@@ -2102,8 +2020,7 @@ class Emitter {
     }
 
     /*
-     * SplitLines - Raw text as lines, each with any trailing carriage return removed. C# walks the
-     * span with IndexOf('\n'); the shape is the same, materialised.
+     * SplitLines - Raw text as lines, each with any trailing carriage return removed.
      */
     public static List[String] func SplitLines(String raw) {
         let List[String] lines = new List[String]();
@@ -2140,9 +2057,7 @@ class Emitter {
     }
 
     /*
-     * IsAggregate - The IR types that lower to a C struct rather than a scalar. Fixed arrays,
-     * unions and throws Results are all struct-wrapped by this pass; a class reference is a pointer
-     * and everything else is a primitive.
+     * IsAggregate - The IR types that lower to a C struct rather than a scalar.
      */
     public static bool func IsAggregate(IrType ty) {
         match (ty) {

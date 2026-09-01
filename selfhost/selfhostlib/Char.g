@@ -85,9 +85,9 @@ module Char {
      * answers -1 for 'a'..'f' because it is decimal-only.
      */
     public int func HexValue(char c) {
-        if (Char.IsDigit(c))               { return (c - '0') as int; }
-        if (c >= 'a' && c <= 'f')          { return (c - 'a') as int + 10; }
-        if (c >= 'A' && c <= 'F')          { return (c - 'A') as int + 10; }
+        if (Char.IsDigit(c)) { return (c - '0') as int; }
+        if (c >= 'a' && c <= 'f') { return (c - 'a') as int + 10; }
+        if (c >= 'A' && c <= 'F') { return (c - 'A') as int + 10; }
         return -1;
     }
 }

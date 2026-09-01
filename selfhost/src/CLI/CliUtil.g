@@ -2,10 +2,6 @@
  * CliUtil.g - input resolution, output writing, and the fatal-error exit
  *
  * Ports Appa/src/CLI/CliUtil.cs.
- *
- * NOT PORTED: CopyDirectory and ParseTimeout. The first serves `appa install`'s template copy and
- * the second `appa run`'s QEMU timeout, and neither command is reachable here - see Program.g's
- * header for what this compiler does and does not do.
  */
 
 import "selfhostlib/String.g";
@@ -50,13 +46,11 @@ module Cli {
 
     /*
      * GeneratedDirs - The project-root directories a build owns end to end, and so the ones
-     * `appa clean` removes: the emitted C, the ISO, and the QEMU logs
+     * `appa clean` removes.
      */
     public List[String] func GeneratedDirs() {
         let List[String] r = new List[String]();
         r.Add(Cli.TranspileDir());
-        r.Add("build");
-        r.Add("artifacts");
         return r;
     }
 
@@ -161,7 +155,7 @@ module Cli {
         let Optional[String] stdlibDir = stdlibOverride;
         if (!IsSome(stdlibDir)) { stdlibDir = Pipeline.FindLibgata(); }
         if (!IsSome(stdlibDir)) {
-            Cli.Fail("cannot find libgata - run 'appa install' or pass --stdlib <dir>");
+            Cli.Fail("cannot find libgata - pass --stdlib <dir>");
         }
 
         if (!File.Exists(env))       { Cli.Fail("file not found: " + env); }
@@ -189,7 +183,7 @@ module Cli {
             Cli.FailHint("--env and --entry need '--pure-transpile' to build without a .gconf",
                 "use '" + manifestHint + "' to emit C from loose files, or run this in a project directory");
         }
-        Cli.Fail("no <project>.gconf found - run 'appa new <name>', or use " + manifestHint);
+        Cli.Fail("no <project>.gconf found - add one to the project directory, or use " + manifestHint);
     }
 
     /*

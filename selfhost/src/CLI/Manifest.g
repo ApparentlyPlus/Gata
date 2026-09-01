@@ -2,12 +2,6 @@
  * Manifest.g - the <project>.gconf reader
  *
  * Ports Appa/src/CLI/Manifest.cs, including the piece C# gets from the base library: XDocument.
- *
- * The .gconf format is a flat <appa> root holding unnested, attribute-free, text-only children, so
- * the parser below is written to exactly that shape rather than being a general XML reader - which
- * is what selfhost.txt section 2.6 scoped. Anything nested, attributed, namespaced, or CDATA'd is
- * not accepted, because appa never writes it and reading it would only invent behaviour the C#
- * compiler does not have.
  */
 
 import "selfhostlib/String.g";
@@ -25,9 +19,7 @@ enum Keyboard { Default, External, Hotplug }
 enum CapabilityDiscovery { On, Off }
 
 /*
- * A project's build configuration: what to build, how, and the explicitly chosen knobs. gcc flags,
- * env/entry paths and stdlib selection are NOT here - appa owns the flags, @environment is
- * discovered, and the entry point is the src/main.g convention.
+ * A project's build configuration: what to build, how, and the explicitly chosen knobs.
  */
 class Manifest {
     public String dir;
@@ -170,10 +162,7 @@ module ManifestReader {
     }
 
     /*
-     * The five ParseX functions below are C#'s one generic ParseEnum<T>, once per enum. Each keeps
-     * the same behaviour: a missing or empty element takes the default, a leading digit is refused
-     * before the name match (so "0" never resolves to the first member), and the match is
-     * case-insensitive.
+     * The five ParseX functions below are C#'s one generic ParseEnum<T>, once per enum.
      */
     bool func LeadingDigit(String v) { return v.Length() > 0 && v.CharAt(0) >= '0' && v.CharAt(0) <= '9'; }
 

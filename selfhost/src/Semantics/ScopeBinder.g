@@ -3,19 +3,6 @@
  * other pass
  *
  * Ports Appa/src/Semantics/ScopeBinder.cs.
- *
- * WHAT IS HERE AND WHAT IS NOT
- *
- * ScopeBinder has two halves. The ANALYSIS half - interning every realm and process scope,
- * recording what each declares, rejecting duplicate processes, one-meaning-per-name, the
- * shadowing and '@shadows' hygiene rules, and resolving a written scope qualifier to a scope and
- * a qualified name - is ported in full below.
- *
- * The REWRITE half drives Monomorphizer.SubstitutionContext rather than adding a second type
- * walker: binding 'Config' to 'Config@kernel' is the same operation as binding a type parameter,
- * and that walker already knows every type position. C# hands it the two scoped-name resolvers as
- * delegates; Gata has no closures, so the context carries the state they would have captured and
- * calls back into this binder - see the note on SubstitutionContext in Monomorphizer.g.
  */
 
 import "selfhostlib/String.g";
@@ -41,9 +28,7 @@ class ScopeBindResult {
 }
 
 /*
- * Maps a written name to the globally unique name it refers to, from a given scope. Lookup walks
- * outward - process, then realm, then root - and the innermost match wins, so an inner
- * declaration shadows an outer one silently.
+ * Maps a written name to the globally unique name it refers to, from a given scope.
  */
 class ScopeIndex {
     ScopeTree tree;
@@ -76,8 +61,7 @@ class ScopeIndex {
 
     /*
      * DeclaredIn - Every written name declared directly in a scope, in insertion-independent
-     * order. C# hands back the (written, qualified) pairs; the qualified half is one TryDeclared
-     * away, so this returns the written names and keeps one lookup path.
+     * order.
      */
     public List[String] func DeclaredIn(ScopeId scope) {
         match (self.byScope.Find(Sc.Value(scope))) {
@@ -87,8 +71,7 @@ class ScopeIndex {
     }
 
     /*
-     * TryDeclared - The qualified name a scope declares directly, or None. No outward walk: a
-     * written qualifier names one exact scope.
+     * TryDeclared - The qualified name a scope declares directly, or None.
      */
     public Optional[String] func TryDeclared(ScopeId scope, String written) {
         match (self.byScope.Find(Sc.Value(scope))) {
@@ -98,9 +81,7 @@ class ScopeIndex {
     }
 
     /*
-     * Resolve - Resolves a written name as seen from `from`, walking outward. None when no
-     * enclosing scope declares it, which means the name is an ordinary root-scope name and every
-     * existing lookup path applies unchanged.
+     * Resolve - Resolves a written name as seen from `from`, walking outward.
      */
     public Optional[String] func Resolve(ScopeId from, String written) {
         let ScopeId s = from;
@@ -132,9 +113,7 @@ class ScopeIndex {
 }
 
 /*
- * What a name means in the scope that declares it. A scope holds one meaning per name - a type
- * and a function of one name would each be reachable at root, but a scoped declaration takes over
- * the whole name, so the two spellings could not both survive being shadowed.
+ * What a name means in the scope that declares it.
  */
 enum NameKind { Type, Generic, Func, Process, State }
 
@@ -196,13 +175,11 @@ class ScopeBinder {
     DiagnosticBag diag;
     Mangler mangler;
 
-    // Process names per realm, and the repeats. A process is not a symbol, so nothing downstream
-    // deduplicates it, and both halves of a repeat mangle into the same C function names.
+    // Process names per realm, and the repeats.
     StringSet processes;
     List[ProcessDecl] duplicates;
 
-    // Every scoped declaration, for the shadowing pass. Collected rather than judged on the spot,
-    // because what a name shadows is only known once every scope has been filled.
+    // Every scoped declaration, for the shadowing pass.
     List[DeclaredItem] declared;
 
     // Qualifiers already rejected, per file
@@ -232,7 +209,7 @@ class ScopeBinder {
 
     /*
      * Bind - Interns every realm and process scope, records what each declares, then runs the
-     * hygiene checks. See the file header for why the rewrite sweep is not here.
+     * hygiene checks.
      */
     public ScopeBindResult func Bind(List[ProgramFile] programs, StringMap[StringSet] visible) {
         let ScopeTree tree = new ScopeTree();
@@ -329,8 +306,7 @@ class ScopeBinder {
 
     /*
      * Rewrite - Rewrites every declaration and every type position naming a scoped declaration to
-     * the qualified spelling. Runs as a second sweep, because a declaration may reference a sibling
-     * declared later in the same block.
+     * the qualified spelling.
      */
     void func Rewrite(List[ProgramFile] programs, ScopeTree tree, ScopeIndex index) {
         let int i = 0;
@@ -429,10 +405,7 @@ class ScopeBinder {
     }
 
     /*
-     * SubstitutionFor - Builds the name-to-qualified-type map visible from a scope. Reuses the
-     * Monomorphizer's substitution walker rather than adding a second one: binding 'Config' to
-     * 'Config@kernel' is the same operation as binding a type parameter, and that walker knows
-     * every type position.
+     * SubstitutionFor - Builds the name-to-qualified-type map visible from a scope.
      */
     SubstitutionContext func SubstitutionFor(ScopeTree tree, ScopeIndex index, ScopeId scope, String file) {
         let StringMap[TypeSpec] specs = new StringMap[TypeSpec]();
@@ -522,9 +495,7 @@ class ScopeBinder {
     }
 
     /*
-     * Requalify - The declaration's internal name after its base is qualified. A non-generic
-     * declaration is just its base; a generic one recomposes through the same function every other
-     * pass uses to spell an instantiation, so the template and its stamps agree by construction.
+     * Requalify - The declaration's internal name after its base is qualified.
      */
     String func Requalify(String name, String baseName, String qualBase, List[String] generics) {
         if (generics.Length() == 0) { return qualBase; }
@@ -601,8 +572,7 @@ class ScopeBinder {
     }
 
     /*
-     * RewriteSpec - Requalifies a type argument, recursing through its own arguments. Structural
-     * throughout: a nested instantiation has no flat spelling any scope declares.
+     * RewriteSpec - Requalifies a type argument, recursing through its own arguments.
      */
     NamedSpec func RewriteSpec(NamedSpec s, ScopeIndex index, ScopeId scope, ScopeTree tree, String file) {
         let List[NamedSpec] args = new List[NamedSpec]();
@@ -625,7 +595,7 @@ class ScopeBinder {
 
     /*
      * DeclareItem - Records a single declaration's name in its scope, and rejects the forms that
-     * cannot be scoped yet. Anything unnamed - a native block, an import - contributes nothing.
+     * cannot be scoped yet.
      */
     void func DeclareItem(ScopeTree tree, ScopeIndex index, ScopeId scope, TopLevel item, String file) {
         match (NameOfItem(item)) {
@@ -677,9 +647,7 @@ class ScopeBinder {
     }
 
     /*
-     * CheckOneMeaningPerName - Reports a name given two different meanings in one scope. Two
-     * functions are overloads and two types a plain duplicate, both owned elsewhere; every other
-     * pairing is nobody's, and leaves a name whose meaning depends on the position it is read in.
+     * CheckOneMeaningPerName - Reports a name given two different meanings in one scope.
      */
     void func CheckOneMeaningPerName(ScopeTree tree) {
         let List[String] keys = self.named.Keys();
@@ -742,8 +710,7 @@ class ScopeBinder {
 
     /*
      * CheckShadowing - Reports every scoped declaration whose intent about shadowing does not
-     * match what it does. Runs once the whole tree is declared, since an inner declaration may
-     * shadow one written later in an enclosing block, or in another file that opens the same realm.
+     * match what it does.
      */
     void func CheckShadowing(ScopeTree tree, List[ProgramFile] programs, StringMap[StringSet] visible) {
         let int p = 0;
@@ -800,8 +767,7 @@ class ScopeBinder {
 
     /*
      * OuterDeclaring - Where an enclosing scope declares this name, rendered for a diagnostic, or
-     * None. Walks out to root, then falls back to the file's imports - the two ways a name can
-     * already mean something.
+     * None.
      */
     Optional[String] func OuterDeclaring(ScopeTree tree, ScopeId scope, String name, String file,
                                          StringMap[StringSet] visible) {
@@ -875,9 +841,7 @@ class ScopeBinder {
     }
 
     /*
-     * ImportedDeclaring - The module basename of an imported file declaring this name publicly, or
-     * None. Only a file this one can actually see counts, since a name it cannot reach was never
-     * displaced.
+     * ImportedDeclaring - The module basename of an imported file declaring this name publicly, or None.
      */
     Optional[String] func ImportedDeclaring(String name, String file, StringMap[StringSet] visible) {
         let List[RootDecl] decls = null;
@@ -900,8 +864,7 @@ class ScopeBinder {
     }
 
     /*
-     * RejectStrayShadows - Reports '@shadows' written where it can never mean anything: at the top
-     * level of a file, which has no enclosing scope, or on a form that is not a name in any scope.
+     * RejectStrayShadows - Reports '@shadows' written where it can never mean anything.
      */
     void func RejectStrayShadows(TopLevel item, String file, String advice) {
         match (FirstShadows(AnnotationsOf(item))) {
@@ -929,8 +892,7 @@ class ScopeBinder {
     /*
      * ResolveScopedType - Resolves a type name written under an explicit scope qualifier
      */
-    public NamedSpec func ResolveScopedType(NamedSpec spec, ScopeTree tree, ScopeIndex index,
-                                            ScopeId from, String file) {
+    public NamedSpec func ResolveScopedType(NamedSpec spec, ScopeTree tree, ScopeIndex index, ScopeId from, String file) {
         let List[String] path = new List[String]();
         match (spec.scope) { case Some(sc) { path = sc; } case None { } }
 
@@ -949,8 +911,7 @@ class ScopeBinder {
     /*
      * ResolveScopedExpr - Resolves a name written under an explicit scope qualifier in expression
      * position, where the segments after it may be more scopes, then the name, then member
-     * accesses. The longest run that names scopes wins, so 'kernel.Algo.Min' reads as the realm's
-     * Algo and its member.
+     * accesses.
      */
     public Expr func ResolveScopedExpr(ScopedNameExpr sn, ScopeTree tree, ScopeIndex index,
                                        ScopeId from, String file) {
@@ -1006,8 +967,7 @@ class ScopeBinder {
     }
 
     /*
-     * ScopeFor - The scope a written path names, or None once the reason it does not has been
-     * reported
+     * ScopeFor - The scope a written path names, or None once the reason it does not has been reported
      */
     Optional[ScopeId] func ScopeFor(List[String] path, ScopeTree tree, ScopeId from, String file, TextSpan span) {
         let ScopeId scope = Sc.Root();
@@ -1030,9 +990,7 @@ class ScopeBinder {
     }
 
     /*
-     * Enclosing - Checks that a written qualifier names a scope this code is inside. Naming a
-     * sibling would make the qualifier a way to see into another process rather than a way to
-     * disambiguate.
+     * Enclosing - Checks that a written qualifier names a scope this code is inside.
      */
     bool func Enclosing(ScopeId scope, List[String] path, ScopeTree tree, ScopeId from, String file, TextSpan span) {
         if (tree.Encloses(scope, from)) { return true; }
@@ -1045,11 +1003,8 @@ class ScopeBinder {
     }
 
     /*
-     * NameIn - The qualified name a scope declares, or None once the reason it declares none has
-     * been reported. Root names are never qualified, so there the written name is the answer.
+     * NameIn - The qualified name a scope declares, or None once the reason it declares none has been reported.
      */
-    // C#'s NameIn also takes a ScopeTree it never reads; G076 catches what the C# compiler does
-    // not warn about, so the dead parameter is dropped rather than carried.
     Optional[String] func NameIn(ScopeId scope, String name, List[String] path,
                                  ScopeIndex index, String file, TextSpan span) {
         if (Sc.IsRoot(scope)) {
@@ -1123,19 +1078,18 @@ Optional[ScopeId] func RealmScope(ScopeTree tree, String name) {
  */
 Optional[String] func NameOfItem(TopLevel item) {
     match (item) {
-        case ClassDecl(cd)      { return Optional.Some(cd.baseName); }
-        case UnionDecl(ud)      { return Optional.Some(ud.baseName); }
-        case EnumDecl(ed)       { return Optional.Some(ed.name); }
+        case ClassDecl(cd) { return Optional.Some(cd.baseName); }
+        case UnionDecl(ud) { return Optional.Some(ud.baseName); }
+        case EnumDecl(ed) { return Optional.Some(ed.name); }
         case NativeTypeDecl(nd) { return Optional.Some(nd.name); }
-        case FuncDecl(fd)       { return fd.isEntry ? Optional[String].None() : Optional.Some(fd.name); }
+        case FuncDecl(fd) { return fd.isEntry ? Optional[String].None() : Optional.Some(fd.name); }
         case ProcessVarDecl(pv) { return Optional.Some(pv.name); }
         default { return Optional[String].None(); }
     }
 }
 
 /*
- * RootNameOfItem - The name a top-level declaration contributes at root. Same as NameOfItem plus
- * @extern, which is a root-level name but never scoped.
+ * RootNameOfItem - The name a top-level declaration contributes at root.
  */
 Optional[String] func RootNameOfItem(TopLevel item) {
     match (item) {
@@ -1145,14 +1099,13 @@ Optional[String] func RootNameOfItem(TopLevel item) {
 }
 
 /*
- * KindOfItem - The kind of name a declaration claims. A generic template is its own kind: 'Box'
- * and 'Box[T]' are two answers to what 'Box' means in a type position, and neither wins.
+ * KindOfItem - The kind of name a declaration claims. 
  */
 NameKind func KindOfItem(TopLevel item) {
     match (item) {
-        case ClassDecl(cd)      { return cd.genericParams.Length() > 0 ? NameKind.Generic : NameKind.Type; }
-        case UnionDecl(ud)      { return ud.genericParams.Length() > 0 ? NameKind.Generic : NameKind.Type; }
-        case FuncDecl(fd)       { return NameKind.Func; }
+        case ClassDecl(cd) { return cd.genericParams.Length() > 0 ? NameKind.Generic : NameKind.Type; }
+        case UnionDecl(ud) { return ud.genericParams.Length() > 0 ? NameKind.Generic : NameKind.Type; }
+        case FuncDecl(fd) { return NameKind.Func; }
         case ExternFuncDecl(ef) { return NameKind.Func; }
         case ProcessVarDecl(pv) { return NameKind.State; }
         default { return NameKind.Type; }

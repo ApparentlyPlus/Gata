@@ -2,16 +2,6 @@
  * Pipeline.g - project discovery, the front-end driver, and every whole-build validation
  *
  * Ports Appa/src/CLI/Pipeline.cs.
- *
- * BuildModule here is the same loop the C# one runs, including the monomorphization rounds: the
- * front end re-runs while resolution keeps discovering new generic instantiations, capped so an
- * infinite family becomes the resolver's diagnostic rather than a hang.
- *
- * NOT PORTED: WarnReferenceCycles. It is a warning, and the one place the port would have to invent
- * behaviour - C# locates the cycle at a class DECLARATION by walking the parsed AST a second time,
- * and the pass runs only when nothing else failed. Left out deliberately rather than approximated,
- * because a G101 pointing at the wrong line is worse than no G101; the check is still performed by
- * the C# compiler, and by appa itself over this port's own source. See the note in Program.g.
  */
 
 import "selfhostlib/String.g";
@@ -97,13 +87,9 @@ module Pipeline {
 
     /*
      * MaxMonomorphizationRounds - How many times the front end may re-run to create generic
-     * instantiations discovered during resolution. Each round can only ADD instantiations, and a
-     * program needing more than a couple of levels is asking for an infinite family; the cap turns
-     * that into the resolver's diagnostic rather than a hang.
+     * instantiations discovered during resolution.
      */
     int func MaxMonomorphizationRounds() { return 6; }
-
-    // --- Project discovery -------------------------------------------------------------------
 
     /*
      * DiscoverEnv - The project file marked @environment. Parses the top-level *.g files in
@@ -158,11 +144,6 @@ module Pipeline {
 
     /*
      * FindLibgata - The libgata directory from an appa install.
-     *
-     * The C# compiler resolves this through AppaPaths, which is built out of the platform's
-     * local-share directory and the SUDO_USER dance. This port has no such table (see the note in
-     * AppaConsts.g), so it looks where the install puts it relative to the process cwd and
-     * otherwise says so; --stdlib <dir> is the supported answer either way.
      */
     public Optional[String] func FindLibgata() {
         let List[String] candidates = new List[String]();
@@ -193,8 +174,6 @@ module Pipeline {
         return "";
     }
 
-    // --- Build pipeline ----------------------------------------------------------------------
-
     /*
      * Transpile - Parses the entry files and follows their imports transitively, returning the
      * parsed programs in dependency order along with the per-file import graph
@@ -222,10 +201,6 @@ module Pipeline {
 
     /*
      * ResolveOne - Parses one file and recurses into its imports.
-     *
-     * C# writes this as a local function closing over every accumulator; with no closures they are
-     * parameters. The recursion order is what puts the programs in dependency order, so it is a
-     * depth-first walk here exactly as it is there.
      */
     void func ResolveOne(String path, String projectRoot, String libgataDir, SourceSet sources,
                          DiagnosticBag diag, List[ProgramFile] ordered, List[String] attempted,
@@ -257,8 +232,6 @@ module Pipeline {
             assign new List[Token]();
         };
         if (toks.Length() > 0) {
-            // The env/entry parse only needs an AST, so a throwaway mangler is right here; the
-            // one the pipeline threads is created in BuildModule and used from there on.
             let Parser ps = new Parser(toks, new Mangler());
             prog = ps.ParseProgram() catch {
                 diag.Error(PErr.Code(ps.lastErr), path, PErr.Span(ps.lastErr), PErr.Message(ps.lastErr));
@@ -295,7 +268,7 @@ module Pipeline {
 
     /*
      * VisibleModules - For each file, the set of files whose top-level names it may reference:
-     * itself plus the transitive closure of its imports
+     * itself plus the transitive closure of its imports.
      */
     public StringMap[StringSet] func VisibleModules(StringMap[List[String]] imports) {
         let StringMap[StringSet] visible = new StringMap[StringSet]();
@@ -415,8 +388,6 @@ module Pipeline {
         return new BuiltModule(mod, sourcemap, caps, typeTable, mangler);
     }
 
-    // --- Whole-build validation ---------------------------------------------------------------
-
     /*
      * ValidateEnvironment - Exactly one @environment file takes part in the build
      */
@@ -454,8 +425,7 @@ module Pipeline {
 
     /*
      * ValidateFloor - Every _env_* bind the lowered IR reaches is defined by the active
-     * environment's @preamble. Turns a missing-bind LINK error into a diagnostic that names the
-     * environment as the incomplete thing, which is what it is.
+     * environment's @preamble.
      */
     public void func ValidateFloor(IrModule mod, DiagnosticBag diag) {
         let EnvProbe probe = new EnvProbe(mod.symbols);
@@ -514,8 +484,7 @@ module Pipeline {
 
     /*
      * ValidateIntrinsics - The standard library has to bind the whole ARC contract whenever a
-     * reference-counted class survives to codegen. Here rather than in BuildModule, which runs over
-     * stdlib-free input where an unbound role means only "no standard library".
+     * reference-counted class survives to codegen.
      */
     public void func ValidateIntrinsics(IrModule mod, DiagnosticBag diag) {
         let bool needsArc = false;
@@ -560,10 +529,7 @@ module Pipeline {
     }
 
     /*
-     * ValidateCNames - Two declarations that would be emitted under one C name. Every readable
-     * mangling joins its parts with '_', which is also legal inside each part, so 'class A_B { M }'
-     * and 'class A { B_M }' both spell 'gata_A_B_M'. Caught here rather than left to the C compiler,
-     * which would report it against generated names the author never wrote.
+     * ValidateCNames - Two declarations that would be emitted under one C name.
      */
     public void func ValidateCNames(IrModule mod, Mangler mangler, DiagnosticBag diag) {
         let StringMap[String] seen = new StringMap[String]();
@@ -755,10 +721,6 @@ module Pipeline {
 
     /*
      * ValidateStructure - Realm structure against the target.
-     *
-     * A realm is ONE namespace however many blocks open it, in however many files, so what is
-     * counted here is entry points rather than blocks - the rule the reference states in 1.3 and
-     * the reason this is a whole-build check rather than a per-file one.
      */
     public void func ValidateStructure(List[ProgramFile] programs, Target target, DiagnosticBag diag) {
         let List[String] kernelFiles = new List[String]();
@@ -864,8 +826,7 @@ module Pipeline {
             return;
         }
 
-        // GatOS from here: the kernel realm holds the entry point, and userspace entry points are
-        // the threads of a process.
+
         let List[String] kEntryFiles = new List[String]();
         let List[TextSpan] kEntrySpans = new List[TextSpan]();
         let int q = 0;
@@ -953,9 +914,6 @@ module Pipeline {
 /*
  * EnvProbe - Collects every _env_* name the lowered IR actually reaches, so ValidateFloor can ask
  * the environment for exactly those and no more.
- *
- * C# subclasses IrRewriter and overrides two methods; the port has no inheritance, so it is an
- * IrWalk state class with two free-function hooks - the shape IrWalker.g exists for.
  */
 class EnvProbe {
     public StringSet refs;

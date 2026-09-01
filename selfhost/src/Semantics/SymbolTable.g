@@ -22,27 +22,27 @@ enum SymKind { Class, Field, Method, FreeFunc, Operator }
  * contract surface.
  */
 module Roles {
-    public String func Alloc()          { return "alloc"; }
-    public String func Retain()         { return "retain"; }
-    public String func Release()        { return "release"; }
-    public String func ObjHeader()      { return "obj_header"; }
-    public String func ObjInit()        { return "obj_init"; }
-    public String func StringifyInt()   { return "stringify_int"; }
-    public String func StringifyLong()  { return "stringify_long"; }
-    public String func StringifyUint()  { return "stringify_uint"; }
+    public String func Alloc() { return "alloc"; }
+    public String func Retain() { return "retain"; }
+    public String func Release() { return "release"; }
+    public String func ObjHeader() { return "obj_header"; }
+    public String func ObjInit() { return "obj_init"; }
+    public String func StringifyInt() { return "stringify_int"; }
+    public String func StringifyLong() { return "stringify_long"; }
+    public String func StringifyUint() { return "stringify_uint"; }
     public String func StringifyFloat() { return "stringify_float"; }
-    public String func StringifyChar()  { return "stringify_char"; }
+    public String func StringifyChar() { return "stringify_char"; }
 
-    // The environment floor's C names, bound to their @extern declaration in libgata
-    // (see Sys.g/Mem.g/Console.g) so the compiler never hardcodes them.
-    public String func EnvDebug()       { return "env_debug"; }
-    public String func EnvPanic()       { return "env_panic"; }
-    public String func EnvProcCreate()  { return "env_proc_create"; }
-    public String func EnvProcHide()    { return "env_proc_hide"; }
+    // The environment floor's C names, bound to their @extern declaration in libgata.
+
+    public String func EnvDebug() { return "env_debug"; }
+    public String func EnvPanic() { return "env_panic"; }
+    public String func EnvProcCreate() { return "env_proc_create"; }
+    public String func EnvProcHide() { return "env_proc_hide"; }
     public String func EnvThreadSpawn() { return "env_thread_spawn"; }
-    public String func EnvRead()        { return "env_read"; }
-    public String func EnvAlloc()       { return "env_alloc"; }
-    public String func EnvTime()        { return "env_time"; }
+    public String func EnvRead() { return "env_read"; }
+    public String func EnvAlloc() { return "env_alloc"; }
+    public String func EnvTime() { return "env_time"; }
 
     /*
      * All - Every role name
@@ -65,44 +65,37 @@ module Roles {
     public bool func IsRole(String r) { return Roles.All().Contains(r); }
 
     /*
-     * FloorDefault - The canonical floor C name for an environment role, or "" for a role that has
-     * none. Unlike the ARC roles an unbound env role is not an error - it is an optional rename
-     * over a known default, since libgata binds these from files a program need not import. Listed
-     * once here; inlining them had already let env_time's drift.
+     * FloorDefault - The canonical floor C name for an environment role, or "" for a role that has none.
      */
     public String func FloorDefault(String role) {
-        if (role == Roles.EnvDebug())       { return "_env_dbg"; }
-        if (role == Roles.EnvPanic())       { return "_env_panic"; }
-        if (role == Roles.EnvProcCreate())  { return "_env_proc_create"; }
-        if (role == Roles.EnvProcHide())    { return "_env_proc_hide"; }
+        if (role == Roles.EnvDebug()) { return "_env_dbg"; }
+        if (role == Roles.EnvPanic()) { return "_env_panic"; }
+        if (role == Roles.EnvProcCreate()) { return "_env_proc_create"; }
+        if (role == Roles.EnvProcHide()) { return "_env_proc_hide"; }
         if (role == Roles.EnvThreadSpawn()) { return "_env_thread_spawn"; }
-        if (role == Roles.EnvRead())        { return "_env_read"; }
-        if (role == Roles.EnvAlloc())       { return "_env_alloc"; }
-        if (role == Roles.EnvTime())        { return "_env_time_ns"; }
+        if (role == Roles.EnvRead()) { return "_env_read"; }
+        if (role == Roles.EnvAlloc()) { return "_env_alloc"; }
+        if (role == Roles.EnvTime()) { return "_env_time_ns"; }
         return "";
     }
 }
 
 /*
- * The lifecycle methods the compiler itself invokes from generated code: the allocator calls _init
- * after ObjInit, and the generated destructor calls _deinit before releasing managed fields. Named
- * here once so the collector, resolver, and emitter cannot drift.
+ * The lifecycle methods the compiler itself invokes from generated code.
  */
 module Lifecycle {
-    public String func Init()   { return "_init"; }
+    public String func Init() { return "_init"; }
     public String func Deinit() { return "_deinit"; }
 }
 
 /*
- * The closed vocabulary of compiler builtin types. A libgata class or native type declaration
- * annotated @builtin(<name>) fills the slot; the compiler resolves the name from this table
- * instead of comparing type names against a literal string.
+ * The closed vocabulary of compiler builtin types.
  */
 module BuiltinTypes {
-    public String func Str()           { return "String"; }
+    public String func Str() { return "String"; }
     public String func StringBuilder() { return "StringBuilder"; }
-    public String func Process()       { return "Process"; }
-    public String func Thread()        { return "Thread"; }
+    public String func Process() { return "Process"; }
+    public String func Thread() { return "Thread"; }
 
     public List[String] func All() {
         let List[String] r = new List[String]();
@@ -117,8 +110,7 @@ module BuiltinTypes {
 }
 
 /*
- * The signature of a method or free function as collected from the AST. returnType is None for
- * void (an omitted return type).
+ * The signature of a method or free function as collected from the AST.
  */
 class MethodSig {
     public Optional[TypeSpec] returnType;
@@ -173,23 +165,18 @@ class Symbol {
 
 class SymbolTable {
     StringMap[Symbol] classes;
-    // Named fieldMap, not fields: 'fields' is a reserved keyword.
     StringMap[Symbol] fieldMap;
     StringMap[List[Symbol]] methods;
     StringMap[List[Symbol]] funcs;
     StringMap[List[Symbol]] operators;
 
-    // File-local free functions - registered per declaring file so unrelated files may reuse a
-    // name, and mangled uniquely so they never clash in the C output.
+    // File-local free functions
     StringMap[List[Symbol]] privateFuncs;
 
-    // Result_T typedefs needed by throws functions: name -> inner Gata type.
+    // Result_T typedefs needed by throws functions
     public StringMap[String] resultTypedefs;
 
-    // The same keys in REGISTRATION order. C# iterates its Dictionary to emit these, and a
-    // .NET Dictionary with no removals hands entries back in insertion order; StringMap hands them
-    // back in bucket order, which is a different (and machine-dependent) sequence. The typedefs go
-    // into shared.h in whatever order they are iterated, so the order is output - hence this list.
+    // The same keys in REGISTRATION order
     public List[String] resultTypedefOrder;
 
     // Declaring source files seen during collection.
@@ -201,13 +188,13 @@ class SymbolTable {
     // builtin type name -> bound Gata declaration name, from @builtin annotations.
     public StringMap[String] builtins;
 
-    // Enum types: name -> member names. Globally visible like primitives.
+    // Enum types. Globally visible like primitives.
     public StringMap[StringSet] enums;
 
-    // Union types: name -> variant list. Globally visible and not generic.
+    // Union types. Globally visible and not generic.
     public StringMap[List[UnionVariant]] unions;
 
-    // Class/method members declared private - accessible only from the declaring type.
+    // Class/method members declared private
     public StringSet privateMembers;
 
     func _init() {
@@ -234,8 +221,7 @@ class SymbolTable {
 
     /*
      * ResolveBuiltinType - The IR type for a builtin name (String/StringBuilder/Process/Thread) if
-     * libgata declared it via @builtin, or None if unbound. The single place that maps these names
-     * to their IR shape - callers never hardcode the mapping themselves.
+     * libgata declared it via @builtin, or None if unbound.
      */
     public Optional[IrType] func ResolveBuiltinType(String name, IrTypeTable t) {
         match (self.builtins.Find(name)) {
@@ -258,8 +244,7 @@ class SymbolTable {
 
     /*
      * FloorName - Resolves an environment floor role to a C name: whatever libgata bound to it, or
-     * the role's canonical floor name when nothing did. See Roles.FloorDefault for why an unbound
-     * env role is legitimate rather than a MissingIntrinsic error.
+     * the role's canonical floor name when nothing did.
      */
     public String func FloorName(String role) {
         match (self.IntrinsicOrNull(role)) {
@@ -319,20 +304,16 @@ class SymbolTable {
 
     /*
      * RegisterOperator - Registers an operator overload. Every operator but 'as' has one
-     * declaration per (class, symbol) in a well-formed program, the caller rejecting duplicates;
-     * 'as' can have several. CNames are assigned in AssignCNames, once the whole bucket is known.
+     * declaration per (class, symbol) in a well-formed program, the caller rejecting duplicates.
      */
     public void func RegisterOperator(String cls, String op, Optional[TypeSpec] returnType, List[Param] params) {
-        let MethodSig sig = new MethodSig(returnType, params, false, false, false,
-                                          new List[Annotation](), false);
+        let MethodSig sig = new MethodSig(returnType, params, false, false, false, new List[Annotation](), false);
         let Symbol s = new Symbol(op, SymKind.Operator, returnType, Optional.Some(cls), Optional.Some(sig));
         Bucket(self.operators, MemberKey(cls, op)).Add(s);
     }
 
     /*
-     * RegisterThrows - Records that a throws function returns the given type, ensuring a Result
-     * typedef is emitted. The typedef's inner-name derivation is shared with Types.ResultName
-     * (void folds to int) so a declaration and its call sites can never disagree.
+     * RegisterThrows - Records that a throws function returns the given type, ensuring a Result typedef is emitted.
      */
     public void func RegisterThrows(Optional[TypeSpec] returnType) {
         let String inner = ResultInnerName(returnType);
@@ -361,9 +342,7 @@ class SymbolTable {
     }
 
     /*
-     * AssignCNames - Assigns C names to all methods and free functions once all declarations are
-     * collected. Intrinsic bindings made during collection used a tentative (overload-unaware)
-     * name; they are rebound here to the final CName so an overloaded intrinsic resolves correctly.
+     * AssignCNames - Assigns C names to all methods and free functions once all declarations are collected.
      */
     public void func AssignCNames(Mangler m) {
         let List[String] mkeys = self.methods.Keys();
@@ -437,8 +416,7 @@ class SymbolTable {
     }
 
     /*
-     * RebindIntrinsics - Points a symbol's @intrinsic roles at its final CName. Only roles already
-     * bound by the collector are updated, so its validation and duplicate diagnostics still stand.
+     * RebindIntrinsics - Points a symbol's @intrinsic roles at its final CName.
      */
     void func RebindIntrinsics(Symbol s) {
         let List[Annotation] anns = s.Signature().annotations;
@@ -532,8 +510,6 @@ class SymbolTable {
 
     /*
      * LookupOperator - The last registered overload of the given operator on the class, or None.
-     * Every operator but 'as' has at most one in a well-formed program, so this is the whole
-     * answer; for 'as', callers picking among several should use OperatorOverloads.
      */
     public Optional[Symbol] func LookupOperator(String cls, String op) {
         return Last(self.operators, MemberKey(cls, op));
@@ -541,7 +517,6 @@ class SymbolTable {
 
     /*
      * LookupOperator - The overload of the given operator with the given parameter count, or None.
-     * Unary and binary '-' share a bucket, so arity is what tells them apart.
      */
     public Optional[Symbol] func LookupOperator(String cls, String op, int arity) {
         match (self.operators.Find(MemberKey(cls, op))) {
@@ -582,8 +557,7 @@ class SymbolTable {
     public List[Symbol] func FuncDeclarations(String name) { return All(self.funcs, name); }
 
     /*
-     * FuncOverloads - All callable overloads of the named free function: entry points dropped
-     * unless that would leave nothing, then duplicate C names collapsed
+     * FuncOverloads - All callable overloads of the named free function
      */
     public List[Symbol] func FuncOverloads(String name) {
         let List[Symbol] l = All(self.funcs, name);
@@ -684,8 +658,6 @@ class SymbolTable {
         return m.Class(t) + "*";
     }
 }
-
-// ==================================================================== free helpers
 
 /*
  * MemberKey - Identifies a class member by its owning class and member name, or a file-local

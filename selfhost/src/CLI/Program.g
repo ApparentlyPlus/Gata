@@ -1,28 +1,7 @@
 /*
  * Program.g - the appa command line: dispatch, the build and check commands, and the help
  *
- * Ports Appa/src/CLI/Program.cs.
- *
- * WHAT THIS COMPILER DOES AND DOES NOT DO
- *
- * Every command appa has is accepted here and spelled the same way, but three of them cannot be
- * carried out by a transpile-only compiler, and each says so rather than pretending:
- *
- *   appa install / appa update   need HTTPS, a GitHub release download, zip extraction, PATH
- *                                editing and privilege elevation. None of that is in the floor.
- *   appa run                     needs to spawn QEMU. There is no process-spawn bind.
- *   appa build on a GatOS target needs to spawn the cross-gcc, grub-mkrescue and xorriso. Same.
- *   appa new                     needs the installed env.GatOS.g that `appa install` puts in
- *                                place, so it depends on the first one.
- *
- * These are the boundaries selfhost.txt section 4 drew, and they are floor gaps rather than
- * language or compiler gaps: each one is a process-spawn or a network bind away. What IS here is
- * the whole transpile path - `appa build` on a Hosted project, `appa build --pure-transpile`,
- * `appa check`, `appa clean`, `--version` and `--help` - which is the part that makes the compiler
- * self-hosting.
- *
- * NOT PORTED for the same reason: Templates (the `appa new` file contents), GatosFlags (the cross-
- * compiler flag sets), and the Installer/Toolchain/GitHubDirDownloader files wholesale.
+ * Ports Appa/src/CLI/Program.cs, narrowed to the commands a transpile-only compiler can carry out.
  */
 
 import "selfhostlib/String.g";
@@ -75,15 +54,15 @@ module AppaCli {
      * Main - The dispatch in Program.cs's top-level statements, argument for argument
      */
     public void func Main() {
+        C.Install();
+        Banner.InstallPalette();
+
         if (Args.Argc() <= 1) { AppaCli.PrintHelp(); return; }
         let String cmd = Args.Arg(1);
         let List[String] rest = AppaCli.Rest(2);
 
-        if (cmd == "install" || cmd == "update") { AppaCli.RunUnsupportedSetup(cmd); return; }
-        if (cmd == "new")   { AppaCli.RunNew(rest); return; }
         if (cmd == "clean") { AppaCli.RunClean(rest); return; }
-        if (cmd == "build") { AppaCli.RunBuild(rest, false); return; }
-        if (cmd == "run")   { AppaCli.RunBuild(rest, true); return; }
+        if (cmd == "build") { AppaCli.RunBuild(rest); return; }
         if (cmd == "check") { AppaCli.RunCheck(rest); return; }
         if (cmd == "help" || cmd == "--help" || cmd == "-h") { AppaCli.PrintHelp(); return; }
         if (cmd == "version" || cmd == "--version" || cmd == "-v") {
@@ -91,10 +70,6 @@ module AppaCli {
             return;
         }
 
-        if (cmd == "setup") {
-            Log.ErrorHint("unknown command 'setup'", "'appa setup' is now 'appa install'");
-            Sys.Exit(1);
-        }
         match (Suggest.Closest(cmd, AppaCli.Commands())) {
             case Some(near) { Log.ErrorHint("unknown command '" + cmd + "'", "did you mean 'appa " + near + "'?"); }
             case None { Log.ErrorHint("unknown command '" + cmd + "'", "run 'appa --help' for the list of commands"); }
@@ -118,38 +93,9 @@ module AppaCli {
      */
     List[String] func Commands() {
         let List[String] r = new List[String]();
-        r.Add("install"); r.Add("update"); r.Add("new");
-        r.Add("check"); r.Add("build"); r.Add("run"); r.Add("clean");
+        r.Add("check"); r.Add("build"); r.Add("clean");
         return r;
     }
-
-    // --- The commands this compiler cannot carry out -----------------------------------------
-
-    /*
-     * RunUnsupportedSetup - install and update, which need the network and the filesystem
-     * privileges a transpile-only compiler has no binds for
-     */
-    void func RunUnsupportedSetup(String cmd) {
-        Log.ErrorHint("'appa " + cmd + "' is not available in the self-hosted compiler",
-            "it downloads the GatOS toolchain bundle over HTTPS, extracts it, and edits PATH - " +
-            "none of which the environment floor binds. Use the C# appa for this step, or point " +
-            "this one at an existing install with '--stdlib <dir>'.");
-        Sys.Exit(1);
-    }
-
-    /*
-     * RunNew - Scaffolding a project, which copies env.GatOS.g out of the directory `appa install`
-     * creates
-     */
-    void func RunNew(List[String] _args) {
-        Log.ErrorHint("'appa new' is not available in the self-hosted compiler",
-            "it seeds a project from the environment file 'appa install' puts in the install root, " +
-            "and this compiler cannot run 'appa install'. Copy an existing project's env.g and " +
-            ".gconf, or scaffold with the C# appa.");
-        Sys.Exit(1);
-    }
-
-    // --- appa clean ---------------------------------------------------------------------------
 
     /*
      * RunClean - Removes the directories a build writes into the project root, leaving sources and
@@ -209,18 +155,16 @@ module AppaCli {
             Out.Note(C.DIM() + "nothing to remove - the project is already clean" + C.NC());
         } else {
             Console.PrintLine("");
-            Console.PrintLine(C.EMBER() + "✓" + C.NC() + " " + C.BOLD() + "Clean" + C.NC());
+            Console.PrintLine(C.EMBER() + "+" + C.NC() + " " + C.BOLD() + "Clean" + C.NC());
         }
         Console.PrintLine("");
     }
-
-    // --- appa build / appa run ----------------------------------------------------------------
 
     /*
      * RunBuild - Parses the build arguments, runs the front end, and either writes the emitted C or
      * says why an image cannot be produced here
      */
-    void func RunBuild(List[String] args, bool doRun) {
+    void func RunBuild(List[String] args) {
         let Optional[String] manifestArg = Optional[String].None();
         let Optional[String] envOverride = Optional[String].None();
         let Optional[String] entryOverride = Optional[String].None();
@@ -238,10 +182,8 @@ module AppaCli {
             else { if (a == "--werror")          { warnAsError = true; }
             else { if (a == "--pure-transpile")  { pureTranspile = true; }
             else { if (a == "--emit-sourcemap")  { emitSourcemap = true; }
-            else { if (a == "headless" || a == "--headless")   { AppaCli.RunOnly(a, doRun); }
-            else { if (a.StartsWith("timeout=") || a.StartsWith("--timeout=")) { AppaCli.RunOnly(a, doRun); }
             else { if (a.StartsWith("--")) { Cli.Fail("unknown option '" + a + "'"); }
-            else { manifestArg = Optional.Some(a); } } } } } } } } }
+            else { manifestArg = Optional.Some(a); } } } } } } }
             i = i + 1;
         }
 
@@ -277,8 +219,6 @@ module AppaCli {
             Sys.Exit(1);
         }
 
-        // An image build needs the cross toolchain; this compiler stops at the C either way, and
-        // says so rather than silently producing a different artifact from the one asked for.
         let bool wantsIso = false;
         match (inputs.manifest) {
             case Some(mf) { wantsIso = !pureTranspile && mf.target == Target.GatOS; }
@@ -286,41 +226,24 @@ module AppaCli {
         }
         if (wantsIso) {
             Log.ErrorHint("this build targets GatOS, which needs the cross toolchain to produce an ISO",
-                "the self-hosted compiler transpiles and stops - it has no bind for spawning " +
+                "the self-hosted compiler transpiles and stops since it has no bind for spawning " +
                 "x86_64-elf-gcc, grub-mkrescue or xorriso. Add '--pure-transpile' to emit the C " +
-                "here, set <TargetBackend>Hosted</TargetBackend>, or run the image build with the " +
-                "C# appa.");
+                "here, set <TargetBackend>Hosted</TargetBackend>, or build the image with the C# " +
+                "appa.");
             Sys.Exit(1);
         }
-        if (doRun) {
-            Log.Warn("'appa run' only launches a GatOS image; there is nothing to boot here (this build just writes C)");
-        }
-
         let String outDir = Paths.Join(inputs.projectRoot, Cli.TranspileDir());
         Cli.WriteOutputs(output, outDir);
         if (emitSourcemap) { Cli.WriteSourcemap(fe.sourcemap, outDir); }
         Console.PrintLine("");
-        Console.PrintLine(C.EMBER() + "✓" + C.NC() + " " + C.BOLD() + "Finished" + C.NC() + " " +
-                          C.DIM() + "→" + C.NC() + " " + outDir + Paths.Sep());
+        Console.PrintLine(C.EMBER() + "+" + C.NC() + " " + C.BOLD() + "Finished" + C.NC() + " " +
+                          C.DIM() + "->" + C.NC() + " " + outDir + Paths.Sep());
         let int f = 0;
         while (f < output.Length()) {
             Out.Child(C.DIM() + Paths.Join(Cli.TranspileDir(), output.Get(f).name) + C.NC());
             f = f + 1;
         }
     }
-
-    /*
-     * RunOnly - An option that only means something for `appa run`
-     */
-    void func RunOnly(String opt, bool doRun) {
-        if (!doRun) {
-            Cli.FailHint("'" + opt + "' only applies to 'appa run'",
-                         "use 'appa run' to build the ISO and launch it");
-        }
-        Log.Warn("'" + opt + "' is accepted but has no effect: this compiler cannot launch QEMU");
-    }
-
-    // --- appa check ---------------------------------------------------------------------------
 
     /*
      * RunCheck - The front end only, reporting diagnostics without ever reaching emission
@@ -424,7 +347,6 @@ module AppaCli {
         let bool tty = Spin.IsTty();
         let int64 t0 = Spin.Now();
 
-        // Pick the file to report from before walking, preferring the author's own.
         let Optional[String] reportFrom = Optional[String].None();
         let int i = 0;
         while (i < attempted.Length()) {
@@ -470,7 +392,7 @@ module AppaCli {
                 }
             }
             if (tty) {
-                Out.Redraw("  " + C.DIM() + "⠿ Checking [" + Int.ToString(n) + "/" +
+                Out.Redraw("  " + C.DIM() + "* Checking [" + Int.ToString(n) + "/" +
                            Int.ToString(attempted.Length()) + "] " + Paths.FileName(path) + C.NC());
             }
             if (warnings.Length() > 0) {
@@ -480,7 +402,6 @@ module AppaCli {
             }
         }
 
-        // Diagnostics that belong to no file in the build - the whole-build ones.
         let List[Diagnostic] orphanErrors = new List[Diagnostic];
         let List[Diagnostic] orphanWarnings = new List[Diagnostic];
         let int o = 0;
@@ -502,7 +423,6 @@ module AppaCli {
             AppaCli.FailWith(both, diag, warnAsError, tty);
         }
 
-        // FailWith exits, so this runs only when the build is allowed to continue.
         if (orphanWarnings.Length() > 0) {
             if (tty) { Out.ClearRedraw(); }
             let int w = 0;
@@ -541,8 +461,7 @@ module AppaCli {
     }
 
     /*
-     * FailWith - Renders a failing file's diagnostics in line order, prints the count summary, and
-     * exits 1
+     * FailWith - Renders a failing file's diagnostics in line order, prints the count summary, and exits 1
      */
     void func FailWith(List[Diagnostic] ds, DiagnosticBag diag, bool warnAsError, bool tty) {
         if (tty) { Out.ClearRedraw(); }
@@ -585,8 +504,6 @@ module AppaCli {
         return out;
     }
 
-    // --- Help ---------------------------------------------------------------------------------
-
     /*
      * PrintHelp - The top-level usage: commands, options, examples. The text is data, laid out by
      * Fmt against the real terminal width - no line here is wrapped or padded by hand.
@@ -599,34 +516,15 @@ module AppaCli {
         Fmt.Section("Commands");
         let List[String] cl = new List[String]();
         let List[String] cr = new List[String]();
-        cl.Add("appa install");         cr.Add("Install the GatOS toolchain, template, and libgata");
-        cl.Add("appa update");          cr.Add("Re-download the GatOS bundle and self-update Appa");
-        cl.Add("appa new <name>");      cr.Add("Create a GatOS project");
         cl.Add("appa check [project]"); cr.Add("Lex, parse, and type-check only - reports errors, emits nothing");
-        cl.Add("appa build [project]"); cr.Add("Build the project described by its .gconf into an ISO");
-        cl.Add("appa run [project]");   cr.Add("Build the ISO, then launch it in QEMU");
+        cl.Add("appa build [project]"); cr.Add("Transpile the project described by its .gconf to C");
         cl.Add("appa clean [project]"); cr.Add("Remove " + String.Join(Cli.GeneratedDirs(), "/, ") + "/");
         cl.Add("appa --version / -v");  cr.Add("Print the Appa version");
         Fmt.Table(cl, cr, Fmt.Indent());
         Console.PrintLine("");
         Fmt.Para(C.DIM() + "A project argument is a directory or a path to its .gconf; the default is the current directory." + C.NC(), Fmt.Indent());
 
-        Fmt.Section("Install options");
-        let List[String] il = new List[String]();
-        let List[String] ir = new List[String]();
-        il.Add("--with-path"); ir.Add("Add Appa to PATH without asking - re-runs elevated if it has to");
-        il.Add("--no-path");   ir.Add("Install without touching PATH, and without asking");
-        il.Add("--force");     ir.Add("Overwrite an existing install without confirming");
-        Fmt.Table(il, ir, Fmt.Indent());
-
-        Fmt.SectionNote("Run options", "(on top of every build option below)");
-        let List[String] rl = new List[String]();
-        let List[String] rr = new List[String]();
-        rl.Add("headless");     rr.Add("No QEMU window - serial only");
-        rl.Add("timeout=<Xs>"); rr.Add("Kill the guest after a duration (30s, 5m, 1h)");
-        Fmt.Table(rl, rr, Fmt.Indent());
-
-        Fmt.SectionNote("Build options", "(also accepted by run and check)");
+        Fmt.SectionNote("Build options", "(also accepted by check)");
         let List[String] bl = new List[String]();
         let List[String] br = new List[String]();
         bl.Add("--stdlib <dir>");   br.Add("Override the libgata directory");
@@ -642,20 +540,15 @@ module AppaCli {
         Fmt.Section("Examples");
         let List[String] el = new List[String]();
         let List[String] er = new List[String]();
-        el.Add("appa install");                                                er.Add("");
-        el.Add("appa new myos && cd myos && appa run");                         er.Add("");
-        el.Add("appa run headless timeout=30s");                                er.Add("");
-        el.Add("appa build --pure-transpile --env env.g --entry src/main.g");   er.Add("");
-        el.Add("appa check myos --werror");                                     er.Add("");
-        el.Add("appa clean");                                                   er.Add("");
+        el.Add("appa build"); er.Add("");
+        el.Add("appa build --pure-transpile --env env.g --entry src/main.g"); er.Add("");
+        el.Add("appa build myos --stdlib ./libgata"); er.Add("");
+        el.Add("appa check myos --werror"); er.Add("");
+        el.Add("appa clean"); er.Add("");
         Fmt.Table(el, er, Fmt.Indent());
         Console.PrintLine("");
-
-        // The one place this compiler tells you it is not the C# one. Kept at the end so it reads
-        // as a footnote rather than as the headline; the commands above are all accepted, and the
-        // three that cannot be carried out say so when you run them.
         Fmt.Section("Note");
-        Fmt.Para(C.DIM() + "This is the self-hosted Appa, written in Gata. It transpiles: 'build' on a Hosted project, 'build --pure-transpile', 'check' and 'clean' all work. 'install', 'update', 'new', 'run', and an ISO build need process spawning and network access that the environment floor does not bind - each says so if you run it." + C.NC(), Fmt.Indent());
+        Fmt.Para(C.DIM() + "This is the self-hosted Appa, written in Gata. It transpiles, and every command it lists it can carry out. The C# appa's 'install', 'update', 'new' and 'run' are absent here: they need the process spawning and network access that the environment floor does not bind. An ISO build needs the same, so a GatOS-target project says so instead of emitting something else." + C.NC(), Fmt.Indent());
         Console.PrintLine("");
     }
 }

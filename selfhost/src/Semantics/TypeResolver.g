@@ -2,22 +2,6 @@
  * TypeResolver.g - the main pass: untyped AST to typed IR, all type checking happens here
  *
  * Ports Appa/src/Semantics/TypeResolver.cs.
- *
- * This is the largest pass in the compiler and the only one that both CHECKS and BUILDS: every
- * semantic diagnostic the language has is raised somewhere in here, and what comes out the far
- * side is the typed IR the whole backend consumes. Nothing downstream re-derives a type.
- *
- * Shape of the port. C# leans on four things Gata does not have, and each is answered the same way
- * throughout, so the translation stays mechanical rather than inventive:
- *
- *   nullable T?          -> Optional[T], or a sentinel where the absent case has a natural one
- *   (A, B) tuples        -> a small named class
- *   out parameters       -> a union carrying every result, or a ref parameter
- *   nested visitors      -> IrWalk[S] from IrWalker.g: state class + function-pointer hook
- *
- * The one thing that could not be carried over literally is C#'s static Mangler. Here it is an
- * instance threaded from the pipeline, because DisplayName reads the generic instances the
- * Monomorphizer stamped - a fresh mangler would silently print flat names in diagnostics.
  */
 
 import "selfhostlib/String.g";
@@ -44,15 +28,6 @@ import "src/Backend/Mangler.g";
 /*
  * The reading of an integer literal. C# hands back four values through three `out` parameters;
  * Gata says the same thing as one union, which also makes the failure case unmissable.
- *
- *   value   the bits, reinterpreted as int64 - a uint64 literal above int64.MaxValue is stored
- *           wrapped, exactly as C# does with `unchecked((long)mag)`, because the emitted C text
- *           is what carries the real value
- *   type    the CANONICAL GATA SPELLING of the inferred type ("int", "int64", "uint", "uint64"),
- *           not the C one. The caller interns it into an IrType if it needs one, which keeps
- *           this answerable without an IrTypeTable
- *   cText   the text to emit into C when the source spelling cannot be used verbatim, None when
- *           it can
  */
 union IntLit { Parsed(int64 value, String type, Optional[String] cText), Bad }
 
@@ -62,21 +37,12 @@ module Literals {
      * ParseInt - Reads an integer literal the way section 2.5 of the language spec describes:
      * decimal or hex, with u/U and l/L suffix characters in any run, and the inferred type read
      * off the suffixes and the magnitude.
-     *
-     *   u + l      -> uint64
-     *   l          -> int64
-     *   u          -> uint if it fits, else uint64
-     *   no suffix  -> int if it fits, else int64, else uint64
-     *
-     * Bad when the digits do not parse or the magnitude does not fit in 64 bits - which is what
-     * the resolver turns into ERROR G004, and what the array-size check turns into G007.
      */
     public IntLit func ParseInt(String raw) {
         let int end = raw.Length();
         let bool hasU = false;
         let int lCount = 0;
 
-        // The suffix is a RUN in any order: 3ul, 3lu and 3ull are all legal
         while (end > 0) {
             let char c = raw.CharAt(end - 1);
             if (c == 'u' || c == 'U') { hasU = true; }
@@ -98,15 +64,8 @@ module Literals {
 
         let String type = Literals.IntLitType(mag, hasU, lCount >= 1);
 
-        // A hex or suffixed spelling is emitted VERBATIM, so 0xFF stays 0xFF in the C rather than
-        // becoming 255 - the author pinned the width or wrote the bit pattern for a reason, and the
-        // emitted C should still read like what they wrote. A bare decimal that landed in uint64
-        // has to be spelled with the C suffix instead, or the C compiler reads it as a signed
-        // literal that does not fit.
         let Optional[String] cText = isHex || hasSuffix
-            ? Optional.Some(raw)
-            : (type == "uint64" ? Optional.Some(Int.ToUnsignedString(mag) + "ULL")
-                                : Optional[String].None());
+            ? Optional.Some(raw) : (type == "uint64" ? Optional.Some(Int.ToUnsignedString(mag) + "ULL") : Optional[String].None());
 
         return IntLit.Parsed(Literals.Reinterpret(mag), type, cText);
     }
@@ -134,9 +93,7 @@ module Literals {
     }
 
     /*
-     * Reinterpret - The bits of a uint64 read back as int64, C#'s `unchecked((long)mag)`. Values
-     * above int64.MaxValue wrap; the C text is what carries them truthfully, which is exactly why
-     * ParseInt also hands back a cText for that case.
+     * Reinterpret - The bits of a uint64 read back as int64, C#'s `unchecked((long)mag)`
      */
     private int64 func Reinterpret(uint64 mag) {
         if (mag <= 9223372036854775807u) { return mag as int64; }
@@ -144,9 +101,7 @@ module Literals {
     }
 
     /*
-     * ParseDec - Decimal digits into mag. False on a non-digit, on emptiness, or on a magnitude
-     * past 64 bits. C# gets the range check from ulong.TryParse; here the multiply is checked
-     * before it happens, since Gata arithmetic wraps rather than throwing.
+     * ParseDec - Decimal digits into mag. False on a non-digit, on emptiness, or on a magnitude past 64 bits.
      */
     private bool func ParseDec(String s, ref uint64 mag) {
         if (s.Length() == 0) { return false; }
@@ -186,8 +141,7 @@ module Literals {
     }
 
     /*
-     * FloatType - The canonical Gata spelling of a floating-point literal: float for an f/F
-     * suffix, double otherwise
+     * FloatType - The canonical Gata spelling of a floating-point literal: float for an f/F suffix, double otherwise
      */
     public String func FloatType(String raw) {
         if (raw.Length() > 0) {
@@ -199,11 +153,6 @@ module Literals {
 
     /*
      * InferFieldTypeSpec - The type a field's initializer infers, or None.
-     *
-     * Fields register their type before any body is resolved, so this is limited to literals,
-     * optionally under a unary minus - the only initializers knowable without resolving
-     * expressions. Anything else is ERROR G054 at the caller, which is what makes
-     * `e = Compute();` a diagnostic that names the fix rather than a silent guess.
      */
     public Optional[TypeSpec] func InferFieldTypeSpec(Optional[Expr] init) {
         match (init) {
@@ -228,13 +177,11 @@ module Literals {
             }
             case BoolLitExpr(x) { return Optional.Some(Specs.NamedAt("bool", x.span)); }
             case CharLitExpr(x) { return Optional.Some(Specs.NamedAt("char", x.span)); }
-            case StrLitExpr(x)  { return Optional.Some(Specs.NamedAt(BuiltinTypes.Str(), x.span)); }
+            case StrLitExpr(x) { return Optional.Some(Specs.NamedAt(BuiltinTypes.Str(), x.span)); }
             case UnaryExpr(x) {
-                // Only a negated NUMERIC literal. '-flag' or '-"s"' infers nothing, the same way
-                // C#'s pattern requires an IntLitExpr or FloatLitExpr operand.
                 if (x.op != UnOp.Neg) { return Optional[TypeSpec].None(); }
                 match (x.operand) {
-                    case IntLitExpr(y)   { return Literals.InferFrom(x.operand); }
+                    case IntLitExpr(y) { return Literals.InferFrom(x.operand); }
                     case FloatLitExpr(y) { return Literals.InferFrom(x.operand); }
                     default { return Optional[TypeSpec].None(); }
                 }
@@ -248,11 +195,6 @@ module Literals {
 
 /*
  * A lexical scope chain for locals: what is declared, at what type, and whether by reference.
- *
- * Two levels matter beyond plain nesting. A PARAMETER scope is marked, because a top-level local
- * sharing a parameter's name is an error rather than a shadow - they land in one C scope, so no
- * renaming can separate them. And ShadowsOuter is asked separately from DeclaredHere, because
- * displacing an outer local is a warning while redeclaring in the same scope is an error.
  */
 class ScopeStack {
     public Optional[ScopeStack] parent;
@@ -289,8 +231,6 @@ class ScopeStack {
 
     /*
      * CollidesWithParam - True when a parameter scope directly enclosing this one binds the name.
-     * The walk stops at the first parameter scope, since anything beyond it belongs to another
-     * function.
      */
     public bool func CollidesWithParam(String name) {
         let ScopeStack s = self;
@@ -359,11 +299,6 @@ class ScopeStack {
 /*
  * Everything the resolver needs to know about WHERE it is: which file and function, which class if
  * any, whether the surrounding code is static or unsafe, and how a failure would be handled.
- *
- * C# makes this a readonly record struct with `with`-style WithX methods, copied at every nesting
- * step so an inner context can never leak back out. Gata has no record copy, so Clone is explicit
- * and each WithX returns a fresh one - the important property being the same: passing a modified
- * context down never mutates the caller's.
  */
 class ResolveCtx {
     public String file;
@@ -376,17 +311,13 @@ class ResolveCtx {
     public bool inThrowsFunc;
     public bool catchWrapped;
     public bool inDefer;
-    // Named 'realmKind' because 'realm' is a hard keyword and can never be an identifier
     public Realm realmKind;
     public ScopeStack locals;
 
-    // Set inside an inline catch handler, and the type an 'assign' there must produce. None
-    // outside one, which is what makes a stray 'assign' reportable.
+    // Set inside an inline catch handler, and the type an 'assign' there must produce
     public Optional[IrType] assignType;
 
-    // The type this expression is being resolved INTO, when there is one. Carried only through a
-    // call and a ternary, and cleared everywhere else, because it exists for exactly two jobs:
-    // picking a union instantiation from the expected type, and typing a bare variant name.
+    // The type this expression is being resolved INTO, when there is one
     public Optional[IrType] expected;
 
     // The enclosing function's return type, for a 'return' to check against
@@ -419,8 +350,7 @@ class ResolveCtx {
     }
 
     /*
-     * Clone - A copy sharing the same locals chain. Every WithX starts here, so adding a field to
-     * the context is one edit rather than fourteen.
+     * Clone - A copy sharing the same locals chain.
      */
     public ResolveCtx func Clone() {
         let ResolveCtx c = new ResolveCtx(self.file);
@@ -443,20 +373,20 @@ class ResolveCtx {
         return c;
     }
 
-    public ResolveCtx func WithClass(String c)      { let ResolveCtx x = self.Clone(); x.curClass = c; return x; }
-    public ResolveCtx func WithFunc(String f)       { let ResolveCtx x = self.Clone(); x.curFunc = f; return x; }
-    public ResolveCtx func WithStatic(bool s)       { let ResolveCtx x = self.Clone(); x.isStatic = s; return x; }
-    public ResolveCtx func WithUnsafe(bool u)       { let ResolveCtx x = self.Clone(); x.inUnsafe = u; return x; }
-    public ResolveCtx func WithThrowsFunc(bool t)   { let ResolveCtx x = self.Clone(); x.inThrowsFunc = t; return x; }
-    public ResolveCtx func WithRealm(Realm r)       { let ResolveCtx x = self.Clone(); x.realmKind = r; return x; }
-    public ResolveCtx func WithCatchWrapped()       { let ResolveCtx x = self.Clone(); x.catchWrapped = true; return x; }
-    public ResolveCtx func WithDefer()              { let ResolveCtx x = self.Clone(); x.inDefer = true; return x; }
-    public ResolveCtx func WithLoop()               { let ResolveCtx x = self.Clone(); x.loopDepth = self.loopDepth + 1; return x; }
-    public ResolveCtx func WithRetType(IrType r)    { let ResolveCtx x = self.Clone(); x.retType = Optional.Some(r); return x; }
-    public ResolveCtx func WithProcessInit()        { let ResolveCtx x = self.Clone(); x.inProcessInit = true; return x; }
-    public ResolveCtx func WithExpected(IrType e)   { let ResolveCtx x = self.Clone(); x.expected = Optional.Some(e); return x; }
-    public ResolveCtx func NoExpected()             { let ResolveCtx x = self.Clone(); x.expected = Optional[IrType].None(); return x; }
-    public ResolveCtx func NoCatchWrap()            { let ResolveCtx x = self.Clone(); x.catchWrapped = false; x.expected = Optional[IrType].None(); return x; }
+    public ResolveCtx func WithClass(String c) { let ResolveCtx x = self.Clone(); x.curClass = c; return x; }
+    public ResolveCtx func WithFunc(String f) { let ResolveCtx x = self.Clone(); x.curFunc = f; return x; }
+    public ResolveCtx func WithStatic(bool s) { let ResolveCtx x = self.Clone(); x.isStatic = s; return x; }
+    public ResolveCtx func WithUnsafe(bool u) { let ResolveCtx x = self.Clone(); x.inUnsafe = u; return x; }
+    public ResolveCtx func WithThrowsFunc(bool t) { let ResolveCtx x = self.Clone(); x.inThrowsFunc = t; return x; }
+    public ResolveCtx func WithRealm(Realm r) { let ResolveCtx x = self.Clone(); x.realmKind = r; return x; }
+    public ResolveCtx func WithCatchWrapped() { let ResolveCtx x = self.Clone(); x.catchWrapped = true; return x; }
+    public ResolveCtx func WithDefer() { let ResolveCtx x = self.Clone(); x.inDefer = true; return x; }
+    public ResolveCtx func WithLoop() { let ResolveCtx x = self.Clone(); x.loopDepth = self.loopDepth + 1; return x; }
+    public ResolveCtx func WithRetType(IrType r) { let ResolveCtx x = self.Clone(); x.retType = Optional.Some(r); return x; }
+    public ResolveCtx func WithProcessInit() { let ResolveCtx x = self.Clone(); x.inProcessInit = true; return x; }
+    public ResolveCtx func WithExpected(IrType e) { let ResolveCtx x = self.Clone(); x.expected = Optional.Some(e); return x; }
+    public ResolveCtx func NoExpected() { let ResolveCtx x = self.Clone(); x.expected = Optional[IrType].None(); return x; }
+    public ResolveCtx func NoCatchWrap() { let ResolveCtx x = self.Clone(); x.catchWrapped = false; x.expected = Optional[IrType].None(); return x; }
 
     /*
      * WithTry - Inside a try block, whose label a throw jumps to
@@ -469,8 +399,7 @@ class ResolveCtx {
     }
 
     /*
-     * WithCatchHandler - Inside an inline catch handler, which is where 'assign' is legal and the
-     * type it must supply
+     * WithCatchHandler - Inside an inline catch handler, which is where 'assign' is legal and the type it must supply
      */
     public ResolveCtx func WithCatchHandler(IrType assignType) {
         let ResolveCtx x = self.Clone();
@@ -488,17 +417,8 @@ class ResolveCtx {
     }
 }
 
-
-
-/*
- * The four carriers standing in for C#'s tuple types. Gata has no tuples, and naming each shape
- * once is cheaper than threading four positional values through every call that touches them.
- */
-
 /*
  * A generic free-function template, kept whole until a call site says what to stamp it as.
- * Bucketed by name, because several files may each declare their own private generic under one
- * name without clobbering each other - which is why File and IsPrivate travel with the decl.
  */
 class FuncTemplate {
     public FuncDecl decl;
@@ -528,9 +448,7 @@ class MethodTemplate {
 }
 
 /*
- * One queued stamping of a generic free function. requestScope is the module scope in force where
- * the type arguments were NAMED, not where the template lives - the stamped body is resolved
- * under it, because a type argument can come from a file the template never imported.
+ * One queued stamping of a generic free function.
  */
 class GenericJob {
     public FuncDecl decl;
@@ -575,11 +493,6 @@ class GenericMethodJob {
 
 /*
  * The pass itself. One instance per build; call Resolve once.
- *
- * Constructed from what SymbolCollector produced (the table, plus the three sets it recorded),
- * the import-visibility map the pipeline built, and the two maps the Monomorphizer left behind
- * saying where each stamped instance was asked for. releaseMode is carried because 'debug' and
- * 'panic' are rejected in a Release build and nowhere else.
  */
 class TypeResolver {
     SymbolTable sym;
@@ -590,6 +503,7 @@ class TypeResolver {
     StringMap[String] genericRequestFile;
     StringMap[StringSet] seedScopes;
     bool releaseMode;
+
     // Public because the analysis walkers below, which cannot be nested inside this class,
     // report and mangle through them
     public DiagnosticBag diag;
@@ -603,12 +517,10 @@ class TypeResolver {
     StringSet scope;
     StringSet fileScope;
 
-    // The stamped instance whose body is being resolved, "" at top level. C# tracks this with an
-    // IDisposable scope guard; Gata has no using, so callers save and restore it by hand.
+    // The stamped instance whose body is being resolved, "" at top level.
     String curInstance;
 
-    // Every distinct fixed-array and function-pointer type this module names. The emitter stamps
-    // one typedef per entry, so the list is what it walks and the set is what keeps it unique.
+    // Every distinct fixed-array and function-pointer type this module names.
     List[IrType] arrays;
     StringSet arraysSeen;
     List[IrType] funcPtrTypes;
@@ -650,10 +562,8 @@ class TypeResolver {
     StringMap[bool] managedUnionCache;
     bool cycleCut;
 
-    func _init(SymbolTable sym, StringSet hasInit, StringSet nativeStructs,
-               StringSet opaqueFieldClasses, StringMap[StringSet] visible,
-               StringMap[String] genericRequestFile, StringMap[StringSet] seedScopes,
-               bool releaseMode, DiagnosticBag diag, Mangler mangler) {
+    func _init(SymbolTable sym, StringSet hasInit, StringSet nativeStructs, StringSet opaqueFieldClasses, StringMap[StringSet] visible,
+               StringMap[String] genericRequestFile, StringMap[StringSet] seedScopes, bool releaseMode, DiagnosticBag diag, Mangler mangler) {
         self.sym = sym;
         self.hasInit = hasInit;
         self.nativeStructs = nativeStructs;
@@ -692,10 +602,6 @@ class TypeResolver {
         self.cycleCut = false;
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Scope: what the file being resolved can see
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * ClassInScope - True when a class name is declared in a module the current file imports
      */
@@ -717,9 +623,7 @@ class TypeResolver {
     }
 
     /*
-     * LookupFreeFuncVisible - A free function, preferring a registration this file can see. The
-     * last registration wins by default, which may belong to a file this one never imported; an
-     * in-scope declaration of the same name is the better answer whenever there is one.
+     * LookupFreeFuncVisible - A free function, preferring a registration this file can see.
      */
     Optional[Symbol] func LookupFreeFuncVisible(String name) {
         let Optional[Symbol] f = self.sym.LookupFreeFunc(name);
@@ -755,10 +659,6 @@ class TypeResolver {
         match (s) { case Some(x) { return x.sig; } case None { return Optional[MethodSig].None(); } }
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Small allocators: temporaries, and the type lists the emitter stamps typedefs from
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * Tmp - A unique temporary name. The '__' prefix is reserved against author-written locals
      * precisely so these can never collide with one.
@@ -779,8 +679,7 @@ class TypeResolver {
     }
 
     /*
-     * Arr - The fixed-array type for an element type and size, recording it the first time this
-     * module names it
+     * Arr - The fixed-array type for an element type and size, recording it the first time this module names it
      */
     IrType func Arr(IrType elem, int size) {
         let IrType a = self.t.Array(elem, size);
@@ -789,9 +688,7 @@ class TypeResolver {
     }
 
     /*
-     * FnPtr - The function-pointer type for a signature, recording it the first time this module
-     * names it. Interning is table-wide and outlives one module, so the seen set has to be the
-     * resolver's: a signature an earlier module canonicalised still needs stamping into this one.
+     * FnPtr - The function-pointer type for a signature, recording it the first time this module names it. 
      */
     IrType func FnPtr(IrType ret, List[IrType] ps) {
         let IrType f = self.t.FuncPtr(ret, ps);
@@ -800,19 +697,13 @@ class TypeResolver {
     }
 
     /*
-     * Poison - The value an expression takes once the reason it could not be resolved has been
-     * reported. Typed as the error type, which every check treats as "already complained about",
-     * so one mistake yields one diagnostic rather than a cascade.
+     * Poison - The value an expression takes once the reason it could not be resolved has been reported.
      */
     IrExpr func Poison(TextSpan span) {
         let IrDefault d = new IrDefault(self.t.Error());
         d.span = span;
         return IrExpr.IrDefault(d);
     }
-
-    /* ---------------------------------------------------------------------------------------
-     * Type predicates
-     * ------------------------------------------------------------------------------------ */
 
     /*
      * IsNum - True for any numeric primitive, bool included (it is integral, rank 1)
@@ -852,28 +743,26 @@ class TypeResolver {
     bool func IsOpaqueStruct(String cls) { return self.nativeStructs.Has(cls); }
 
     /*
-     * HasOpaqueFields - True when the class has either a native struct body or a raw C 'fields'
-     * block. The compiler cannot see inside either, so an unknown member on one is not an error.
+     * HasOpaqueFields - True when the class has either a native struct body or a raw C 'fields block. 
      */
     bool func HasOpaqueFields(String cls) {
         return self.nativeStructs.Has(cls) || self.opaqueFieldClasses.Has(cls);
     }
 
     /*
-     * Describe - A type as a human reads it, for diagnostics. Never a mangled spelling: an
-     * instantiation reads the way the author wrote it.
+     * Describe - A type as a human reads it, for diagnostics.
      */
     String func Describe(IrType ty) {
         match (ty) {
-            case IrVoidType(v)   { return "void"; }
-            case IrPrimType(p)   { return p.cName; }
-            case IrClassRef(c)   { return self.mangler.DisplayName(c.className); }
-            case IrPtrType(p)    { return self.Describe(p.inner) + "*"; }
-            case IrArrayType(a)  { return "[" + Int.ToString(a.size) + "]" + self.Describe(a.elem); }
+            case IrVoidType(v) { return "void"; }
+            case IrPrimType(p) { return p.cName; }
+            case IrClassRef(c) { return self.mangler.DisplayName(c.className); }
+            case IrPtrType(p) { return self.Describe(p.inner) + "*"; }
+            case IrArrayType(a) { return "[" + Int.ToString(a.size) + "]" + self.Describe(a.elem); }
             case IrResultType(r) { return "throws " + self.Describe(r.inner); }
             case IrFuncPtrType(f) { return self.DescribeFuncPtr(f); }
-            case IrUnionType(u)  { return self.mangler.DisplayName(u.name); }
-            case IrEnumType(e)   { return self.mangler.DisplayName(e.name); }
+            case IrUnionType(u) { return self.mangler.DisplayName(u.name); }
+            case IrEnumType(e) { return self.mangler.DisplayName(e.name); }
             default { return self.mangler.CType(ty); }
         }
     }
@@ -909,20 +798,13 @@ class TypeResolver {
         return sb.ToString();
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Type specs: checking one, and turning one into an IrType
-     * ------------------------------------------------------------------------------------ */
-
     /*
-     * MaxSeedDepth - How deeply a type argument may nest before an instantiation stops being
-     * created on demand. Hand-written code nests two or three deep; deeper than this is the
-     * signature of a family that generates a new level every time the previous one is created.
+     * MaxSeedDepth - How deeply a type argument may nest before an instantiation stops being created on demand.
      */
     int func MaxSeedDepth() { return 6; }
 
     /*
-     * SeedDepth - Nesting depth of an already-mangled instance name, walked the same way
-     * TrySplitInstance walks it
+     * SeedDepth - Nesting depth of an already-mangled instance name, walked the same way TrySplitInstance walks it
      */
     int func SeedDepth(String mangled) {
         let int depth = 1;
@@ -956,8 +838,7 @@ class TypeResolver {
 
     /*
      * Sp - A spec node's own span, falling back to the declaration's when the node was
-     * synthesized without one. Each node carries its own, so the caret lands on the offending
-     * part of a compound type rather than on the whole declaration.
+     * synthesized without one.
      */
     TextSpan func Sp(TypeSpec ty, TextSpan fallback) {
         let TextSpan s = Specs.Span(ty);
@@ -985,7 +866,6 @@ class TypeResolver {
                     self.CheckTypeSpec(f.params.Get(i), ctx, self.Sp(f.params.Get(i), span), false);
                     i = i + 1;
                 }
-                // A function pointer may return void, unlike anything else that names a type
                 self.CheckTypeSpec(f.ret, ctx, self.Sp(f.ret, span), true);
             }
             case ArraySpec(a) {
@@ -998,7 +878,6 @@ class TypeResolver {
                 }
             }
             case PtrSpec(ptr) {
-                // Any depth of void* is a legal type with nothing further to check
                 let TypeSpec inner = ptr.inner;
                 while (true) {
                     match (inner) { case PtrSpec(ip) { inner = ip.inner; } default { break; } }
@@ -1037,7 +916,6 @@ class TypeResolver {
         if (self.sym.IsUnion(name))         { return; }
         if (self.ClassInScope(name))        { return; }
 
-        // The type exists, but this file never imported the module declaring it
         if (self.sym.IsClass(name)) {
             let List[String] hints = new List[String]();
             self.AddInstantiationHint(hints, self.InstanceOrClass(ctx));
@@ -1050,15 +928,12 @@ class TypeResolver {
         if (self.ReportWrongKind(Codes.UndefinedType(),
                 nm.args.Length() > 0 ? "a generic type" : "a type", nm.name, ctx.file, at)) { return; }
 
-        // A generic whose creation already failed reports once, not once per use
         if (self.mangler.GenericFailed(name)) { return; }
         if (name.Contains(Types.MangledName(self.t.Error()))) {
             self.mangler.MarkGenericFailed(name);
             return;
         }
 
-        // An instance name that was composed but never stamped. Seeding it lets a later round
-        // create it; the diagnostic is what the author sees if no round can.
         if (nm.args.Length() == 0) {
             match (self.mangler.TrySplitInstance(name)) {
                 case Some(k) {
@@ -1081,7 +956,6 @@ class TypeResolver {
             }
         }
 
-        // Written as Base[Args] against a template that was never stamped for these arguments
         if (nm.args.Length() > 0 && self.mangler.IsGenericTemplate(nm.name)) {
             let List[String] argNames = new List[String]();
             let int i = 0;
@@ -1104,8 +978,7 @@ class TypeResolver {
 
         let List[String] unknownHints = new List[String]();
         self.AddInstantiationHint(unknownHints, self.InstanceOrClass(ctx));
-        self.diag.Error(Codes.UndefinedType(), ctx.file, at,
-            "unknown type '" + self.Written(nm) + "'", unknownHints);
+        self.diag.Error(Codes.UndefinedType(), ctx.file, at, "unknown type '" + self.Written(nm) + "'", unknownHints);
     }
 
     /*
@@ -1169,8 +1042,7 @@ class TypeResolver {
                 return self.FnPtr(self.ResolveTypeSpec(f.ret), ps);
             }
             case ArraySpec(a) {
-                return self.Arr(self.ResolveTypeSpec(a.elem),
-                                Literals.IntValue(a.sizeText, 0L) as int);
+                return self.Arr(self.ResolveTypeSpec(a.elem), Literals.IntValue(a.sizeText, 0L) as int);
             }
             case PtrSpec(p) { return self.t.Ptr(self.ResolveTypeSpec(p.inner)); }
             case NamedSpec(nm) { return self.ResolveNamed(nm); }
@@ -1194,16 +1066,12 @@ class TypeResolver {
                 }
             }
         }
-        if (PrimTypes.IsPrim(name))  { return self.t.Prim(name); }
-        if (self.sym.IsEnum(name))   { return self.t.EnumType(name); }
-        if (self.sym.IsUnion(name))  { return self.t.UnionType(name); }
-        if (self.sym.IsClass(name))  { return self.t.ClassRef(name); }
+        if (PrimTypes.IsPrim(name)) { return self.t.Prim(name); }
+        if (self.sym.IsEnum(name)) { return self.t.EnumType(name); }
+        if (self.sym.IsUnion(name)) { return self.t.UnionType(name); }
+        if (self.sym.IsClass(name)) { return self.t.ClassRef(name); }
         return self.t.Error();
     }
-
-    /* ---------------------------------------------------------------------------------------
-     * Declaration-shaped checks
-     * ------------------------------------------------------------------------------------ */
 
     /*
      * CheckParams - Rejects two parameters of one name, and any name the compiler reserves
@@ -1224,14 +1092,12 @@ class TypeResolver {
 
     /*
      * CheckNotReservedLocal - Rejects a local or parameter whose name the compiler also generates
-     * for its own temporaries. Both are emitted verbatim into one C scope, so the declarations
-     * would collide and no renaming rule can separate them afterwards.
+     * for its own temporaries.
      */
     void func CheckNotReservedLocal(String name, TextSpan span, String what, ResolveCtx ctx) {
         if (!Mangle.IsReservedLocal(name)) { return; }
         let List[String] hints = new List[String]();
-        hints.Add("that prefix belongs to the temporaries lowering introduces, which land in this " +
-                  "same C scope");
+        hints.Add("that prefix belongs to the temporaries lowering introduces, which land in this " + "same C scope");
         let String trimmed = name;
         while (trimmed.Length() > 0 && trimmed.CharAt(0) == '_') {
             trimmed = trimmed.Substring(1, trimmed.Length() - 1);
@@ -1244,8 +1110,7 @@ class TypeResolver {
     /*
      * CheckArgCount - Reports an argument count that does not match the signature
      */
-    void func CheckArgCount(Optional[MethodSig] sig, int argCount, String display,
-                            ResolveCtx ctx, TextSpan span) {
+    void func CheckArgCount(Optional[MethodSig] sig, int argCount, String display, ResolveCtx ctx, TextSpan span) {
         match (sig) {
             case None { }
             case Some(g) {
@@ -1258,13 +1123,8 @@ class TypeResolver {
         }
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Overload resolution
-     * ------------------------------------------------------------------------------------ */
-
     /*
-     * ArgConvCost - What it costs to pass an argument where a parameter of type 'to' is wanted:
-     * 0 exact, 1 widening or pointer covariance, 2 narrowing. -1 means no conversion exists.
+     * ArgConvCost - What it costs to pass an argument where a parameter of type 'to' is wanted.
      */
     int func ArgConvCost(IrExpr arg, IrType to) {
         let IrType from = Exprs2.TypeOf(arg);
@@ -1287,8 +1147,8 @@ class TypeResolver {
      */
     bool func IsRefLike(IrType ty) {
         match (ty) {
-            case IrClassRef(c)    { return true; }
-            case IrPtrType(p)     { return true; }
+            case IrClassRef(c) { return true; }
+            case IrPtrType(p) { return true; }
             case IrFuncPtrType(f) { return true; }
             default { return false; }
         }
@@ -1302,8 +1162,7 @@ class TypeResolver {
             case IrPtrType(fp) {
                 match (to) {
                     case IrPtrType(tp) {
-                        return Types.Same(fp.inner, tp.inner) ||
-                               Types.IsVoid(fp.inner) || Types.IsVoid(tp.inner);
+                        return Types.Same(fp.inner, tp.inner) || Types.IsVoid(fp.inner) || Types.IsVoid(tp.inner);
                     }
                     default { return false; }
                 }
@@ -1321,8 +1180,7 @@ class TypeResolver {
         let int total = 0;
         let int i = 0;
         while (i < args.Length()) {
-            let int c = self.ArgConvCost(args.Get(i),
-                            self.ResolveTypeSpec(sig.params.Get(i).type));
+            let int c = self.ArgConvCost(args.Get(i), self.ResolveTypeSpec(sig.params.Get(i).type));
             if (c < 0) { return -1; }
             total = total + c;
             i = i + 1;
@@ -1331,12 +1189,10 @@ class TypeResolver {
     }
 
     /*
-     * ChooseOverload - The best-matching candidate for an argument list. Lowest total cost wins;
-     * a tie between two different C names is ambiguous, and no match at all is its own error.
+     * ChooseOverload - The best-matching candidate for an argument list.
      */
     Optional[Symbol] func ChooseOverload(List[Symbol] cands, Optional[Symbol] primary,
-                                         List[IrExpr] args, String display, ResolveCtx ctx,
-                                         TextSpan span) {
+                                         List[IrExpr] args, String display, ResolveCtx ctx, TextSpan span) {
         if (cands.Length() <= 1) {
             match (primary) {
                 case Some(p) { self.CheckArgCount(p.sig, args.Length(), display, ctx, span); }
@@ -1385,10 +1241,6 @@ class TypeResolver {
         return best;
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Assignment compatibility
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * Assignable - True when a value may be stored in a target of the given type, allowing
      * implicit widening, a literal into anything it fits, null into a reference, and pointer
@@ -1404,8 +1256,6 @@ class TypeResolver {
         if (Types.Same(from, to)) { return true; }
         if (Types.IsVoid(to)) { return false; }
 
-        // A literal goes into any numeric type; CheckLiteralFits is what then rejects one whose
-        // value would not survive the store.
         let bool isCharLit = false;
         match (value) { case IrLitChar(c) { isCharLit = true; } default { } }
         if ((isCharLit || IsSome(self.LiteralValue(value))) && self.IsNum(to)) { return true; }
@@ -1438,8 +1288,7 @@ class TypeResolver {
     }
 
     /*
-     * CheckAssign - Reports a value that cannot be stored in the target type. A Result on either
-     * side is left alone: the throws machinery has its own diagnostics and would double-report.
+     * CheckAssign - Reports a value that cannot be stored in the target type.
      */
     void func CheckAssign(IrExpr value, IrType target, String what, ResolveCtx ctx, String code) {
         match (Exprs2.TypeOf(value)) { case IrResultType(r) { return; } default { } }
@@ -1455,8 +1304,7 @@ class TypeResolver {
     }
 
     /*
-     * CheckLiteralFits - Rejects an integer literal too large for the type it is stored in. The
-     * conversion would be silent in C, so the hint says what would actually land there.
+     * CheckLiteralFits - Rejects an integer literal too large for the type it is stored in.
      */
     void func CheckLiteralFits(IrExpr value, IrType target, String what, ResolveCtx ctx) {
         match (self.LiteralValue(value)) {
@@ -1536,8 +1384,7 @@ class TypeResolver {
     }
 
     /*
-     * SameNamedKind - True when two types are the same pointer, class, enum, union or function
-     * pointer. Named kinds compare by name so two references to one class are one type.
+     * SameNamedKind - True when two types are the same pointer, class, enum, union or function pointer.
      */
     bool func SameNamedKind(IrType a, IrType b) {
         match (a) {
@@ -1564,26 +1411,20 @@ class TypeResolver {
      */
     bool func IsLiteral(IrExpr e) {
         match (e) {
-            case IrLitInt(x)    { return true; }
-            case IrLitFloat(x)  { return true; }
-            case IrLitChar(x)   { return true; }
-            case IrLitBool(x)   { return true; }
+            case IrLitInt(x) { return true; }
+            case IrLitFloat(x) { return true; }
+            case IrLitChar(x) { return true; }
+            case IrLitBool(x) { return true; }
             case IrLitString(x) { return true; }
-            case IrLitNull(x)   { return true; }
+            case IrLitNull(x) { return true; }
             case IrEnumConst(x) { return true; }
             default { return false; }
         }
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Reporting a name that exists somewhere else, or means something else
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * ReportWrongKind - Reports a name a scope does declare, but as something else - the function
-     * 'kernel.X' where a type was wanted. A scope holds ONE meaning per name, so the outer
-     * declaration this one displaced cannot be reached, and "unknown type" would be the single
-     * answer that is untrue. Returns true when it reported, or already had.
+     * 'kernel.X' where a type was wanted. 
      */
     bool func ReportWrongKind(String code, String wanted, String qualified, String file, TextSpan span) {
         match (self.mangler.ScopedKind(qualified)) {
@@ -1603,9 +1444,7 @@ class TypeResolver {
     }
 
     /*
-     * ReportNotVisible - Reports a name that does exist, but only inside a scope this code is not
-     * in. False when nothing scoped declares it, which leaves the caller's own "no such name"
-     * error to fire instead.
+     * ReportNotVisible - Reports a name that does exist, but only inside a scope this code is not in.
      */
     bool func ReportNotVisible(String kind, String bare, String file, TextSpan span) {
         let List[String] paths = self.mangler.ScopedCandidates(bare);
@@ -1637,10 +1476,6 @@ class TypeResolver {
 
     /*
      * AddInstantiationHint - Names the generic instantiation an error came from.
-     *
-     * A stamped instance lives in the TEMPLATE's file, so 'Map[String, int]' reports a cast error
-     * inside Map.g with nothing on the line to say which of the author's types is at fault. This
-     * is what puts that back.
      */
     void func AddInstantiationHint(List[String] hints, String instance) {
         if (instance.Length() == 0) { return; }
@@ -1650,8 +1485,6 @@ class TypeResolver {
                 hints.Add("this comes from the instantiation '" + self.mangler.DisplayName(instance) +
                           "'; the type arguments have to satisfy what the generic's body does with them");
 
-                // The specific case worth naming: a String key in a reference-hashed container,
-                // when a string-keyed sibling exists
                 let List[String] args = GK.Args(k);
                 if (!args.Contains("String")) { return; }
                 let String sibling = "String" + GK.Base(k);
@@ -1667,8 +1500,7 @@ class TypeResolver {
                     ? sibling + "[" + String.Join(rest, ", ") + "]"
                     : sibling;
                 hints.Add("for a 'String' key, use '" + spelled + "' - it hashes the text rather " +
-                          "than the reference, which is what '" +
-                          self.mangler.DisplayName(GK.Base(k)) + "' cannot do");
+                          "than the reference, which is what '" + self.mangler.DisplayName(GK.Base(k)) + "' cannot do");
             }
         }
     }
@@ -1682,10 +1514,6 @@ class TypeResolver {
         return Visibility.Shared;
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Statement-level checks
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * WarnIfEmpty - An empty control-statement body is almost always an editing accident
      */
@@ -1696,8 +1524,7 @@ class TypeResolver {
     }
 
     /*
-     * CheckCondition - A condition must be bool. There is no truthiness, so an integer here is an
-     * error rather than a silent zero test.
+     * CheckCondition - A condition must be bool.
      */
     void func CheckCondition(IrExpr c, ResolveCtx ctx, bool allowConst) {
         let IrType ty = Exprs2.TypeOf(c);
@@ -1716,8 +1543,7 @@ class TypeResolver {
 
     /*
      * WarnConstCondition - Warns when a condition is decided before it is evaluated: a literal, or
-     * a comparison of a value against itself. 'while (true)' is exempt, which is what allowConst
-     * carries.
+     * a comparison of a value against itself.
      */
     void func WarnConstCondition(IrExpr c, ResolveCtx ctx, bool allowConst) {
         match (c) {
@@ -1760,9 +1586,7 @@ class TypeResolver {
     }
 
     /*
-     * IsSelfUnionComparison - True for a union equality, or its negation, over two operands naming
-     * the same storage. Matched by shape, since a union's equality is a generated function whose
-     * name is mangled.
+     * IsSelfUnionComparison - True for a union equality, or its negation, over two operands naming the same storage.
      */
     bool func IsSelfUnionComparison(IrExpr c) {
         let IrExpr e = c;
@@ -1799,9 +1623,7 @@ class TypeResolver {
     }
 
     /*
-     * SameStorage - True when two expressions name the same storage, so comparing them compares a
-     * value with itself. Deliberately syntactic and shallow: only shapes with no side effect and
-     * no indirection through a value this pass cannot see.
+     * SameStorage - True when two expressions name the same storage, so comparing them compares a value with itself.
      */
     bool func SameStorage(IrExpr a, IrExpr b) {
         match (a) {
@@ -1838,7 +1660,6 @@ class TypeResolver {
                 }
             }
             case IrIndex(x) {
-                // Only a LITERAL index is safe to compare: 'a[i()] == a[i()]' need not name one slot
                 match (b) {
                     case IrIndex(y) {
                         if (!self.SameStorage(x.obj, y.obj)) { return false; }
@@ -1864,11 +1685,11 @@ class TypeResolver {
      */
     void func CheckLValue(IrExpr target, ResolveCtx ctx) {
         match (target) {
-            case IrVar(x)       { return; }
-            case IrGlobal(x)    { return; }
+            case IrVar(x) { return; }
+            case IrGlobal(x) { return; }
             case IrFieldLoad(x) { return; }
-            case IrIndex(x)     { return; }
-            case IrDeref(x)     { return; }
+            case IrIndex(x) { return; }
+            case IrDeref(x) { return; }
             default { }
         }
         self.diag.Error(Codes.NotAnLvalue(), ctx.file, Exprs2.SpanOf(target),
@@ -1876,16 +1697,13 @@ class TypeResolver {
     }
 
     /*
-     * CheckCompound - Both operands of a compound assignment. The bitwise forms want integers;
-     * the arithmetic forms want numbers.
+     * CheckCompound - Both operands of a compound assignment.
      */
     void func CheckCompound(AssignOp op, IrExpr target, IrExpr value, ResolveCtx ctx) {
         if (Types.IsError(Exprs2.TypeOf(target)) || Types.IsError(Exprs2.TypeOf(value))) { return; }
         let bool bitwise = Ops.IsBitwise(op);
-        let bool okTarget = bitwise ? self.IsInteger(Exprs2.TypeOf(target))
-                                    : self.IsArith(Exprs2.TypeOf(target));
-        let bool okValue = bitwise ? self.IsInteger(Exprs2.TypeOf(value))
-                                   : self.IsArith(Exprs2.TypeOf(value));
+        let bool okTarget = bitwise ? self.IsInteger(Exprs2.TypeOf(target)) : self.IsArith(Exprs2.TypeOf(target));
+        let bool okValue = bitwise ? self.IsInteger(Exprs2.TypeOf(value)) : self.IsArith(Exprs2.TypeOf(value));
         if (!okTarget) {
             self.diag.Error(Codes.TypeMismatch(), ctx.file, Exprs2.SpanOf(target),
                 "operator '" + Ops.AssignSym(op) + "' cannot be applied to '" +
@@ -1899,9 +1717,7 @@ class TypeResolver {
     }
 
     /*
-     * FindAsOperator - The destination class's 'as' operator whose parameter matches the source
-     * type. 'as' is always a static factory on the type converted TO, so this is the only place a
-     * match comes from, and conversions never chain.
+     * FindAsOperator - The destination class's 'as' operator whose parameter matches the source type.
      */
     Optional[Symbol] func FindAsOperator(String destCls, IrType from) {
         let List[Symbol] ops = self.sym.OperatorOverloads(destCls, "as");
@@ -1925,15 +1741,11 @@ class TypeResolver {
 
     /*
      * CheckCast - Validates an explicit cast: numeric, enum-to-integer, or pointer inside unsafe.
-     * A class can be converted INTO by an 'as' operator, but never out to a primitive.
      */
     void func CheckCast(IrExpr value, IrType to, ResolveCtx ctx) {
         let IrType from = Exprs2.TypeOf(value);
 
         if (Types.Same(from, to)) {
-            // Casting to the type a value already has converts nothing. It is usually left over
-            // from an earlier signature, and it hides a later real type change. A literal is
-            // exempt: pinning a bit pattern's width where it is written is deliberate.
             if (!Types.IsVoid(from) && !self.IsLiteral(value)) {
                 let List[String] hints = new List[String]();
                 hints.Add("remove the cast");
@@ -1962,8 +1774,7 @@ class TypeResolver {
 
         if (self.IsPointerCast(from, to)) {
             if (!ctx.inUnsafe) {
-                self.diag.Error(Codes.UnsafeRequired(), ctx.file, Exprs2.SpanOf(value),
-                    "pointer cast requires an 'unsafe' block");
+                self.diag.Error(Codes.UnsafeRequired(), ctx.file, Exprs2.SpanOf(value), "pointer cast requires an 'unsafe' block");
             }
             return;
         }
@@ -2031,8 +1842,7 @@ class TypeResolver {
 
     /*
      * WarnIfLooksInterpolated - Warns when a plain string contains '{name}' and 'name' is a
-     * variable actually in scope: the signature of a '$' dropped from an interpolated string,
-     * which otherwise fails silently by printing the braces verbatim.
+     * variable actually in scope.
      */
     void func WarnIfLooksInterpolated(StrLitExpr sl, ResolveCtx ctx) {
         let String raw = sl.value;
@@ -2064,10 +1874,6 @@ class TypeResolver {
         }
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Control-flow analysis
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * ReturnsList - True when at least one statement in a list definitely returns
      */
@@ -2082,24 +1888,19 @@ class TypeResolver {
 
     /*
      * DefinitelyReturns - True when a statement returns or throws on EVERY path.
-     *
-     * This is what decides G027. The interesting arms are the loops: 'while (true)' with no break
-     * never falls out, so a function ending in one needs no return after it, and the same holds
-     * for a 'for' with no condition.
      */
     bool func DefinitelyReturns(IrStmt s) {
         match (s) {
-            case IrReturn(x)      { return true; }
-            case IrThrow(x)       { return true; }
-            case IrPanic(x)       { return true; }
-            case IrBlock(b)       { return self.ReturnsList(b.stmts); }
+            case IrReturn(x) { return true; }
+            case IrThrow(x) { return true; }
+            case IrPanic(x) { return true; }
+            case IrBlock(b) { return self.ReturnsList(b.stmts); }
             case IrUnsafeBlock(u) { return self.ReturnsList(u.body.stmts); }
             case IrIf(i) {
                 match (i.otherwise) {
                     case None { return false; }
                     case Some(e) {
-                        return self.DefinitelyReturns(IrStmt.IrBlock(i.then)) &&
-                               self.DefinitelyReturns(IrStmt.IrBlock(e));
+                        return self.DefinitelyReturns(IrStmt.IrBlock(i.then)) && self.DefinitelyReturns(IrStmt.IrBlock(e));
                     }
                 }
             }
@@ -2119,8 +1920,6 @@ class TypeResolver {
                        self.DefinitelyReturns(IrStmt.IrBlock(t.catchBlock));
             }
             case IrSwitch(sw) {
-                // Without a default the scrutinee may match nothing, so the statement can be
-                // skipped entirely however exhaustive the cases look
                 match (sw.otherwise) {
                     case None { return false; }
                     case Some(d) {
@@ -2136,7 +1935,6 @@ class TypeResolver {
                 }
             }
             case IrMatch(ms) {
-                // A match with no default is exhaustive by G039, so every variant is covered
                 let int i = 0;
                 while (i < ms.cases.Length()) {
                     if (!self.DefinitelyReturns(IrStmt.IrBlock(ms.cases.Get(i).body))) { return false; }
@@ -2160,12 +1958,11 @@ class TypeResolver {
 
     /*
      * HasLoopBreak - True when a statement contains a 'break' that would exit the ENCLOSING loop.
-     * Does not descend into a nested loop, whose breaks target that one instead. A catch handler
-     * is part of the enclosing loop, so a break inside one does exit it.
+     * Does not descend into a nested loop, whose breaks target that one instead.
      */
     bool func HasLoopBreak(IrStmt s) {
         match (s) {
-            case IrBreak(x)       { return true; }
+            case IrBreak(x) { return true; }
             case IrBlock(b) {
                 let int i = 0;
                 while (i < b.stmts.Length()) {
@@ -2181,7 +1978,7 @@ class TypeResolver {
                     case None { return false; }
                 }
             }
-            case IrAssign(a)   { return self.HasHandlerBreak(a.value); }
+            case IrAssign(a) { return self.HasHandlerBreak(a.value); }
             case IrExprStmt(e) { return self.HasHandlerBreak(e.expr); }
             case IrIf(i) {
                 if (self.HasLoopBreak(IrStmt.IrBlock(i.then))) { return true; }
@@ -2221,9 +2018,7 @@ class TypeResolver {
     }
 
     /*
-     * HasHandlerBreak - True when a root-position expression carries a catch handler containing a
-     * break. Handlers only ever sit at the root of a declaration, an assignment, or an expression
-     * statement, which is why this is not a general expression walk.
+     * HasHandlerBreak - True when a root-position expression carries a catch handler containing a break.
      */
     bool func HasHandlerBreak(IrExpr e) {
         match (e) {
@@ -2233,16 +2028,14 @@ class TypeResolver {
     }
 
     /*
-     * CheckThrowsReturn - Rejects a 'throws' return type with no valid Result_T spelling. A
-     * pointer, fixed array or function pointer would produce an illegal C typedef name, so it is
-     * a compile error rather than a link-time surprise.
+     * CheckThrowsReturn - Rejects a 'throws' return type with no valid Result_T spelling.
      */
     void func CheckThrowsReturn(IrType ret, bool isThrows, String display, ResolveCtx ctx, TextSpan span) {
         if (!isThrows) { return; }
         let bool bad = false;
         match (ret) {
-            case IrPtrType(p)     { bad = true; }
-            case IrArrayType(a)   { bad = true; }
+            case IrPtrType(p) { bad = true; }
+            case IrArrayType(a) { bad = true; }
             case IrFuncPtrType(f) { bad = true; }
             default { }
         }
@@ -2256,8 +2049,7 @@ class TypeResolver {
     /*
      * CheckMissingReturn - Reports a non-void function that does not return on every path
      */
-    void func CheckMissingReturn(Optional[IrBlock] body, IrType ret, bool isThrows, TextSpan span,
-                                 String display, ResolveCtx ctx) {
+    void func CheckMissingReturn(Optional[IrBlock] body, IrType ret, bool isThrows, TextSpan span, String display, ResolveCtx ctx) {
         match (body) {
             case None { return; }
             case Some(b) {
@@ -2266,15 +2058,11 @@ class TypeResolver {
                 match (ret) { case IrResultType(r) { return; } default { } }
                 if (self.ReturnsList(b.stmts)) { return; }
 
-                // A native body is invisible to this analysis, so say so rather than insisting on
-                // a return the author already wrote in C
                 let List[String] hints = new List[String]();
                 if (self.HasNativeStmt(b.stmts)) {
-                    hints.Add("a 'native { }' block is raw C, so a 'return' inside one is not " +
-                              "visible to this check");
+                    hints.Add("a 'native { }' block is raw C, so a 'return' inside one is not " + "visible to this check");
                     hints.Add("either make the whole body native - put 'native' after the signature " +
-                              "instead of inside the braces - or have the native block store its " +
-                              "result in a local and return that local");
+                              "instead of inside the braces - or have the native block store its " + "result in a local and return that local");
                 }
                 self.diag.Error(Codes.MissingReturn(), ctx.file, span,
                     "'" + display + "' must return '" + self.Describe(ret) + "' on every path", hints);
@@ -2298,18 +2086,13 @@ class TypeResolver {
      * CheckBodyQuality - The warnings that are about a body as a whole rather than any one
      * statement: a redundant trailing return, an unread local, an unread parameter, and a read
      * before assignment.
-     *
-     * All of them are skipped when the body contains raw C, which the walk cannot see into: a
-     * local the native block reads would otherwise look unused.
      */
-    void func CheckBodyQuality(IrBlock body, IrType ret, TextSpan span, ResolveCtx ctx,
-                               List[Param] pars, TextSpan parSpan) {
+    void func CheckBodyQuality(IrBlock body, IrType ret, TextSpan span, ResolveCtx ctx, List[Param] pars, TextSpan parSpan) {
         if (Types.IsVoid(ret) && body.stmts.Length() > 0) {
             match (body.stmts.Get(body.stmts.Length() - 1)) {
                 case IrReturn(r) {
                     if (IsNone(r.value)) {
-                        self.diag.Warn(Codes.RedundantReturn(), ctx.file, span,
-                            "redundant trailing 'return;'");
+                        self.diag.Warn(Codes.RedundantReturn(), ctx.file, span, "redundant trailing 'return;'");
                     }
                 }
                 default { }
@@ -2328,8 +2111,7 @@ class TypeResolver {
         while (i < q.declNames.Length()) {
             let String name = q.declNames.Get(i);
             if (seen.AddNew(name) && !DeliberatelyUnused(name) && !q.used.Has(name)) {
-                self.diag.Warn(Codes.UnusedVariable(), ctx.file, q.declSpans.Get(i),
-                    "unused variable '" + name + "'");
+                self.diag.Warn(Codes.UnusedVariable(), ctx.file, q.declSpans.Get(i), "unused variable '" + name + "'");
             }
             i = i + 1;
         }
@@ -2339,20 +2121,13 @@ class TypeResolver {
             let Param p = pars.Get(j);
             j = j + 1;
             if (DeliberatelyUnused(p.name)) { continue; }
-            // Only warn when the name is never mentioned in the body at all - a parameter that
-            // was reassigned before being read is still used
             if (q.used.Has(p.name) || seen.Has(p.name)) { continue; }
             let List[String] hints = new List[String]();
             hints.Add("remove it, or prefix the name with '_' if it is deliberately ignored");
             self.diag.Warn(Codes.UnusedParameter(), ctx.file,
-                TS.IsNone(p.span) ? parSpan : p.span,
-                "unused parameter '" + p.name + "'", hints);
+                TS.IsNone(p.span) ? parSpan : p.span, "unused parameter '" + p.name + "'", hints);
         }
     }
-
-    /* ---------------------------------------------------------------------------------------
-     * Access checks
-     * ------------------------------------------------------------------------------------ */
 
     /*
      * CheckMemberAccess - Reports a private member reached from outside its declaring class
@@ -2361,8 +2136,7 @@ class TypeResolver {
         if (self.sym.IsPrivateMember(owner, member) && ctx.curClass != owner) {
             let String shown = self.mangler.DisplayName(owner);
             self.diag.Error(Codes.PrivateMember(), ctx.file, span,
-                "'" + shown + "." + member + "' is private and cannot be accessed from outside '" +
-                shown + "'");
+                "'" + shown + "." + member + "' is private and cannot be accessed from outside '" + shown + "'");
         }
     }
 
@@ -2373,14 +2147,9 @@ class TypeResolver {
         if (self.sym.IsPrivateMember(owner, "operator " + op) && ctx.curClass != owner) {
             let String shown = self.mangler.DisplayName(owner);
             self.diag.Error(Codes.PrivateMember(), ctx.file, span,
-                "operator '" + op + "' on '" + shown +
-                "' is private and cannot be used from outside '" + shown + "'");
+                "operator '" + op + "' on '" + shown + "' is private and cannot be used from outside '" + shown + "'");
         }
     }
-
-    /* ---------------------------------------------------------------------------------------
-     * throws: where a failing call may appear, and what a handler must do
-     * ------------------------------------------------------------------------------------ */
 
     /*
      * CheckThrowsHandled - A call that can fail must be somewhere the failure goes: inside a try,
@@ -2414,9 +2183,9 @@ class TypeResolver {
     bool func AssignsOrExits(IrStmt s) {
         match (s) {
             case IrAssignValue(x) { return true; }
-            case IrBreak(x)       { return true; }
-            case IrContinue(x)    { return true; }
-            case IrBlock(b)       { return self.AssignsOrExitsList(b.stmts); }
+            case IrBreak(x) { return true; }
+            case IrContinue(x) { return true; }
+            case IrBlock(b) { return self.AssignsOrExitsList(b.stmts); }
             case IrUnsafeBlock(u) { return self.AssignsOrExitsList(u.body.stmts); }
             case IrIf(i) {
                 match (i.otherwise) {
@@ -2472,10 +2241,6 @@ class TypeResolver {
 
     /*
      * CheckThrowsPlacement - The whole-body backstop for throws placement.
-     *
-     * ForbidNestedThrows is opt-IN: it is called from the positions that know they may hold one.
-     * This is opt-OUT, reporting a throwing call anywhere outside the positions the language
-     * permits - so a slot nobody thought of cannot let one reach the emitter and die there.
      */
     void func CheckThrowsPlacement(IrBlock body, ResolveCtx ctx) {
         let ThrowsPlacement st = new ThrowsPlacement(self, ctx.file);
@@ -2502,9 +2267,7 @@ class TypeResolver {
     }
 
     /*
-     * ForbidNestedThrows - Reports a throwing call nested inside a larger expression. allowRoot
-     * permits the call itself at the top of the tree, which is the one position that has storage
-     * for its result.
+     * ForbidNestedThrows - Reports a throwing call nested inside a larger expression.
      */
     void func ForbidNestedThrows(IrExpr e, ResolveCtx ctx, bool allowRoot) {
         if (!allowRoot) {
@@ -2521,13 +2284,10 @@ class TypeResolver {
             }
         }
 
-        // A catch handler is the one node whose treatment depends on allowRoot, so it is handled
-        // here rather than by the generic child walk below
         match (e) {
             case IrCatchCall(cc) {
                 if (!allowRoot) {
-                    self.ReportPlacementOnce(Exprs2.SpanOf(e), self.CatchNotAtRoot(),
-                                             self.CatchNotAtRootHints(), ctx);
+                    self.ReportPlacementOnce(Exprs2.SpanOf(e), self.CatchNotAtRoot(), self.CatchNotAtRootHints(), ctx);
                 } else {
                     self.ForbidNestedThrows(cc.call, ctx, true);
                 }
@@ -2536,7 +2296,6 @@ class TypeResolver {
             default { }
         }
 
-        // Everything below the root is nested by definition
         let List[IrExpr] kids = ChildExprs(e);
         let int i = 0;
         while (i < kids.Length()) { self.ForbidNestedThrows(kids.Get(i), ctx, false); i = i + 1; }
@@ -2551,11 +2310,9 @@ class TypeResolver {
 
     /*
      * CheckRootThrowsValue - Checks a value in a position that MAY hold a throwing call: a
-     * declaration initializer, or an assignment right-hand side. Both name storage the result
-     * lands in, which is what a handler's 'assign' needs and what makes propagation well defined.
+     * declaration initializer, or an assignment right-hand side.
      */
-    IrExpr func CheckRootThrowsValue(IrExpr value, IrType targetType, String what,
-                                     ResolveCtx ctx, TextSpan span) {
+    IrExpr func CheckRootThrowsValue(IrExpr value, IrType targetType, String what, ResolveCtx ctx, TextSpan span) {
         self.ForbidNestedThrows(value, ctx, true);
 
         match (value) {
@@ -2573,8 +2330,6 @@ class TypeResolver {
 
         match (Exprs2.TypeOf(value)) {
             case IrResultType(rt) {
-                // The call propagates rather than being handled here, so what has to be
-                // assignable is the value it would produce on success
                 let IrExpr probe = IrExpr.IrVar(new IrVar("_v", rt.inner, false));
                 if (!self.Assignable(probe, targetType)) {
                     self.diag.Error(Codes.TypeMismatch(), ctx.file, span,
@@ -2619,21 +2374,17 @@ class TypeResolver {
     }
 
     /*
-     * ForbidThrowsInAssignForm - Rejects a throwing call in an assignment form with nowhere to put
-     * the result: a compound assignment, whose target is read as well as written, and an index
-     * setter, which is itself a call
+     * ForbidThrowsInAssignForm - Rejects a throwing call in an assignment form with nowhere to put the result.
      */
     void func ForbidThrowsInAssignForm(IrExpr value, String form, ResolveCtx ctx) {
         let bool throwing = false;
         match (value) {
-            case IrCatchCall(x)          { throwing = true; }
-            case IrThrowsCall(x)         { throwing = true; }
+            case IrCatchCall(x) { throwing = true; }
+            case IrThrowsCall(x) { throwing = true; }
             case IrThrowsInstanceCall(x) { throwing = true; }
             default { }
         }
         if (!throwing) { return; }
-        // Reported at the value's own span, which is where the per-body backstop would report it
-        // too - that is what stops the two from both firing
         let List[String] hints = new List[String]();
         hints.Add("bind it first: 'let T tmp = f() catch { assign <fallback>; };', then use 'tmp' here");
         self.diag.Error(Codes.ThrowsOutsideTry(), ctx.file, Exprs2.SpanOf(value),
@@ -2645,30 +2396,27 @@ class TypeResolver {
      */
     bool func IsPure(IrExpr e) {
         match (e) {
-            case IrLitInt(x)    { return true; }
-            case IrLitChar(x)   { return true; }
-            case IrLitFloat(x)  { return true; }
-            case IrLitBool(x)   { return true; }
+            case IrLitInt(x) { return true; }
+            case IrLitChar(x) { return true; }
+            case IrLitFloat(x) { return true; }
+            case IrLitBool(x) { return true; }
             case IrLitString(x) { return true; }
-            case IrLitNull(x)   { return true; }
+            case IrLitNull(x) { return true; }
             case IrEnumConst(x) { return true; }
-            case IrVar(x)       { return true; }
-            case IrSelfExpr(x)  { return true; }
-            case IrFuncRef(x)   { return true; }
-            case IrSizeof(x)    { return true; }
-            case IrDefault(x)   { return true; }
+            case IrVar(x) { return true; }
+            case IrSelfExpr(x) { return true; }
+            case IrFuncRef(x) { return true; }
+            case IrSizeof(x) { return true; }
+            case IrDefault(x) { return true; }
             case IrFieldLoad(fl) { return self.IsPure(fl.obj); }
-            case IrIndex(ix)     { return self.IsPure(ix.obj) && self.IsPure(ix.idx); }
+            case IrIndex(ix) { return self.IsPure(ix.obj) && self.IsPure(ix.idx); }
             case IrUnionField(uf) { return self.IsPure(uf.target); }
-            case IrUnaryOp(u)    { return self.IsPure(u.operand); }
-            case IrBinOp(b)      { return self.IsPure(b.left) && self.IsPure(b.right); }
-            case IrCast(c)       { return self.IsPure(c.value); }
-            case IrAddrOf(a)     { return self.IsPure(a.target); }
-            case IrDeref(d)      { return self.IsPure(d.ptr); }
+            case IrUnaryOp(u) { return self.IsPure(u.operand); }
+            case IrBinOp(b) { return self.IsPure(b.left) && self.IsPure(b.right); }
+            case IrCast(c) { return self.IsPure(c.value); }
+            case IrAddrOf(a) { return self.IsPure(a.target); }
+            case IrDeref(d) { return self.IsPure(d.ptr); }
             case IrStaticCall(sc) {
-                // Calls are impure in general, but a union's generated equality only reads its two
-                // by-value arguments - so 'u == v;' written where 'u = v;' was meant is reported
-                // as a statement with no effect, exactly as 'i == j;' is
                 if (!self.IsUnionEqCall(sc)) { return false; }
                 let int i = 0;
                 while (i < sc.args.Length()) {
@@ -2683,8 +2431,6 @@ class TypeResolver {
 
     /*
      * WarnIfNoEffect - Warns when an expression is computed as a statement and its value dropped.
-     * IsPure is exactly the right test on the lowered form: every shape it accepts is
-     * side-effect free, so evaluating it for its own sake is dead work.
      */
     void func WarnIfNoEffect(Expr src, IrExpr e, ResolveCtx ctx) {
         match (src) {
@@ -2694,7 +2440,6 @@ class TypeResolver {
         }
         if (!self.IsPure(e)) { return; }
 
-        // The classic 'a == b;' where 'a = b;' was meant gets a hint that names the fix
         let bool isComparison = false;
         match (e) {
             case IrBinOp(b) { isComparison = b.op == BinOp.Eq || b.op == BinOp.Ne; }
@@ -2718,7 +2463,6 @@ class TypeResolver {
 
     /*
      * RejectDiscardedRetain - Rejects a call to the retain intrinsic whose result is thrown away.
-     * As a statement it does nothing: the +1 lands on a temporary this scope releases again.
      */
     void func RejectDiscardedRetain(Expr src, ResolveCtx ctx) {
         match (src) {
@@ -2774,10 +2518,6 @@ class TypeResolver {
         }
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * IR utilities: hoisting, unification, coercion, stringification
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * HoistIfImpure - An expression unchanged when it is pure, or bound to a fresh temporary and
      * replaced by a reference to it. Used where lowering has to evaluate something twice.
@@ -2803,7 +2543,6 @@ class TypeResolver {
 
     /*
      * UnifyTernary - The common type of two ternary arms, or None when they cannot be unified.
-     * 'null : null' has nothing to unify to, which is why it is rejected rather than defaulted.
      */
     Optional[IrType] func UnifyTernary(IrExpr a, IrExpr b) {
         let bool aNull = false;
@@ -2873,9 +2612,7 @@ class TypeResolver {
     }
 
     /*
-     * Coerce - Adapts a value to the type it is being stored in. Only fixed-array literals need
-     * this: the literal's element type comes from its first element, which may be narrower than
-     * the destination declares.
+     * Coerce - Adapts a value to the type it is being stored in.
      */
     IrExpr func Coerce(IrExpr e, IrType expected, ResolveCtx ctx) {
         match (expected) {
@@ -2901,9 +2638,7 @@ class TypeResolver {
     }
 
     /*
-     * InType - An expression evaluated in a given type. Binary arithmetic resolves at the
-     * higher-ranked operand and converts BOTH sides into it first, so the arithmetic happens in
-     * the domain Gata says rather than the one C's own promotions would pick.
+     * InType - An expression evaluated in a given type.
      */
     IrExpr func InType(IrExpr e, IrType ty) {
         if (Types.Same(Exprs2.TypeOf(e), ty)) { return e; }
@@ -2913,8 +2648,7 @@ class TypeResolver {
     }
 
     /*
-     * Intrinsic - The C name bound to a role, or a diagnostic naming the role nothing bound. The
-     * compiler never hardcodes a runtime symbol: it emits whatever carries the role.
+     * Intrinsic - The C name bound to a role, or a diagnostic naming the role nothing bound.
      */
     String func Intrinsic(String role, ResolveCtx ctx, TextSpan span) {
         match (self.sym.IntrinsicOrNull(role)) {
@@ -2959,16 +2693,12 @@ class TypeResolver {
         if (Types.IsString(ty)) { return e; }
 
         if (Types.IsFloat(ty)) {
-            return self.StaticCallAt(self.Intrinsic(Roles.StringifyFloat(), ctx, span),
-                                     self.t.Str(), self.OneArg(e), span);
+            return self.StaticCallAt(self.Intrinsic(Roles.StringifyFloat(), ctx, span), self.t.Str(), self.OneArg(e), span);
         }
         if (Types.IsChar(ty)) {
-            return self.StaticCallAt(self.Intrinsic(Roles.StringifyChar(), ctx, span),
-                                     self.t.Str(), self.OneArg(e), span);
+            return self.StaticCallAt(self.Intrinsic(Roles.StringifyChar(), ctx, span), self.t.Str(), self.OneArg(e), span);
         }
 
-        // bool goes through String's own 'as' operator rather than an intrinsic, so the text it
-        // produces is the library's to decide
         let bool isBool = false;
         match (ty) { case IrPrimType(p) { isBool = p.cName == "bool"; } default { } }
         if (isBool) {
@@ -2982,23 +2712,20 @@ class TypeResolver {
         }
 
         if (Types.IsUnsigned(ty)) {
-            return self.StaticCallAt(self.Intrinsic(Roles.StringifyUint(), ctx, span),
-                                     self.t.Str(), self.OneArg(e), span);
+            return self.StaticCallAt(self.Intrinsic(Roles.StringifyUint(), ctx, span), self.t.Str(), self.OneArg(e), span);
         }
         if (Types.IsNumeric(ty)) {
             let bool wide = false;
             match (ty) { case IrPrimType(p) { wide = PrimTypes.IntBits(p.cName) > 32; } default { } }
             let String role = wide ? Roles.StringifyLong() : Roles.StringifyInt();
-            return self.StaticCallAt(self.Intrinsic(role, ctx, span), self.t.Str(),
-                                     self.OneArg(e), span);
+            return self.StaticCallAt(self.Intrinsic(role, ctx, span), self.t.Str(), self.OneArg(e), span);
         }
 
         let String cls = self.ClassNameOf(ty);
         if (cls.Length() > 0) {
             match (self.sym.LookupMethod(cls, "ToString")) {
                 case Some(ts) {
-                    let IrInstanceCall ic = new IrInstanceCall(e, ts.cName, self.t.Str(),
-                                                               new List[IrExpr]());
+                    let IrInstanceCall ic = new IrInstanceCall(e, ts.cName, self.t.Str(), new List[IrExpr]());
                     ic.span = span;
                     return IrExpr.IrInstanceCall(ic);
                 }
@@ -3008,9 +2735,8 @@ class TypeResolver {
 
         if (Types.IsError(ty)) { return self.EmptyString(span); }
         self.diag.Error(Codes.TypeMismatch(), ctx.file, span,
-            cls.Length() > 0
-                ? "'" + self.mangler.DisplayName(cls) +
-                  "' has no 'String func ToString()' to convert it to a String"
+            cls.Length() > 0 ? "'" + self.mangler.DisplayName(cls) +
+                "' has no 'String func ToString()' to convert it to a String"
                 : "'" + self.Describe(ty) + "' cannot be converted to a String");
         return self.EmptyString(span);
     }
@@ -3025,8 +2751,7 @@ class TypeResolver {
     }
 
     /*
-     * StringClass - The declaration bound to the String builtin slot, or the name itself when
-     * nothing bound it
+     * StringClass - The declaration bound to the String builtin slot, or the name itself when nothing bound it
      */
     String func StringClass() {
         match (self.sym.builtins.Find(BuiltinTypes.Str())) {
@@ -3036,32 +2761,26 @@ class TypeResolver {
     }
 
     /*
-     * ClassNameOf - The class a type names, following one level of pointer indirection. "" when
-     * the type names no class.
+     * ClassNameOf - The class a type names, following one level of pointer indirection. "" when the type names no class.
      */
     String func ClassNameOf(IrType ty) {
         match (ty) {
             case IrClassRef(cr) { return cr.className; }
-            case IrPtrType(pt)  { return self.ClassNameOf(pt.inner); }
+            case IrPtrType(pt) { return self.ClassNameOf(pt.inner); }
             default { return ""; }
         }
     }
 
     /*
-     * DirectClassNameOf - The class a type names, WITHOUT following a pointer. Method lookup uses
-     * this: a T* is not a T, and calling a method on one is a mistake worth reporting.
+     * DirectClassNameOf - The class a type names, WITHOUT following a pointer.
      */
     String func DirectClassNameOf(IrType ty) {
         match (ty) { case IrClassRef(cr) { return cr.className; } default { return ""; } }
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * The remaining whole-body and whole-declaration warnings
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * IsManagedRef - True for values that participate in reference counting: a class reference, or
-     * a union with a managed payload. A module is not one - it has no instances.
+     * a union with a managed payload.
      */
     public bool func IsManagedRef(IrType ty) {
         match (ty) {
@@ -3074,13 +2793,7 @@ class TypeResolver {
     }
 
     /*
-     * IsManagedUnion - True when a union stores a managed value in any variant, directly or
-     * nested.
-     *
-     * The answer is cached, but NOT when the walk stood on a cycle: a union that reaches itself
-     * gets 'false' for the inner visit, and that false is conditioned on where the walk started
-     * rather than being a fact about the type. cycleCut carries exactly that, and the caller's own
-     * flag is restored so an outer walk still knows its own answer was cut.
+     * IsManagedUnion - True when a union stores a managed value in any variant, directly or nested.
      */
     bool func IsManagedUnion(String name, StringSet visiting) {
         match (self.managedUnionCache.Find(name)) {
@@ -3127,9 +2840,7 @@ class TypeResolver {
     }
 
     /*
-     * WarnManagedFixedArray - A fixed array is raw storage with no destructor, so whatever it
-     * still holds when it dies is leaked. Stores into it are counted correctly, so nothing
-     * dangles - which is why this is a warning and not an error.
+     * WarnManagedFixedArray - A fixed array is raw storage with no destructor, so whatever it still holds when it dies is leaked.
      */
     void func WarnManagedFixedArray(IrType ty, String what, ResolveCtx ctx, TextSpan span) {
         match (ty) {
@@ -3163,9 +2874,7 @@ class TypeResolver {
     }
 
     /*
-     * WarnPartialRelationalSet - Warns when a class overloads some relational operators but not
-     * their mirrors. '<' without '>' is not a half-finished feature, it is a type error at every
-     * site that writes the missing one.
+     * WarnPartialRelationalSet - Warns when a class overloads some relational operators but not their mirrors.
      */
     void func WarnPartialRelationalSet(ClassDecl cd, ResolveCtx ctx) {
         let StringSet declared = new StringSet();
@@ -3183,7 +2892,7 @@ class TypeResolver {
         if (declared.ToList().Length() == 0) { return; }
 
         let List[String] missing = new List[String]();
-        if (declared.Has("<") != declared.Has(">"))   { missing.Add(declared.Has("<") ? ">" : "<"); }
+        if (declared.Has("<") != declared.Has(">")) { missing.Add(declared.Has("<") ? ">" : "<"); }
         if (declared.Has("<=") != declared.Has(">=")) { missing.Add(declared.Has("<=") ? ">=" : "<="); }
         if (missing.Length() == 0) { return; }
 
@@ -3199,24 +2908,19 @@ class TypeResolver {
         let String shown = self.mangler.DisplayName(cd.name);
         let List[String] hints = new List[String]();
         hints.Add("relational operators do not derive from one another the way '!=' derives from " +
-                  "'==', so '" + missing.Get(0) + "' on two '" + shown +
-                  "' values is a type error at every call site");
-        hints.Add("declare the mirror, e.g. 'public operator bool func " + missing.Get(0) +
-                  "(" + shown + " other) { ... }'");
+                  "'==', so '" + missing.Get(0) + "' on two '" + shown + "' values is a type error at every call site");
+        hints.Add("declare the mirror, e.g. 'public operator bool func " + missing.Get(0) + "(" + shown + " other) { ... }'");
         self.diag.Warn(Codes.PartialOperatorSet(), ctx.file, cd.span,
-            "'" + shown + "' overloads " + String.Join(haveQ, " and ") + " but not " +
-            String.Join(missQ, " or "), hints);
+            "'" + shown + "' overloads " + String.Join(haveQ, " and ") + " but not " + String.Join(missQ, " or "), hints);
     }
 
     /*
      * MissingRelationalHint - Explains a relational operator rejected on a type that has some of
      * the family but not this one, which otherwise reads as "not numeric" with no mention of the
-     * operators the type does have. Empty when there is nothing useful to add.
+     * operators the type does have.
      */
     List[String] func MissingRelationalHint(String lhsClass, String op, IrType left, IrType right) {
         let List[String] hints = new List[String]();
-
-        // Two enums of one type: the answer is not a missing operator but the wrong question
         match (left) {
             case IrEnumType(le) {
                 match (right) {
@@ -3255,17 +2959,13 @@ class TypeResolver {
     }
 
     /*
-     * WarnUnsafeManagedTemporary - Warns when an unsafe block builds a managed value it therefore
-     * never releases. 'unsafe' turns counting off for the WHOLE block, including values that did
-     * not need it turned off.
+     * WarnUnsafeManagedTemporary - Warns when an unsafe block builds a managed value it therefore never releases.
      */
     void func WarnUnsafeManagedTemporary(IrBlock body, ResolveCtx ctx) {
         let UnsafeAlloc st = new UnsafeAlloc(self);
         match (self.sym.IntrinsicOrNull(Roles.Retain()))  { case Some(n) { st.retain = n; } case None { } }
         match (self.sym.IntrinsicOrNull(Roles.Release())) { case Some(n) { st.release = n; } case None { } }
         st.Run(body);
-
-        // The author counting by hand is the case this warning exists to stay out of
         if (st.handManaged) { return; }
         match (st.found) {
             case None { }
@@ -3281,24 +2981,16 @@ class TypeResolver {
         }
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Expressions
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * ResolveExpr - One expression, with the source span carried onto the IR node when the
      * resolver did not set a more precise one.
-     *
-     * The expected type is cleared for everything but a call and a ternary: it exists to pick a
-     * union instantiation and to type a bare variant name, and letting it leak further would make
-     * unrelated expressions resolve differently depending on where they sat.
      */
     IrExpr func ResolveExpr(Expr e, ResolveCtx ctx) {
         let ResolveCtx c = ctx;
         if (IsSome(ctx.expected)) {
             let bool keep = false;
             match (e) {
-                case CallExpr(x)    { keep = true; }
+                case CallExpr(x) { keep = true; }
                 case TernaryExpr(x) { keep = true; }
                 default { }
             }
@@ -3317,8 +3009,6 @@ class TypeResolver {
             case PoisonExpr(p) { return self.Poison(Exprs.Span(e)); }
 
             case ScopedNameExpr(sn) {
-                // The binder resolves every qualifier it can reach; one still standing here was
-                // written where no scope encloses it
                 self.diag.Error(Codes.ScopeNotEnclosing(), ctx.file, sn.span,
                     "a scope qualifier is only meaningful inside a realm or process");
                 return self.Poison(Exprs.Span(e));
@@ -3336,11 +3026,11 @@ class TypeResolver {
                     }
                 }
             }
-            case CharLitExpr(cl)  { return IrExpr.IrLitChar(new IrLitChar(cl.value, self.t.Char())); }
+            case CharLitExpr(cl) { return IrExpr.IrLitChar(new IrLitChar(cl.value, self.t.Char())); }
             case FloatLitExpr(fl) {
                 return IrExpr.IrLitFloat(new IrLitFloat(fl.value, self.t.Prim(Literals.FloatType(fl.value))));
             }
-            case BoolLitExpr(bl)  { return IrExpr.IrLitBool(new IrLitBool(bl.value == "true", self.t.Bool())); }
+            case BoolLitExpr(bl) { return IrExpr.IrLitBool(new IrLitBool(bl.value == "true", self.t.Bool())); }
             case StrLitExpr(sl) {
                 self.WarnIfLooksInterpolated(sl, ctx);
                 return IrExpr.IrLitString(new IrLitString(sl.value, self.t.Str()));
@@ -3348,14 +3038,14 @@ class TypeResolver {
             case NullExpr(n) { return IrExpr.IrLitNull(new IrLitNull(self.t.Void())); }
 
             case IdentExpr(ie) { return self.ResolveIdent(ie, ctx); }
-            case CastExpr(ce)  { return self.ResolveCast(ce, ctx); }
+            case CastExpr(ce) { return self.ResolveCast(ce, ctx); }
             case PostfixExpr(pf) { return self.ResolvePostfix(pf, ctx); }
             case UnaryExpr(un) { return self.ResolveUnary(un, ctx); }
-            case BinExpr(be)   { return self.ResolveBin(be, ctx); }
-            case CallExpr(ce)  { return self.ResolveCall(ce, ctx); }
+            case BinExpr(be) { return self.ResolveBin(be, ctx); }
+            case CallExpr(ce) { return self.ResolveCall(ce, ctx); }
             case CatchCallExpr(cce) { return self.ResolveCatchCall(cce, ctx); }
             case MemberAccessExpr(ma) { return self.ResolveMemberAccess(ma, ctx); }
-            case NewExpr(ne)   { return self.ResolveNew(ne, ctx); }
+            case NewExpr(ne) { return self.ResolveNew(ne, ctx); }
             case ArrayLitExpr(al) { return self.ResolveArrayLit(al, ctx); }
             case IndexExpr(ix) { return self.ResolveIndex(ix, ctx); }
             case GenericTypeRefExpr(g) { return self.ResolveGenericTypeRef(g, ctx); }
@@ -3369,7 +3059,7 @@ class TypeResolver {
                 return IrExpr.IrDefault(new IrDefault(self.ResolveTypeSpec(de.typeName)));
             }
             case AddrOfExpr(ao) { return self.ResolveAddrOf(ao, ctx); }
-            case DerefExpr(dr)  { return self.ResolveDeref(dr, ctx); }
+            case DerefExpr(dr) { return self.ResolveDeref(dr, ctx); }
             case TernaryExpr(te) { return self.ResolveTernary(te, ctx); }
             case InterpStrExpr(istr) {
                 let List[IrExpr] parts = new List[IrExpr]();
@@ -3456,11 +3146,11 @@ class TypeResolver {
      */
     bool func IsStorage(IrExpr e) {
         match (e) {
-            case IrVar(x)       { return true; }
-            case IrGlobal(x)    { return true; }
+            case IrVar(x) { return true; }
+            case IrGlobal(x) { return true; }
             case IrFieldLoad(x) { return true; }
-            case IrIndex(x)     { return true; }
-            case IrDeref(x)     { return true; }
+            case IrIndex(x) { return true; }
+            case IrDeref(x) { return true; }
             default { return false; }
         }
     }
@@ -3530,8 +3220,7 @@ class TypeResolver {
         }
         match (self.UnifyTernary(then, els)) {
             case Some(u) {
-                return IrExpr.IrTernary(new IrTernary(cond, self.CoerceTo(then, u),
-                                                      self.CoerceTo(els, u), u));
+                return IrExpr.IrTernary(new IrTernary(cond, self.CoerceTo(then, u), self.CoerceTo(els, u), u));
             }
             case None {
                 self.diag.Error(Codes.TypeMismatch(), ctx.file, te.span,
@@ -3557,8 +3246,7 @@ class TypeResolver {
             match (self.sym.LookupOperator(opCls, sym, 0)) {
                 case Some(uop) {
                     self.CheckOperatorAccess(opCls, sym, ctx, un.span);
-                    return self.StaticCallAt(uop.cName, self.ResolveType(uop.type),
-                                             self.OneArg(operand), un.span);
+                    return self.StaticCallAt(uop.cName, self.ResolveType(uop.type), self.OneArg(operand), un.span);
                 }
                 case None { }
             }
@@ -3610,8 +3298,7 @@ class TypeResolver {
     }
 
     /*
-     * ResolveBin - A binary expression. The order of the arms IS the language's dispatch order:
-     * String concatenation first, then a user overload, then the built-in families.
+     * ResolveBin - A binary expression. The order of the arms IS the language's dispatch order.
      */
     IrExpr func ResolveBin(BinExpr be, ResolveCtx ctx) {
         let IrExpr left = self.ResolveExpr(be.left, ctx);
@@ -3625,8 +3312,6 @@ class TypeResolver {
         let String sym = Ops.BinSym(be.op);
         let bool isEq = be.op == BinOp.Eq || be.op == BinOp.Ne;
 
-        // '+' where either side is a String is ALWAYS concatenation, with the other side
-        // stringified. A user '+' overload does not intercept it.
         if (be.op == BinOp.Add && (Types.IsString(lt) || Types.IsString(rt))) {
             let String stringClass = self.StringClass();
             let String cn = "";
@@ -3644,8 +3329,6 @@ class TypeResolver {
             return self.StaticCallAt(cn, self.t.Str(), args, be.span);
         }
 
-        // A comparison against the null LITERAL is a pointer check and never reaches a user '=='
-        // - which is what lets String's own '==' null-check its operand without recursing
         let bool eitherNull = false;
         match (left)  { case IrLitNull(x) { eitherNull = true; } default { } }
         match (right) { case IrLitNull(x) { eitherNull = true; } default { } }
@@ -3654,7 +3337,6 @@ class TypeResolver {
             return IrExpr.IrBinOp(new IrBinOp(be.op, left, right, self.t.Bool()));
         }
 
-        // Dispatch is on the LEFT operand's class: 'int + Money' does not find 'Money.+'
         let String lhsClass = self.DirectClassNameOf(lt);
         if (lhsClass.Length() > 0) {
             match (self.sym.LookupOperator(lhsClass, sym, 1)) {
@@ -3699,8 +3381,7 @@ class TypeResolver {
         match (lt) { case IrPtrType(p) { lIsPtr = true; } default { } }
         if (lIsPtr && (be.op == BinOp.Add || be.op == BinOp.Sub) && Types.IsNumeric(rt)) {
             if (!ctx.inUnsafe) {
-                self.diag.Error(Codes.UnsafeRequired(), ctx.file, be.span,
-                    "pointer arithmetic requires an 'unsafe' block");
+                self.diag.Error(Codes.UnsafeRequired(), ctx.file, be.span, "pointer arithmetic requires an 'unsafe' block");
             }
             return IrExpr.IrBinOp(new IrBinOp(be.op, left, right, lt));
         }
@@ -3726,8 +3407,7 @@ class TypeResolver {
                                 let List[IrExpr] args = new List[IrExpr]();
                                 args.Add(left);
                                 args.Add(right);
-                                let IrExpr call = self.StaticCallAt(self.mangler.UnionEq(lu.name),
-                                                                    self.t.Bool(), args, be.span);
+                                let IrExpr call = self.StaticCallAt(self.mangler.UnionEq(lu.name), self.t.Bool(), args, be.span);
                                 if (be.op == BinOp.Eq) { return call; }
                                 return IrExpr.IrUnaryOp(new IrUnaryOp(UnOp.Not, call, self.t.Bool()));
                             }
@@ -3749,14 +3429,12 @@ class TypeResolver {
             if (!(self.IsArith(lt) && self.IsArith(rt))) {
                 self.diag.Error(Codes.TypeMismatch(), ctx.file, be.span,
                     "operator '" + sym + "' requires numeric operands, got '" + self.Describe(lt) +
-                    "' and '" + self.Describe(rt) + "'",
-                    self.MissingRelationalHint(lhsClass, sym, lt, rt));
+                    "' and '" + self.Describe(rt) + "'", self.MissingRelationalHint(lhsClass, sym, lt, rt));
             } else {
                 self.CheckMixedSignedness(be.op, left, right, ctx, be.span);
             }
             let IrType ct = self.NumRank(lt) >= self.NumRank(rt) ? lt : rt;
-            return IrExpr.IrBinOp(new IrBinOp(be.op, self.InType(left, ct), self.InType(right, ct),
-                                              self.t.Bool()));
+            return IrExpr.IrBinOp(new IrBinOp(be.op, self.InType(left, ct), self.InType(right, ct), self.t.Bool()));
         }
 
         // Bitwise and shifts
@@ -3831,8 +3509,7 @@ class TypeResolver {
     }
 
     /*
-     * CheckShiftCount - Rejects a literal shift count outside [0, width). Both ends are undefined
-     * behaviour in C, so neither can be allowed to reach the backend.
+     * CheckShiftCount - Rejects a literal shift count outside [0, width).
      */
     void func CheckShiftCount(BinOp op, IrType shifted, IrExpr count, ResolveCtx ctx, TextSpan span) {
         if (op != BinOp.Shl && op != BinOp.Shr) { return; }
@@ -3878,10 +3555,6 @@ class TypeResolver {
     /*
      * CheckMixedSignedness - Rejects a signed operand mixed with an unsigned one for the operators
      * whose ANSWER, not merely whose result type, depends on which signedness wins.
-     *
-     * Not every mix is reported: a non-negative literal that fits the unsigned side changes
-     * nothing, and neither does a mix that resolves at a signed type wide enough to hold the
-     * unsigned one.
      */
     void func CheckMixedSignedness(BinOp op, IrExpr left, IrExpr right, ResolveCtx ctx, TextSpan span) {
         if (op != BinOp.Div && op != BinOp.Mod && op != BinOp.Lt && op != BinOp.Gt &&
@@ -3889,10 +3562,12 @@ class TypeResolver {
 
         let IrType l = Exprs2.TypeOf(left);
         let IrType r = Exprs2.TypeOf(right);
+
         let bool lPrim = false;
         let bool rPrim = false;
         let bool lUns = false;
         let bool rUns = false;
+
         match (l) { case IrPrimType(p) { lPrim = true; lUns = PrimTypes.IsUnsignedCanon(p.cName); } default { } }
         match (r) { case IrPrimType(p) { rPrim = true; rUns = PrimTypes.IsUnsignedCanon(p.cName); } default { } }
         if (!lPrim || !rPrim) { return; }
@@ -3902,7 +3577,6 @@ class TypeResolver {
         let IrType signed = lUns ? r : l;
         let IrType unsigned = lUns ? l : r;
 
-        // A known non-negative constant that fits the unsigned type converts exactly
         match (self.LiteralValue(signedSide)) {
             case Some(known) {
                 if (known >= 0L && self.FitsInType(known, unsigned)) { return; }
@@ -3934,8 +3608,7 @@ class TypeResolver {
     }
 
     /*
-     * FitsInType - True when a known constant is representable in a primitive. A type whose range
-     * RangeLo/RangeHi cannot express holds any int64, which is every constant this pass can see.
+     * FitsInType - True when a known constant is representable in a primitive.
      */
     bool func FitsInType(int64 n, IrType ty) {
         match (ty) {
@@ -3956,10 +3629,9 @@ class TypeResolver {
      */
     IrExpr func ResolveIdent(IdentExpr ie, ResolveCtx ctx) {
         let String name = ie.name;
-        if (name == "true")  { return IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool())); }
+        if (name == "true") { return IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool())); }
         if (name == "false") { return IrExpr.IrLitBool(new IrLitBool(false, self.t.Bool())); }
-        if (name == "null")  { return IrExpr.IrLitNull(new IrLitNull(self.t.Void())); }
-
+        if (name == "null") { return IrExpr.IrLitNull(new IrLitNull(self.t.Void())); }
         if (name == "self") {
             if (!ctx.isStatic && ctx.curClass.Length() > 0) {
                 return IrExpr.IrSelfExpr(new IrSelfExpr(ctx.curClass, self.t.ClassRef(ctx.curClass)));
@@ -3975,9 +3647,6 @@ class TypeResolver {
             case Some(lt) { return IrExpr.IrVar(new IrVar(name, lt, ctx.locals.IsRef(name))); }
             case None { }
         }
-
-        // A process variable is the only global state, and reading one declared below is an error
-        // the declaration order decides
         match (self.processState.Find(name)) {
             case Some(slot) {
                 self.ReportPendingProcessState(name, ctx, ie.span);
@@ -3989,8 +3658,6 @@ class TypeResolver {
         if (self.ClassInScope(name)) {
             return IrExpr.IrVar(new IrVar(name, self.t.ClassRef(name), false));
         }
-
-        // A bare function name is a function-pointer value, if the language can express its type
         let Optional[Symbol] fsym = self.LookupFreeFuncVisible(name);
         if (self.FuncInScope(fsym)) {
             match (fsym) {
@@ -3998,8 +3665,6 @@ class TypeResolver {
                 case None { }
             }
         }
-
-        // The message that best explains a name that is not a value here
         let String msg = "";
         if (self.sym.IsField(ctx.curClass, name)) {
             msg = ctx.isStatic
@@ -4069,15 +3734,13 @@ class TypeResolver {
     IrExpr func ResolveMemberAccess(MemberAccessExpr ma, ResolveCtx ctx) {
         match (ma.object) {
             case IdentExpr(eid) {
-                // A local of the same name wins: the type name is only meant when nothing shadows it
                 if (IsNone(ctx.locals.Lookup(eid.name))) {
                     if (self.sym.IsEnum(eid.name)) {
                         if (!self.sym.IsEnumMember(eid.name, ma.member)) {
                             self.diag.Error(Codes.UndefinedVariable(), ctx.file, ma.span,
                                 "enum '" + eid.name + "' has no member '" + ma.member + "'");
                         }
-                        let IrEnumConst ec = new IrEnumConst(eid.name, ma.member,
-                                                             self.t.EnumType(eid.name));
+                        let IrEnumConst ec = new IrEnumConst(eid.name, ma.member, self.t.EnumType(eid.name));
                         ec.span = ma.span;
                         return IrExpr.IrEnumConst(ec);
                     }
@@ -4107,9 +3770,7 @@ class TypeResolver {
                 self.CheckMemberAccess(cls, ma.member, ctx, ma.span);
             }
             case None {
-                // The class itself was already reported as unreachable; do not pile on
                 if (self.notVisible.Has(ctx.file + "|" + cls)) { return self.Poison(ma.span); }
-                // An opaque-fielded class is C the compiler cannot see into, so silence is right
                 if (!self.HasOpaqueFields(cls)) {
                     self.diag.Error(Codes.UndefinedVariable(), ctx.file, ma.span,
                         "'" + self.mangler.DisplayName(cls) + "' has no field '" + ma.member + "'");
@@ -4120,8 +3781,7 @@ class TypeResolver {
     }
 
     /*
-     * ReportUnionMemberAccess - 'U.Variant' without parentheses. Naming a variant is not reading a
-     * field, so the message says which mistake it was.
+     * ReportUnionMemberAccess - 'U.Variant' without parentheses.
      */
     IrExpr func ReportUnionMemberAccess(String uname, MemberAccessExpr ma, ResolveCtx ctx) {
         let bool known = false;
@@ -4151,12 +3811,8 @@ class TypeResolver {
 
     /*
      * CoerceArgs - Coerces each argument to its parameter's type and checks ref passing.
-     *
-     * 'ref' is matched EXACTLY: the parameter takes the variable's address, so no conversion can
-     * apply, and the argument becomes an address-of at this point.
      */
-    void func CoerceArgs(List[IrExpr] args, Optional[MethodSig] sig, ResolveCtx ctx,
-                         List[Expr] astArgs) {
+    void func CoerceArgs(List[IrExpr] args, Optional[MethodSig] sig, ResolveCtx ctx, List[Expr] astArgs) {
         match (sig) {
             case None { }
             case Some(g) {
@@ -4203,12 +3859,10 @@ class TypeResolver {
 
     /*
      * BuildCall - The common tail of every resolved call: pick the overload, settle the C name,
-     * resolve the return type, coerce the arguments, then build the matching IR node. A throwing
-     * callee produces the Result-carrying node instead, and is checked for a handler.
+     * resolve the return type, coerce the arguments, then build the matching IR node.
      */
     IrExpr func BuildCall(List[Symbol] cands, Optional[Symbol] primary, List[IrExpr] args,
-                          String display, String fallbackCName, Optional[IrExpr] recv,
-                          ResolveCtx ctx, CallExpr ce) {
+                          String display, String fallbackCName, Optional[IrExpr] recv, ResolveCtx ctx, CallExpr ce) {
         let Optional[Symbol] chosen = self.ChooseOverload(cands, primary, args, display, ctx, ce.span);
         let String cn = fallbackCName;
         let IrType ret = self.t.Void();
@@ -4217,8 +3871,6 @@ class TypeResolver {
             case None { }
         }
         self.CoerceArgs(args, self.SigOf(chosen), ctx, ce.args);
-
-        // 'throws' is a hard keyword, so the flag needs another name
         let bool canFail = false;
         match (self.SigOf(chosen)) { case Some(g) { canFail = g.isThrows; } case None { } }
 
@@ -4229,21 +3881,19 @@ class TypeResolver {
                     return IrExpr.IrThrowsCall(new IrThrowsCall(cn, ret, self.t.Result(ret), args));
                 }
                 case Some(r) {
-                    return IrExpr.IrThrowsInstanceCall(
-                        new IrThrowsInstanceCall(r, cn, ret, self.t.Result(ret), args));
+                    return IrExpr.IrThrowsInstanceCall(new IrThrowsInstanceCall(r, cn, ret, self.t.Result(ret), args));
                 }
             }
         }
         match (recv) {
-            case None    { return IrExpr.IrStaticCall(new IrStaticCall(cn, ret, args)); }
+            case None { return IrExpr.IrStaticCall(new IrStaticCall(cn, ret, args)); }
             case Some(r) { return IrExpr.IrInstanceCall(new IrInstanceCall(r, cn, ret, args)); }
         }
     }
 
     /*
      * CheckIndexIsInteger - A raw subscript lowers straight to C 'a[i]', so a non-integer index
-     * would otherwise reach the C compiler. The operator-'[]' path checks its own index against
-     * the declared parameter instead.
+     * would otherwise reach the C compiler.
      */
     void func CheckIndexIsInteger(IrExpr idx, ResolveCtx ctx, TextSpan span) {
         let IrType it = Exprs2.TypeOf(idx);
@@ -4293,8 +3943,7 @@ class TypeResolver {
             case IrArrayType(at) { return at.elem; }
             case IrPtrType(pt) {
                 if (!ctx.inUnsafe) {
-                    self.diag.Error(Codes.UnsafeRequired(), ctx.file, span,
-                        "pointer indexing requires an 'unsafe' block");
+                    self.diag.Error(Codes.UnsafeRequired(), ctx.file, span, "pointer indexing requires an 'unsafe' block");
                 }
                 return pt.inner;
             }
@@ -4388,7 +4037,6 @@ class TypeResolver {
             return self.Poison(ne.span);
         }
 
-        // Constructor arity, when there is a constructor that takes anything
         let bool checkedArgs = false;
         match (self.sym.LookupMethod(typeName, Lifecycle.Init())) {
             case Some(init) {
@@ -4464,8 +4112,7 @@ class TypeResolver {
     /*
      * ResolveCollectionInit - 'new C() { a, b }', which needs a one-argument Add
      */
-    IrExpr func ResolveCollectionInit(NewExpr ne, String typeName, List[IrExpr] ctorArgs,
-                                      ResolveCtx ctx) {
+    IrExpr func ResolveCollectionInit(NewExpr ne, String typeName, List[IrExpr] ctorArgs, ResolveCtx ctx) {
         let IrType cls = self.t.ClassRef(typeName);
         match (self.sym.LookupMethod(typeName, "Add")) {
             case None {
@@ -4536,10 +4183,6 @@ class TypeResolver {
 
     /*
      * ResolveGenericTypeRef - Settles a 'Name[Args]' the parser could not.
-     *
-     * It is an INDEX when the name denotes a value, or names no type at all; a generic type
-     * reference otherwise. Only the index path knows about fields needing 'self.' and near-miss
-     * spellings, which are far commoner than a misplaced type name.
      */
     IrExpr func ResolveGenericTypeRef(GenericTypeRefExpr g, ResolveCtx ctx) {
         let bool isTemplate = self.mangler.IsGenericTemplate(g.name);
@@ -4559,11 +4202,9 @@ class TypeResolver {
             let String written = Exprs.Written(g, self.mangler);
             let List[String] hints = new List[String]();
             hints.Add("to build one of its variants, call it: '" + written + ".SomeVariant(...)'");
-            self.diag.Error(Codes.TypeMismatch(), ctx.file, g.span,
-                "'" + written + "' is a type, not a value", hints);
+            self.diag.Error(Codes.TypeMismatch(), ctx.file, g.span, "'" + written + "' is a type, not a value", hints);
         } else if (self.sym.IsUnion(g.name) || self.sym.IsClass(g.name) || self.sym.IsEnum(g.name)) {
-            self.diag.Error(Codes.TypeMismatch(), ctx.file, g.span,
-                "'" + g.name + "' is not generic, so it takes no type arguments");
+            self.diag.Error(Codes.TypeMismatch(), ctx.file, g.span, "'" + g.name + "' is not generic, so it takes no type arguments");
         } else {
             self.diag.Error(Codes.UndefinedType(), ctx.file, g.span,
                 "unknown generic type '" + g.name + "'");
@@ -4586,8 +4227,7 @@ class TypeResolver {
     /*
      * ResolveUnionConstruct - 'U.Variant(args)' against a known union
      */
-    IrExpr func ResolveUnionConstruct(String unionName, String variant, List[IrExpr] args,
-                                      ResolveCtx ctx, TextSpan span) {
+    IrExpr func ResolveUnionConstruct(String unionName, String variant, List[IrExpr] args, ResolveCtx ctx, TextSpan span) {
         let IrType ut = self.t.UnionType(unionName);
         match (self.sym.UnionDef(unionName)) {
             case None { return IrExpr.IrUnionConstruct(new IrUnionConstruct(ut, 0, args)); }
@@ -4625,15 +4265,8 @@ class TypeResolver {
 
     /*
      * ResolveCall - Every call shape the language has, in the order they are tried.
-     *
-     * The order matters and is the language's, not an implementation detail: a local function
-     * pointer shadows a free function of the same name, a file-local private function takes
-     * priority over an imported public one, and a sibling method is only reached once nothing
-     * free matched.
      */
     IrExpr func ResolveCall(CallExpr ce, ResolveCtx ctx) {
-        // Arguments are resolved with the catch wrapping and expected type cleared: neither
-        // applies to a nested call, and letting them through would type it by its surroundings
         let ResolveCtx argCtx = (ctx.catchWrapped || IsSome(ctx.expected)) ? ctx.NoCatchWrap() : ctx;
         let List[IrExpr] args = new List[IrExpr]();
         let int i = 0;
@@ -4648,7 +4281,7 @@ class TypeResolver {
 
         match (ce.callee) {
             case MemberAccessExpr(ma) { return self.ResolveMemberCall(ce, ma, args, ctx); }
-            case IdentExpr(id)        { return self.ResolveBareCall(ce, id, args, ctx); }
+            case IdentExpr(id) { return self.ResolveBareCall(ce, id, args, ctx); }
             default { }
         }
 
@@ -4670,7 +4303,6 @@ class TypeResolver {
      * an imported file's basename
      */
     IrExpr func ResolveMemberCall(CallExpr ce, MemberAccessExpr ma, List[IrExpr] args, ResolveCtx ctx) {
-        // 'Maybe[int].Found(...)' - an explicitly instantiated generic
         match (ma.object) {
             case GenericTypeRefExpr(gt) {
                 if (self.mangler.IsGenericTemplate(gt.name) &&
@@ -4679,7 +4311,6 @@ class TypeResolver {
                         return self.ResolveUnionConstruct(Exprs.Mangled(gt), ma.member, args, ctx, ce.span);
                     }
                     if (self.ClassInScope(Exprs.Mangled(gt))) {
-                        // Re-enter with the instance name in place of the written form
                         let MemberAccessExpr flat = new MemberAccessExpr(
                             Expr.IdentExpr(new IdentExpr(Exprs.Mangled(gt), gt.span)), ma.member, ma.span);
                         return self.ResolveMemberCall(ce, flat, args, ctx);
@@ -4707,12 +4338,10 @@ class TypeResolver {
             }
         }
 
-        // A class or module name: a static call
         if (nameIsFree && self.ClassInScope(objName)) {
             return self.ResolveStaticCall(ce, ma, objName, args, ctx);
         }
 
-        // An in-scope file's basename: the escape hatch for a collision nothing else can qualify
         if (nameIsFree && !self.ClassInScope(objName)) {
             match (self.TryResolveFileNamespacedCall(objName, ma.member, args, ctx, ce)) {
                 case Some(nsCall) { return nsCall; }
@@ -4742,16 +4371,13 @@ class TypeResolver {
 
         match (self.methodTemplates.Find(MemberKey(objName, ma.member))) {
             case Some(mtmpl) {
-                // A template has no registered signature yet, so 'static' is assumed unless the
-                // table says otherwise
                 let bool tIsStatic = self.MethodIsStatic(objName, ma.member, true);
                 if (!tIsStatic) {
                     self.diag.Error(Codes.StaticOnInstance(), ctx.file, ce.span,
                         "'" + display + "' is an instance method; call it on a value");
                 }
                 self.CheckMemberAccess(objName, ma.member, ctx, ce.span);
-                return self.ResolveGenericMethodCall(mtmpl, objName, tIsStatic, args, ctx, ce.span,
-                                                     Optional[IrExpr].None(), ce.args);
+                return self.ResolveGenericMethodCall(mtmpl, objName, tIsStatic, args, ctx, ce.span, Optional[IrExpr].None(), ce.args);
             }
             case None { }
         }
@@ -4759,8 +4385,6 @@ class TypeResolver {
         let Optional[Symbol] msym = self.sym.LookupMethod(objName, ma.member);
         match (msym) {
             case None {
-                // An opaque struct is C the compiler cannot see into, so an unknown method on one
-                // is not reportable
                 if (!self.IsOpaqueStruct(objName)) {
                     self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span,
                         "'" + self.mangler.DisplayName(objName) + "' has no method '" + ma.member + "'",
@@ -4789,8 +4413,7 @@ class TypeResolver {
     /*
      * ResolveInstanceCall - 'value.M(...)' against the class the receiver's type names
      */
-    IrExpr func ResolveInstanceCall(CallExpr ce, MemberAccessExpr ma, String cls, IrExpr recv,
-                                    List[IrExpr] args, ResolveCtx ctx) {
+    IrExpr func ResolveInstanceCall(CallExpr ce, MemberAccessExpr ma, String cls, IrExpr recv, List[IrExpr] args, ResolveCtx ctx) {
         let String display = self.mangler.DisplayName(cls) + "." + ma.member;
 
         match (self.methodTemplates.Find(MemberKey(cls, ma.member))) {
@@ -4801,8 +4424,7 @@ class TypeResolver {
                         "'" + display + "' is static; call it as '" + display + "(...)'");
                 }
                 self.CheckMemberAccess(cls, ma.member, ctx, ce.span);
-                return self.ResolveGenericMethodCall(imtmpl, cls, iIsStatic, args, ctx, ce.span,
-                                                     Optional.Some(recv), ce.args);
+                return self.ResolveGenericMethodCall(imtmpl, cls, iIsStatic, args, ctx, ce.span, Optional.Some(recv), ce.args);
             }
             case None { }
         }
@@ -4810,7 +4432,6 @@ class TypeResolver {
         let Optional[Symbol] msym = self.sym.LookupMethod(cls, ma.member);
         match (msym) {
             case None {
-                // A field holding a function pointer, used as a callback
                 match (self.sym.FieldType(cls, ma.member)) {
                     case Some(cbt) {
                         match (self.ResolveTypeSpec(cbt)) {
@@ -4818,8 +4439,7 @@ class TypeResolver {
                                 self.CheckMemberAccess(cls, ma.member, ctx, ce.span);
                                 let IrExpr load = IrExpr.IrFieldLoad(
                                     new IrFieldLoad(recv, ma.member, self.ResolveTypeSpec(cbt)));
-                                return self.ResolveIndirectCallArgs(load, cbfp, args, ctx, ce.span,
-                                                                    ce.args);
+                                return self.ResolveIndirectCallArgs(load, cbfp, args, ctx, ce.span, ce.args);
                             }
                             default { }
                         }
@@ -4868,7 +4488,6 @@ class TypeResolver {
      * ResolveBareCall - 'f(...)' with no receiver
      */
     IrExpr func ResolveBareCall(CallExpr ce, IdentExpr id, List[IrExpr] args, ResolveCtx ctx) {
-        // A local holding a function pointer shadows any free function of the same name
         match (ctx.locals.Lookup(id.name)) {
             case Some(lt) {
                 match (lt) {
@@ -4888,8 +4507,7 @@ class TypeResolver {
                 match (Exprs2.TypeOf(calleeState)) {
                     case IrFuncPtrType(stateFp) {
                         self.ReportPendingProcessState(id.name, ctx, ce.span);
-                        return self.ResolveIndirectCallArgs(calleeState, stateFp, args, ctx,
-                                                            ce.span, ce.args);
+                        return self.ResolveIndirectCallArgs(calleeState, stateFp, args, ctx, ce.span, ce.args);
                     }
                     default { }
                 }
@@ -4902,20 +4520,17 @@ class TypeResolver {
             case None { }
         }
 
-        // A generic free function template
         let List[String] colliding = new List[String]();
         match (self.ResolveFuncTemplate(id.name, ctx.file, colliding)) {
             case Some(tmpl) { return self.ResolveTemplateCall(ce, id, args, ctx, tmpl, colliding); }
             case None { }
         }
 
-        // A file-local private function takes priority over an imported public one
         match (self.sym.LookupPrivateFunc(ctx.file, id.name)) {
             case Some(pfsym) {
                 return self.BuildCall(self.sym.PrivateFuncOverloads(ctx.file, id.name),
                     Optional.Some(pfsym), args, id.name,
-                    self.mangler.PrivateFreeFunc(Mangle.FileToken(ctx.file), id.name,
-                                                 new List[Param](), false),
+                    self.mangler.PrivateFreeFunc(Mangle.FileToken(ctx.file), id.name, new List[Param](), false),
                     Optional[IrExpr].None(), ctx, ce);
             }
             case None { }
@@ -4942,7 +4557,6 @@ class TypeResolver {
             }
         }
 
-        // A sibling method of the enclosing class
         if (ctx.curClass.Length() > 0) {
             match (self.ResolveSiblingCall(ce, id, args, ctx)) {
                 case Some(r) { return r; }
@@ -4957,8 +4571,7 @@ class TypeResolver {
      * ResolveSiblingCall - A method of the enclosing class called without a receiver. An instance
      * method needs one, and the error says exactly what to write.
      */
-    Optional[IrExpr] func ResolveSiblingCall(CallExpr ce, IdentExpr id, List[IrExpr] args,
-                                             ResolveCtx ctx) {
+    Optional[IrExpr] func ResolveSiblingCall(CallExpr ce, IdentExpr id, List[IrExpr] args, ResolveCtx ctx) {
         let String cls = ctx.curClass;
         let String display = self.mangler.DisplayName(cls) + "." + id.name;
 
@@ -4985,7 +4598,6 @@ class TypeResolver {
                 match (msym.sig) { case Some(g) { isStatic = g.isStatic; } case None { } }
 
                 if (!isStatic) {
-                    // Still resolved, so the arguments are checked and one error is reported
                     let Optional[Symbol] ichosen = self.ChooseOverload(
                         self.sym.MethodOverloads(cls, id.name), Optional.Some(msym), args,
                         display, ctx, ce.span);
@@ -5048,8 +4660,7 @@ class TypeResolver {
             self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span,
                 "'" + id.name + "' is not in scope; import its module");
         } else if (!self.ReportNotVisible("function", id.name, ctx.file, ce.span) &&
-                   !self.ReportWrongKind(Codes.UndefinedMethod(), "a function", id.name,
-                                         ctx.file, ce.span)) {
+                   !self.ReportWrongKind(Codes.UndefinedMethod(), "a function", id.name, ctx.file, ce.span)) {
             self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span,
                 "call to undefined function '" + id.name + "'");
         }
@@ -5066,11 +4677,9 @@ class TypeResolver {
 
     /*
      * ResolveIndirectCallArgs - A call through a function pointer, checked against the signature
-     * the pointer's type carries. 'ref' cannot travel through one - the type cannot say which
-     * parameters are by reference.
+     * the pointer's type carries.
      */
-    IrExpr func ResolveIndirectCallArgs(IrExpr target, IrFuncPtrType fpt, List[IrExpr] args,
-                                        ResolveCtx ctx, TextSpan span, List[Expr] astArgs) {
+    IrExpr func ResolveIndirectCallArgs(IrExpr target, IrFuncPtrType fpt, List[IrExpr] args, ResolveCtx ctx, TextSpan span, List[Expr] astArgs) {
         if (args.Length() != fpt.params.Length()) {
             self.diag.Error(Codes.WrongArgCount(), ctx.file, span,
                 "function pointer expects " + Int.ToString(fpt.params.Length()) +
@@ -5080,8 +4689,7 @@ class TypeResolver {
         while (i < args.Length() && i < fpt.params.Length()) {
             let IrType pt = fpt.params.Get(i);
             args.Set(i, self.Coerce(args.Get(i), pt, ctx));
-            self.CheckAssign(args.Get(i), pt, "argument " + Int.ToString(i + 1), ctx,
-                             Codes.ArgTypeMismatch());
+            self.CheckAssign(args.Get(i), pt, "argument " + Int.ToString(i + 1), ctx, Codes.ArgTypeMismatch());
             if (i < astArgs.Length()) {
                 match (astArgs.Get(i)) {
                     case RefArgExpr(x) {
@@ -5097,8 +4705,7 @@ class TypeResolver {
     }
 
     /*
-     * ReportPendingProcessState - Reports a read of a process variable whose initialiser has not
-     * run yet. Initialisers run in DECLARATION ORDER, so only the ones above have a value.
+     * ReportPendingProcessState - Reports a read of a process variable whose initialiser has not run yet. 
      */
     void func ReportPendingProcessState(String qualified, ResolveCtx ctx, TextSpan span) {
         match (self.processStatePending.Find(qualified)) {
@@ -5126,13 +4733,8 @@ class TypeResolver {
 
     /*
      * TryResolveArcIntrinsic - Recognises a bare call to the retain/release intrinsics.
-     *
-     * These are not ordinary calls: they need unsafe, and a union dispatches to its own generated
-     * retain/release rather than the class one. A value that is not managed at all needs no
-     * counting, so retain hands the value straight back and release becomes a cast to void.
      */
-    Optional[IrExpr] func TryResolveArcIntrinsic(String name, List[IrExpr] args, ResolveCtx ctx,
-                                                 TextSpan span) {
+    Optional[IrExpr] func TryResolveArcIntrinsic(String name, List[IrExpr] args, ResolveCtx ctx, TextSpan span) {
         let Optional[Symbol] fsym = self.LookupFreeFuncVisible(name);
         if (!self.FuncInScope(fsym)) { return Optional[IrExpr].None(); }
         match (fsym) {
@@ -5143,8 +4745,7 @@ class TypeResolver {
                 if (!isRetain && !isRelease) { return Optional[IrExpr].None(); }
 
                 if (!ctx.inUnsafe) {
-                    self.diag.Error(Codes.UnsafeRequired(), ctx.file, span,
-                        "'" + name + "' requires an 'unsafe' block");
+                    self.diag.Error(Codes.UnsafeRequired(), ctx.file, span, "'" + name + "' requires an 'unsafe' block");
                 }
                 if (args.Length() != 1) {
                     self.diag.Error(Codes.WrongArgCount(), ctx.file, span,
@@ -5156,7 +4757,6 @@ class TypeResolver {
                 let IrExpr a = args.Get(0);
                 let IrType at = Exprs2.TypeOf(a);
                 if (!self.IsManagedRef(at)) {
-                    // Nothing to count: retain is the identity, release is a discard
                     if (isRetain) { return Optional.Some(a); }
                     return Optional.Some(IrExpr.IrCast(new IrCast(self.t.Void(), a)));
                 }
@@ -5164,8 +4764,7 @@ class TypeResolver {
                 let String cname = f.cName;
                 match (at) {
                     case IrUnionType(ut) {
-                        cname = isRetain ? self.mangler.UnionRetain(ut.name)
-                                         : self.mangler.UnionRelease(ut.name);
+                        cname = isRetain ? self.mangler.UnionRetain(ut.name) : self.mangler.UnionRelease(ut.name);
                     }
                     default { }
                 }
@@ -5187,9 +4786,7 @@ class TypeResolver {
 
     /*
      * WarnOnUnionComparison - The two ways a union comparison can mean something other than "these
-     * hold the same value". Worth saying only because the comparison is GENERATED - nobody wrote
-     * the identity check the payload gets. Reported at the comparison, so a union nobody compares
-     * stays silent.
+     * hold the same value".
      */
     void func WarnOnUnionComparison(String unionName, ResolveCtx ctx, TextSpan span) {
         let List[String] identity = new List[String]();
@@ -5233,12 +4830,8 @@ class TypeResolver {
     /*
      * CollectComparisonHazards - The fields whose generated comparison is by identity or by
      * floating point, through nested unions and arrays.
-     *
-     * The qualifier reports a nested field as 'Mixed.Ident.p', since 'Ident.p' would point at the
-     * wrong declaration.
      */
-    void func CollectComparisonHazards(String unionName, String qualifier, StringSet visiting,
-                                       List[String] identity, List[String] imprecise) {
+    void func CollectComparisonHazards(String unionName, String qualifier, StringSet visiting, List[String] identity, List[String] imprecise) {
         if (!visiting.AddNew(unionName)) { return; }
         match (self.sym.UnionDef(unionName)) {
             case None { visiting.Remove(unionName); return; }
@@ -5264,20 +4857,16 @@ class TypeResolver {
     /*
      * InspectHazard - One field's type, for CollectComparisonHazards
      */
-    void func InspectHazard(IrType ty, String label, String qualifier, StringSet visiting,
-                            List[String] identity, List[String] imprecise) {
+    void func InspectHazard(IrType ty, String label, String qualifier, StringSet visiting, List[String] identity, List[String] imprecise) {
         match (ty) {
             case IrArrayType(a) {
                 self.InspectHazard(a.elem, label, qualifier, visiting, identity, imprecise);
             }
             case IrUnionType(nested) {
-                self.CollectComparisonHazards(nested.name, qualifier + nested.name + ".",
-                                              visiting, identity, imprecise);
+                self.CollectComparisonHazards(nested.name, qualifier + nested.name + ".", visiting, identity, imprecise);
             }
             case IrClassRef(cr) {
                 if (!self.sym.IsClass(cr.className) || self.sym.modules.Has(cr.className)) { return; }
-                // A stamped generic instance is exempt: the author never wrote the payload type,
-                // so telling them to add an '==' to it names a declaration they do not have
                 if (IsSome(self.sym.LookupOperator(cr.className, "==", 1))) { return; }
                 if (IsSome(self.mangler.TryGetGenericInstance(cr.className))) { return; }
                 identity.Add(label + " (" + self.mangler.DisplayName(cr.className) + ")");
@@ -5294,7 +4883,6 @@ class TypeResolver {
      * legal and must supply the call's success type.
      */
     IrExpr func ResolveCatchCall(CatchCallExpr cce, ResolveCtx ctx) {
-        // The call is resolved as HANDLED, which is what stops it also reporting G021
         let IrExpr call = self.ResolveExpr(cce.call, ctx.WithCatchWrapped());
 
         let IrType inner = self.t.Void();
@@ -5307,11 +4895,6 @@ class TypeResolver {
                     "this call cannot fail, so it has nothing to catch", hints);
             }
         }
-
-        // The handler's RETURN type is the enclosing function's, not the caught call's. A 'return;'
-        // inside a handler leaves the function, so it is checked against what that function
-        // promised - passing 'inner' here checks it against the value the call would have produced,
-        // which rejects every correct handler in a void function.
         let IrType outerRet = self.t.Void();
         match (ctx.retType) { case Some(r) { outerRet = r; } case None { } }
 
@@ -5320,17 +4903,10 @@ class TypeResolver {
         return IrExpr.IrCatchCall(new IrCatchCall(call, handler, inner));
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Generic functions and methods: inferring the arguments, stamping the instance
-     * ------------------------------------------------------------------------------------ */
-
     /*
-     * ResolveFuncTemplate - The generic free-function template a bare call resolves to. An
-     * own-file private template always wins; otherwise the first in-scope public one, and any
-     * further ones are reported through collidingFiles.
+     * ResolveFuncTemplate - The generic free-function template a bare call resolves to.
      */
-    Optional[FuncTemplate] func ResolveFuncTemplate(String name, String ctxFile,
-                                                    List[String] collidingFiles) {
+    Optional[FuncTemplate] func ResolveFuncTemplate(String name, String ctxFile, List[String] collidingFiles) {
         match (self.funcTemplates.Find(name)) {
             case None { return Optional[FuncTemplate].None(); }
             case Some(bucket) {
@@ -5365,11 +4941,9 @@ class TypeResolver {
     }
 
     /*
-     * ResolveTemplateCall - A bare call that reached a generic template. Ambiguity is reported
-     * before stamping, because a call that could mean two things must not silently pick one.
+     * ResolveTemplateCall - A bare call that reached a generic template.
      */
-    IrExpr func ResolveTemplateCall(CallExpr ce, IdentExpr id, List[IrExpr] args, ResolveCtx ctx,
-                                    FuncTemplate tmpl, List[String] collidingFiles) {
+    IrExpr func ResolveTemplateCall(CallExpr ce, IdentExpr id, List[IrExpr] args, ResolveCtx ctx, FuncTemplate tmpl, List[String] collidingFiles) {
         let String fallback = self.mangler.FreeFunc(id.name, new List[Param](), false, false, false);
 
         if (collidingFiles.Length() > 1) {
@@ -5386,7 +4960,6 @@ class TypeResolver {
             return IrExpr.IrStaticCall(new IrStaticCall(fallback, self.t.Void(), args));
         }
 
-        // A template competing with an ordinary function or a method of the same name
         let Optional[Symbol] otherPf = self.sym.LookupPrivateFunc(ctx.file, id.name);
         let Optional[Symbol] otherFsym = self.LookupFreeFuncVisible(id.name);
         let bool otherFsymInScope = self.FuncInScope(otherFsym);
@@ -5421,11 +4994,8 @@ class TypeResolver {
 
     /*
      * TryResolveFileNamespacedCall - 'file.name(...)' where 'file' is an in-scope file's basename.
-     * The escape hatch for a collision that cannot be qualified through a class or a module, and
-     * the way a file reaches past its own local function to the imported one it displaced.
      */
-    Optional[IrExpr] func TryResolveFileNamespacedCall(String ns, String name, List[IrExpr] args,
-                                                       ResolveCtx ctx, CallExpr ce) {
+    Optional[IrExpr] func TryResolveFileNamespacedCall(String ns, String name, List[IrExpr] args, ResolveCtx ctx, CallExpr ce) {
         match (self.funcTemplates.Find(name)) {
             case Some(bucket) {
                 let int i = 0;
@@ -5446,9 +5016,7 @@ class TypeResolver {
                 if (FileStem(ctx.file) == ns) {
                     return Optional.Some(self.BuildCall(
                         self.sym.PrivateFuncOverloads(ctx.file, name), Optional.Some(priv), args,
-                        name,
-                        self.mangler.PrivateFreeFunc(Mangle.FileToken(ctx.file), name,
-                                                     new List[Param](), false),
+                        name, self.mangler.PrivateFreeFunc(Mangle.FileToken(ctx.file), name, new List[Param](), false),
                         Optional[IrExpr].None(), ctx, ce));
                 }
             }
@@ -5490,8 +5058,7 @@ class TypeResolver {
      * Returns the names that could not be inferred at all.
      */
     List[String] func InferBinds(List[Param] ps, List[String] gparams, List[IrExpr] args,
-                                 StringMap[TypeSpec] binds, String what, ResolveCtx ctx,
-                                 TextSpan span) {
+                                 StringMap[TypeSpec] binds, String what, ResolveCtx ctx, TextSpan span) {
         let int i = 0;
         while (i < ps.Length() && i < args.Length()) {
             if (!UnifyParam(ps.Get(i).type, Exprs2.TypeOf(args.Get(i)), gparams, binds,
@@ -5547,11 +5114,9 @@ class TypeResolver {
 
     /*
      * ResolveGenericCall - A call to a generic free function: infer the type arguments, mangle the
-     * instance name, queue it for stamping, and build the call to the name it will be emitted
-     * under
+     * instance name, queue it for stamping, and build the call to the name it will be emitted under
      */
-    IrExpr func ResolveGenericCall(FuncTemplate tm, List[IrExpr] args, ResolveCtx ctx,
-                                   TextSpan span, List[Expr] astArgs) {
+    IrExpr func ResolveGenericCall(FuncTemplate tm, List[IrExpr] args, ResolveCtx ctx, TextSpan span, List[Expr] astArgs) {
         let FuncDecl fd = tm.decl;
         let String fallback = self.mangler.FreeFunc(fd.name, new List[Param](), false, false, false);
 
@@ -5566,8 +5131,7 @@ class TypeResolver {
         }
 
         let StringMap[TypeSpec] binds = new StringMap[TypeSpec]();
-        let List[String] missing = self.InferBinds(fd.params, fd.genericParams, args, binds,
-                                                   fd.name, ctx, span);
+        let List[String] missing = self.InferBinds(fd.params, fd.genericParams, args, binds, fd.name, ctx, span);
         if (missing.Length() > 0) {
             self.diag.Error(Codes.UndefinedType(), ctx.file, span,
                 "cannot infer type argument " + String.Join(missing, ", ") + " for generic '" +
@@ -5578,8 +5142,7 @@ class TypeResolver {
         let String mangled = self.MangledInstance(fd.name, fd.genericParams, binds);
         self.usedFuncTemplates.AddNew(MemberKey(tm.file, fd.name));
         if (self.genericSeen.AddNew(mangled)) {
-            self.genericQueue.Add(new GenericJob(fd, tm.file, tm.realmKind, binds, mangled,
-                                                 self.scope));
+            self.genericQueue.Add(new GenericJob(fd, tm.file, tm.realmKind, binds, mangled, self.scope));
         }
 
         let SubstitutionContext sctx = self.SubCtxOf(binds);
@@ -5602,11 +5165,9 @@ class TypeResolver {
     }
 
     /*
-     * ResolveGenericMethodCall - The same for a generic method, static or instance, on a class or
-     * a module
+     * ResolveGenericMethodCall - The same for a generic method, static or instance, on a class or a module
      */
-    IrExpr func ResolveGenericMethodCall(MethodTemplate tm, String owner, bool isStatic,
-                                         List[IrExpr] args, ResolveCtx ctx, TextSpan span,
+    IrExpr func ResolveGenericMethodCall(MethodTemplate tm, String owner, bool isStatic, List[IrExpr] args, ResolveCtx ctx, TextSpan span,
                                          Optional[IrExpr] recv, List[Expr] astArgs) {
         let MethodDecl md = tm.decl;
         let String fallback = self.mangler.Method(owner, md.name, new List[Param](), false);
@@ -5623,8 +5184,7 @@ class TypeResolver {
         }
 
         let StringMap[TypeSpec] binds = new StringMap[TypeSpec]();
-        let List[String] missing = self.InferBinds(md.params, md.genericParams, args, binds,
-                                                   display, ctx, span);
+        let List[String] missing = self.InferBinds(md.params, md.genericParams, args, binds, display, ctx, span);
         if (missing.Length() > 0) {
             self.diag.Error(Codes.UndefinedType(), ctx.file, span,
                 "cannot infer type argument " + String.Join(missing, ", ") + " for generic '" +
@@ -5633,12 +5193,10 @@ class TypeResolver {
         }
 
         let String mangled = self.MangledInstance(md.name, md.genericParams, binds);
-        // The owner is part of the seen key: two classes may each stamp the same instance name
         let String seenKey = owner + "::" + mangled;
         self.usedMethodTemplates.AddNew(MemberKey(owner, md.name));
         if (self.genericSeen.AddNew(seenKey)) {
-            self.genericMethodQueue.Add(new GenericMethodJob(md, owner, tm.file, tm.realmKind,
-                                                             binds, mangled, self.scope));
+            self.genericMethodQueue.Add(new GenericMethodJob(md, owner, tm.file, tm.realmKind, binds, mangled, self.scope));
         }
 
         let SubstitutionContext sctx = self.SubCtxOf(binds);
@@ -5669,13 +5227,9 @@ class TypeResolver {
     IrExpr func CallOrInstance(Optional[IrExpr] recv, String cname, IrType ret, List[IrExpr] args) {
         match (recv) {
             case Some(r) { return IrExpr.IrInstanceCall(new IrInstanceCall(r, cname, ret, args)); }
-            case None    { return IrExpr.IrStaticCall(new IrStaticCall(cname, ret, args)); }
+            case None { return IrExpr.IrStaticCall(new IrStaticCall(cname, ret, args)); }
         }
     }
-
-    /* ---------------------------------------------------------------------------------------
-     * Statements
-     * ------------------------------------------------------------------------------------ */
 
     /*
      * ResolveBlock - A block in its own scope, warning once about code after a statement that
@@ -5738,10 +5292,10 @@ class TypeResolver {
     IrStmt func ResolveStmtCore(Stmt s, ResolveCtx ctx, IrType retType) {
         match (s) {
             case NativeStmt(ns) { return IrStmt.IrNativeStmt(new IrNativeStmt(ns.body.c)); }
-            case Block(b)       { return IrStmt.IrBlock(self.ResolveBlock(b, ctx, retType)); }
-            case LetStmt(ls)    { return IrStmt.IrDeclVar(self.ResolveLet(ls, ctx)); }
+            case Block(b) { return IrStmt.IrBlock(self.ResolveBlock(b, ctx, retType)); }
+            case LetStmt(ls) { return IrStmt.IrDeclVar(self.ResolveLet(ls, ctx)); }
             case AssignStmt(asgn) { return self.ResolveAssign(asgn, ctx); }
-            case ExprStmt(es)   { return self.ResolveExprStmt(es, ctx); }
+            case ExprStmt(es) { return self.ResolveExprStmt(es, ctx); }
             case ReturnStmt(rs) { return self.ResolveReturn(rs, ctx, retType); }
 
             case IfStmt(ifs) {
@@ -5765,15 +5319,13 @@ class TypeResolver {
             case WhileStmt(ws) {
                 let IrExpr cond = self.ResolveExpr(ws.cond, ctx);
                 self.ForbidNestedThrows(cond, ctx, false);
-                // 'while (true)' is the idiom for a loop that exits by break, so a constant
-                // condition is allowed here and nowhere else
                 self.CheckCondition(cond, ctx, true);
                 let IrBlock body = self.WrapBlock(ws.body, ctx.WithLoop(), retType);
                 self.WarnIfEmpty(body, "while", ctx, ws.span);
                 return IrStmt.IrWhile(new IrWhile(cond, body));
             }
 
-            case ForStmt(fs)   { return IrStmt.IrFor(self.ResolveFor(fs, ctx, retType)); }
+            case ForStmt(fs) { return IrStmt.IrFor(self.ResolveFor(fs, ctx, retType)); }
             case ForInStmt(fi) { return IrStmt.IrForIn(self.ResolveForIn(fi, ctx, retType)); }
 
             case UnsafeBlock(ub) {
@@ -5791,7 +5343,7 @@ class TypeResolver {
             }
 
             case SwitchStmt(sw) { return IrStmt.IrSwitch(self.ResolveSwitch(sw, ctx, retType)); }
-            case MatchStmt(ms)  { return IrStmt.IrMatch(self.ResolveMatch(ms, ctx, retType)); }
+            case MatchStmt(ms) { return IrStmt.IrMatch(self.ResolveMatch(ms, ctx, retType)); }
 
             case BreakStmt(b) {
                 if (ctx.loopDepth == 0) {
@@ -5841,8 +5393,7 @@ class TypeResolver {
 
             case ThrowStmt(th) {
                 if (ctx.inDefer) {
-                    self.diag.Error(Codes.DeferTransfer(), ctx.file, Stmts.Span(s),
-                        "a 'defer' body cannot 'throw'");
+                    self.diag.Error(Codes.DeferTransfer(), ctx.file, Stmts.Span(s), "a 'defer' body cannot 'throw'");
                 }
                 self.CheckThrowsHandled(ctx, Stmts.Span(s));
                 return IrStmt.IrThrow(new IrThrow());
@@ -5859,8 +5410,7 @@ class TypeResolver {
             case PanicStmt(p) {
                 if (self.releaseMode) { self.RejectInRelease("panic", ctx, Stmts.Span(s)); }
                 if (ctx.realmKind != Realm.Kernel) {
-                    self.diag.Error(Codes.PanicOutsideKernel(), ctx.file, Stmts.Span(s),
-                        "'panic' is only valid in the kernel realm");
+                    self.diag.Error(Codes.PanicOutsideKernel(), ctx.file, Stmts.Span(s), "'panic' is only valid in the kernel realm");
                 }
                 let IrPanic pp = new IrPanic(p.raw);
                 pp.span = Stmts.Span(s);
@@ -5875,13 +5425,11 @@ class TypeResolver {
     void func RejectInRelease(String what, ResolveCtx ctx, TextSpan span) {
         let List[String] hints = new List[String]();
         hints.Add("remove it before shipping");
-        self.diag.Error(Codes.DiagInRelease(), ctx.file, span,
-            "'" + what + "' is not allowed in a release build", hints);
+        self.diag.Error(Codes.DiagInRelease(), ctx.file, span, "'" + what + "' is not allowed in a release build", hints);
     }
 
     /*
-     * ResolveAssign - 'x = v' and the compound forms. An indexed target is its own path, since a
-     * '[]=' setter is a call rather than storage.
+     * ResolveAssign - 'x = v' and the compound forms.
      */
     IrStmt func ResolveAssign(AssignStmt asgn, ResolveCtx ctx) {
         match (asgn.target) {
@@ -5898,13 +5446,11 @@ class TypeResolver {
                 let String shown = "field";
                 match (target) { case IrVar(tv) { shown = tv.name; } default { } }
                 let List[String] hints = new List[String]();
-                hints.Add("did you mean to assign a different value, or to write 'self." + shown +
-                          "' on one side?");
+                hints.Add("did you mean to assign a different value, or to write 'self." + shown + "' on one side?");
                 self.diag.Warn(Codes.SelfAssignment(), ctx.file, asgn.span,
                     "this assignment stores a value into itself and has no effect", hints);
             }
-            let IrExpr v = self.CheckRootThrowsValue(value, Exprs2.TypeOf(target),
-                                                     "the assignment target", ctx, asgn.span);
+            let IrExpr v = self.CheckRootThrowsValue(value, Exprs2.TypeOf(target), "the assignment target", ctx, asgn.span);
             return IrStmt.IrAssign(new IrAssign(target, AssignOp.Assign, v));
         }
 
@@ -5915,7 +5461,6 @@ class TypeResolver {
         if (lhsClass.Length() > 0) {
             match (self.sym.LookupOperator(lhsClass, baseOp, 1)) {
                 case Some(opSym) {
-                    // 'a += b' on a class composes from that class's '+'
                     self.CheckOperatorAccess(lhsClass, baseOp, ctx, asgn.span);
                     let IrExpr arg = self.CheckOpArg(opSym, value, ctx);
                     let List[IrExpr] cargs = new List[IrExpr]();
@@ -5923,8 +5468,7 @@ class TypeResolver {
                     cargs.Add(arg);
                     let IrExpr composed = IrExpr.IrStaticCall(
                         new IrStaticCall(opSym.cName, self.ResolveType(opSym.type), cargs));
-                    self.CheckAssign(composed, Exprs2.TypeOf(target), "the assignment target", ctx,
-                                     Codes.TypeMismatch());
+                    self.CheckAssign(composed, Exprs2.TypeOf(target), "the assignment target", ctx, Codes.TypeMismatch());
                     self.ForbidNestedThrows(composed, ctx, false);
                     return IrStmt.IrAssign(new IrAssign(target, AssignOp.Assign, composed));
                 }
@@ -5955,7 +5499,6 @@ class TypeResolver {
                 self.CheckShiftCount(op, Exprs2.TypeOf(target), value, ctx, Exprs.Span(asgn.value));
                 self.CheckZeroDivisor(op, value, ctx, Exprs.Span(asgn.value));
                 self.CheckMixedSignedness(op, target, value, ctx, asgn.span);
-                // A shift keeps its count's own type; everything else converts into the target's
                 if (op == BinOp.Shl || op == BinOp.Shr) { return value; }
                 return self.InType(value, Exprs2.TypeOf(target));
             }
@@ -5969,7 +5512,6 @@ class TypeResolver {
         let IrExpr e = self.ResolveExpr(es.e, ctx);
         self.ForbidNestedThrows(e, ctx, true);
 
-        // A handler on a discarded call has nothing to assign to
         match (e) {
             case IrCatchCall(sc) {
                 if (!Types.IsVoid(sc.type) &&
@@ -6018,14 +5560,11 @@ class TypeResolver {
                 return IrStmt.IrReturn(new IrReturn(Optional[IrExpr].None()));
             }
             case Some(rv) {
-                // A throws function returns the SUCCESS type, so that is what the value is
-                // expected to be
                 let IrType want = retType;
                 match (retType) { case IrResultType(rrt) { want = rrt.inner; } default { } }
                 let IrExpr v = self.Coerce(self.ResolveExpr(rv, ctx.WithExpected(want)), retType, ctx);
                 self.ForbidNestedThrows(v, ctx, false);
-                self.CheckAssign(v, retType, "the function's return", ctx,
-                                 Codes.ReturnTypeMismatch());
+                self.CheckAssign(v, retType, "the function's return", ctx, Codes.ReturnTypeMismatch());
                 return IrStmt.IrReturn(new IrReturn(Optional.Some(v)));
             }
         }
@@ -6046,8 +5585,7 @@ class TypeResolver {
             }
             case Some(at) {
                 if (ctx.inDefer) {
-                    self.diag.Error(Codes.DeferTransfer(), ctx.file, span,
-                        "a 'defer' body cannot 'assign'");
+                    self.diag.Error(Codes.DeferTransfer(), ctx.file, span, "a 'defer' body cannot 'assign'");
                 }
                 if (Types.IsVoid(at)) {
                     let List[String] hints = new List[String]();
@@ -6165,12 +5703,11 @@ class TypeResolver {
         } else if (Types.IsError(Exprs2.TypeOf(collection))) {
             elemType = self.t.Error();
         } else {
-            // The message names WHICH half is missing, since that is the whole fix
             let String why = "";
             if (collClass.Length() > 0) {
                 if (!lengthOk && !getOk) { why = " (no 'Length() -> int' or 'Get(int)' method)"; }
-                else if (!lengthOk)      { why = " (no 'Length() -> int' method)"; }
-                else                     { why = " (no 'Get(int)' method)"; }
+                else if (!lengthOk) { why = " (no 'Length() -> int' method)"; }
+                else { why = " (no 'Get(int)' method)"; }
             }
             self.diag.Error(Codes.NotIterable(), ctx.file, Exprs.Span(fi.collection),
                 "'" + self.Describe(Exprs2.TypeOf(collection)) +
@@ -6182,10 +5719,6 @@ class TypeResolver {
         inner.locals.Declare(fi.varName, elemType, false);
         let IrBlock body = self.ResolveBlock(fi.body, inner, retType);
         self.WarnIfEmpty(body, "for..in", ctx, fi.span);
-        // -1, not 0: arraySize is the FIXED-ARRAY size, and the backend reads 'arraySize >= 0' as
-        // "this is an array, index it directly". A collection has no such size and must take the
-        // Length()/Get(i) path, so it says so with a negative. C# spells this as the parameter's
-        // default of -1.
         return new IrForIn(fi.varName, elemType, lenCName, getCName, collection, body, 0 - 1);
     }
 
@@ -6244,13 +5777,12 @@ class TypeResolver {
     }
 
     /*
-     * ConstLabelKey - A duplicate-detection key for a constant case label, "" for one that cannot
-     * be checked. Int and char share a key space, since C compares them as integers.
+     * ConstLabelKey - A duplicate-detection key for a constant case label, "" for one that cannot be checked.
      */
     String func ConstLabelKey(IrExpr lbl) {
         match (lbl) {
-            case IrLitInt(li)   { return "n:" + Long.ToString(li.value); }
-            case IrLitChar(lc)  { return "n:" + Int.ToString(lc.codepoint); }
+            case IrLitInt(li) { return "n:" + Long.ToString(li.value); }
+            case IrLitChar(lc) { return "n:" + Int.ToString(lc.codepoint); }
             case IrEnumConst(ec) { return "e:" + ec.enumName + "." + ec.member; }
             default { return ""; }
         }
@@ -6273,7 +5805,6 @@ class TypeResolver {
                     "'match' requires a union value, got '" +
                     self.Describe(Exprs2.TypeOf(scrut)) + "'");
             }
-            // Still resolve the arms, so their own errors are reported in one pass
             let List[IrMatchCase] fallbackCases = new List[IrMatchCase]();
             let int i = 0;
             while (i < ms.cases.Length()) {
@@ -6377,10 +5908,6 @@ class TypeResolver {
     /*
      * ResolveLet - A declaration: settle its type, resolve the initialiser, check assignability,
      * and bind the name.
-     *
-     * The order matters. The declared type is resolved FIRST so it can be the expected type for
-     * the initialiser, which is what lets 'let Maybe[int] m = Maybe.Missing();' pick an
-     * instantiation the arguments alone could not.
      */
     IrDeclVar func ResolveLet(LetStmt ls, ResolveCtx ctx) {
         let bool hasDeclared = false;
@@ -6412,7 +5939,6 @@ class TypeResolver {
                         ls.name + ";') or an initializer");
                 }
                 case Some(iv) {
-                    // A throwing initialiser declares the variable at the SUCCESS type
                     type = Exprs2.TypeOf(iv);
                     match (type) { case IrResultType(rt) { type = rt.inner; } default { } }
 
@@ -6448,7 +5974,6 @@ class TypeResolver {
                         self.CheckAssign(c, type, "'" + ls.name + "'", ctx, Codes.TypeMismatch());
                     }
                 } else if (hasDeclared) {
-                    // The call propagates, so what must fit is the value it produces on success
                     let IrExpr probe = IrExpr.IrVar(new IrVar(ls.name, inner, false));
                     if (!self.Assignable(probe, type)) {
                         self.diag.Error(Codes.TypeMismatch(), ctx.file, Exprs2.SpanOf(iv),
@@ -6484,29 +6009,23 @@ class TypeResolver {
 
         self.CheckNotReservedLocal(ls.name, ls.span, "variable", ctx);
 
-        // Redeclaring is an error; shadowing an outer scope is a warning; a parameter is neither,
-        // because it shares one C scope with the top-level locals and no renaming can separate them
         if (ctx.locals.DeclaredHere(ls.name)) {
-            self.diag.Error(Codes.DuplicateName(), ctx.file, ls.span,
-                "'" + ls.name + "' is already declared in this scope");
+            self.diag.Error(Codes.DuplicateName(), ctx.file, ls.span, "'" + ls.name + "' is already declared in this scope");
         } else if (ctx.locals.CollidesWithParam(ls.name)) {
             let List[String] hints = new List[String]();
             hints.Add("a parameter and a top-level local share one scope; rename one of them");
             hints.Add("shadowing is fine inside a nested block");
-            self.diag.Error(Codes.DuplicateName(), ctx.file, ls.span,
-                "'" + ls.name + "' is already a parameter of this function", hints);
+            self.diag.Error(Codes.DuplicateName(), ctx.file, ls.span, "'" + ls.name + "' is already a parameter of this function", hints);
         } else if (ctx.locals.ShadowsOuter(ls.name)) {
             let List[String] hints = new List[String]();
             hints.Add("rename this one if the outer variable was meant to stay reachable");
-            self.diag.Warn(Codes.ShadowedVariable(), ctx.file, ls.span,
-                "'" + ls.name + "' shadows a variable of the same name from an enclosing scope",
-                hints);
+            self.diag.Warn(Codes.ShadowedVariable(), ctx.file, ls.span, "'" + ls.name 
+            + "' shadows a variable of the same name from an enclosing scope", hints);
         } else if (self.processStateNames.Has(ls.name)) {
             let List[String] hints = new List[String]();
             hints.Add("writes here change this local, not the state the other threads read");
             hints.Add("rename this one if the process variable was meant to stay reachable");
-            self.diag.Warn(Codes.ShadowedVariable(), ctx.file, ls.span,
-                "'" + ls.name + "' shadows the process variable of the same name", hints);
+            self.diag.Warn(Codes.ShadowedVariable(), ctx.file, ls.span, "'" + ls.name + "' shadows the process variable of the same name", hints);
         }
 
         self.WarnManagedFixedArray(type, "'" + ls.name + "'", ctx, ls.span);
@@ -6516,9 +6035,6 @@ class TypeResolver {
 
     /*
      * ResolveIndexAssign - 'a[i] = v' and its compound forms.
-     *
-     * Through a '[]=' setter this is a CALL, not a store, so a compound form has to read through
-     * '[]' first - and the receiver and index are hoisted so neither is evaluated twice.
      */
     IrStmt func ResolveIndexAssign(IndexExpr ixt, AssignStmt asgn, ResolveCtx ctx) {
         let IrExpr obj = self.ResolveExpr(ixt.object, ctx);
@@ -6554,7 +6070,6 @@ class TypeResolver {
             return IrStmt.IrAssign(new IrAssign(IrExpr.IrIndex(tgt), AssignOp.Assign, v));
         }
 
-        // A compound assignment on an element whose type overloads the base operator
         let String elemBaseOp = self.BaseOpSym(asgn.op);
         let String elemClass = self.DirectClassNameOf(elem);
         if (elemClass.Length() > 0) {
@@ -6596,8 +6111,7 @@ class TypeResolver {
     /*
      * ResolveSetterAssign - The '[]=' half of ResolveIndexAssign
      */
-    IrStmt func ResolveSetterAssign(IndexExpr ixt, AssignStmt asgn, ResolveCtx ctx, IrExpr obj,
-                                    IrExpr idx, String cls, Symbol setOp) {
+    IrStmt func ResolveSetterAssign(IndexExpr ixt, AssignStmt asgn, ResolveCtx ctx, IrExpr obj, IrExpr idx, String cls, Symbol setOp) {
         self.CheckOperatorAccess(cls, "[]=", ctx, asgn.span);
         let IrType idxType = self.ResolveTypeSpec(self.SigParam(setOp, 0));
         let IrType valType = self.ResolveTypeSpec(self.SigParam(setOp, 1));
@@ -6619,7 +6133,6 @@ class TypeResolver {
             return IrStmt.IrExprStmt(st);
         }
 
-        // 'xs[i] += v' reads through '[]', applies the operator, writes through '[]='
         let List[IrStmt] stmts = new List[IrStmt]();
         let IrExpr objRef = self.HoistIfImpure(obj, "__ixo", stmts);
         let IrExpr idxRef = self.HoistIfImpure(ci, "__ixi", stmts);
@@ -6682,16 +6195,9 @@ class TypeResolver {
     }
 
     /*
-     * ResolveGenericUnionConstruct - 'Maybe.Found(7)' where Maybe is generic: decide WHICH stamped
-     * instance is meant.
-     *
-     * The arguments decide it when exactly one instantiation accepts them all; otherwise the
-     * expected type from the enclosing let or return does. None when the name is not a generic
-     * union at all, so the caller falls through to its other cases.
+     * ResolveGenericUnionConstruct - 'Maybe.Found(7)' where Maybe is generic: decide WHICH stamped instance is meant.
      */
-    Optional[IrExpr] func ResolveGenericUnionConstruct(String baseName, String variant,
-                                                       List[IrExpr] args, ResolveCtx ctx,
-                                                       TextSpan span) {
+    Optional[IrExpr] func ResolveGenericUnionConstruct(String baseName, String variant, List[IrExpr] args, ResolveCtx ctx, TextSpan span) {
         let List[String] instances = new List[String]();
         let List[String] all = self.mangler.InstancesOf(baseName);
         let int i = 0;
@@ -6714,7 +6220,6 @@ class TypeResolver {
             return Optional[IrExpr].None();
         }
 
-        // Instantiations having this variant at this arity
         let List[String] candidates = new List[String]();
         let int j = 0;
         while (j < instances.Length()) {
@@ -6740,7 +6245,6 @@ class TypeResolver {
                 new IrUnionConstruct(self.t.UnionType(instances.Get(0)), 0, args)));
         }
 
-        // The arguments settle it when exactly one candidate accepts them all
         let List[String] accepting = new List[String]();
         let int k = 0;
         while (k < candidates.Length()) {
@@ -6763,8 +6267,6 @@ class TypeResolver {
         }
 
         let String chosen = accepting.Length() == 1 ? accepting.Get(0) : "";
-
-        // Otherwise the expected type, when it names an instantiation of this same generic
         if (chosen.Length() == 0) {
             match (ctx.expected) {
                 case Some(want) {
@@ -6795,15 +6297,10 @@ class TypeResolver {
         return Optional.Some(self.ResolveUnionConstruct(chosen, variant, args, ctx, span));
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * Declarations
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * ResolveBodyOrNative - A method body: either resolved statements, or raw C left verbatim
      */
-    void func ResolveBodyOrNative(MethodBody b, ResolveCtx ctx, IrType ret,
-                                  ref Optional[IrBlock] body, ref Optional[String] native) {
+    void func ResolveBodyOrNative(MethodBody b, ResolveCtx ctx, IrType ret, ref Optional[IrBlock] body, ref Optional[String] native) {
         body = Optional[IrBlock].None();
         native = Optional[String].None();
         match (b) {
@@ -6870,9 +6367,6 @@ class TypeResolver {
         let bool lib = ctx.realmKind == Realm.None;
         let Visibility vis = self.VisOf(ctx.realmKind);
         let ResolveCtx classCtx = ctx.WithClass(cd.name);
-
-        // A stamped instance is a machine-generated copy, so one bad type argument is reported
-        // once rather than once per line of the template that happens to touch it
         let bool stamped = IsSome(self.mangler.TryGetGenericInstance(cd.name));
         let String prevScope = stamped ? self.diag.PushInstance(cd.name) : "";
         let String prevInstance = self.curInstance;
@@ -6892,7 +6386,6 @@ class TypeResolver {
                     self.ResolveField(fd, classCtx, classFields, fieldInits);
                 }
                 case MethodDecl(md) {
-                    // A generic method is stamped on demand, per call site
                     if (md.genericParams.Length() == 0) {
                         methods.Add(self.ResolveMethod(cd.name, md, classCtx, lib, vis, cd.isModule));
                     }
@@ -6942,9 +6435,7 @@ class TypeResolver {
         let Optional[IrExpr] init = Optional[IrExpr].None();
         match (fd.init) {
             case Some(ie) {
-                // A field initialiser runs as part of construction, where there is no 'self' yet
-                let IrExpr r = self.Coerce(self.ResolveExpr(ie, classCtx.WithStatic(false)), ft,
-                                           classCtx);
+                let IrExpr r = self.Coerce(self.ResolveExpr(ie, classCtx.WithStatic(false)), ft, classCtx);
                 self.CheckAssign(r, ft, "field '" + fd.name + "'", classCtx, Codes.TypeMismatch());
                 self.ForbidNestedThrows(r, classCtx, false);
                 fieldInits.Put(fd.name, r);
@@ -6959,11 +6450,8 @@ class TypeResolver {
     /*
      * ResolveMethod - A method's signature and body
      */
-    IrFunction func ResolveMethod(String cls, MethodDecl md, ResolveCtx ctx, bool lib,
-                                  Visibility vis, bool isModule) {
+    IrFunction func ResolveMethod(String cls, MethodDecl md, ResolveCtx ctx, bool lib, Visibility vis, bool isModule) {
         let bool isStatic = Mods.Has(md.modifiers, Modifiers.Static) || isModule;
-        // A 'throws' return type is checked by CheckThrowsReturn instead, which knows which
-        // shapes have no Result spelling
         if (!md.isThrows) { self.CheckType(md.returnType, ctx, md.span, true); }
         self.CheckParamTypes(md.params, ctx);
         self.CheckParams(md.params, ctx);
@@ -6973,11 +6461,9 @@ class TypeResolver {
         self.CheckThrowsReturn(ret, md.isThrows, display, ctx, md.span);
 
         let List[IrParam] pars = self.ParamsToIr(md.params);
-        let String cname = self.mangler.Method(cls, md.name, md.params,
-                                               self.sym.IsOverloadedMethod(cls, md.name));
+        let String cname = self.mangler.Method(cls, md.name, md.params, self.sym.IsOverloadedMethod(cls, md.name));
 
-        let ResolveCtx mctx = ctx.WithClass(cls).WithFunc(md.name).WithStatic(isStatic)
-                                 .WithThrowsFunc(md.isThrows).PushScope(true);
+        let ResolveCtx mctx = ctx.WithClass(cls).WithFunc(md.name).WithStatic(isStatic).WithThrowsFunc(md.isThrows).PushScope(true);
         if (!isStatic) { mctx.locals.Declare("self", self.t.ClassRef(cls), false); }
         self.DeclareParams(md.params, mctx);
 
@@ -7001,8 +6487,7 @@ class TypeResolver {
      * ResolveOperator - An operator overload. Arity, return type and mutation are all constrained
      * by the symbol, and each violation says what the symbol requires.
      */
-    IrOperator func ResolveOperator(String cls, OperatorDecl od, ResolveCtx ctx, bool lib,
-                                    Visibility vis) {
+    IrOperator func ResolveOperator(String cls, OperatorDecl od, ResolveCtx ctx, bool lib, Visibility vis) {
         let bool isAs = od.op == "as";
         let int want = OperatorRules.RequiredArity(od.op, od.params.Length());
         if (od.params.Length() != want) {
@@ -7038,12 +6523,9 @@ class TypeResolver {
         }
 
         let List[IrParam] pars = self.ParamsToIr(od.params);
-        let String cname = self.mangler.Operator(cls, od.op, od.params,
-                                                 self.sym.IsOverloadedOperator(cls, od.op));
+        let String cname = self.mangler.Operator(cls, od.op, od.params, self.sym.IsOverloadedOperator(cls, od.op));
 
-        // An 'as' operator is implicitly static: it converts INTO the class, so there is no self
-        let ResolveCtx octx = ctx.WithClass(cls).WithFunc("op_" + Mangle.OpSuffix(od.op))
-                                 .WithStatic(isAs).PushScope(true);
+        let ResolveCtx octx = ctx.WithClass(cls).WithFunc("op_" + Mangle.OpSuffix(od.op)).WithStatic(isAs).PushScope(true);
         if (!isAs) { octx.locals.Declare("self", self.t.ClassRef(cls), false); }
         self.DeclareParams(od.params, octx);
 
@@ -7051,8 +6533,7 @@ class TypeResolver {
         let Optional[String] native = Optional[String].None();
         self.ResolveBodyOrNative(od.body, octx, ret, ref body, ref native);
 
-        self.CheckMissingReturn(body, ret, false, od.span,
-                                "operator " + od.op + " on " + shown, ctx);
+        self.CheckMissingReturn(body, ret, false, od.span, "operator " + od.op + " on " + shown, ctx);
         match (body) {
             case Some(b) {
                 self.CheckBodyQuality(b, ret, od.span, ctx, od.params, od.span);
@@ -7070,8 +6551,6 @@ class TypeResolver {
         let bool lib = ctx.realmKind == Realm.None;
         let Visibility vis = self.VisOf(ctx.realmKind);
 
-        // An entry point is invoked by the runtime through a fixed ABI, so its shape is not the
-        // author's to choose
         if (fd.isEntry) {
             if (fd.params.Length() > 0) {
                 self.diag.Error(Codes.BadEntrySignature(), ctx.file, fd.span,
@@ -7100,11 +6579,9 @@ class TypeResolver {
         let String cname = Mods.Has(fd.modifiers, Modifiers.Private)
             ? self.mangler.PrivateFreeFunc(Mangle.FileToken(ctx.file), fd.name, fd.params,
                   self.sym.PrivateFuncOverloads(ctx.file, fd.name).Length() > 1)
-            : self.mangler.FreeFunc(fd.name, fd.params, self.sym.IsOverloadedFunc(fd.name),
-                                    fd.isEntry, false);
+            : self.mangler.FreeFunc(fd.name, fd.params, self.sym.IsOverloadedFunc(fd.name), fd.isEntry, false);
 
-        let ResolveCtx fctx = ctx.WithFunc(fd.name).WithStatic(true)
-                                 .WithThrowsFunc(fd.isThrows).PushScope(true);
+        let ResolveCtx fctx = ctx.WithFunc(fd.name).WithStatic(true).WithThrowsFunc(fd.isThrows).PushScope(true);
         self.DeclareParams(fd.params, fctx);
 
         let Optional[IrBlock] body = Optional[IrBlock].None();
@@ -7124,8 +6601,7 @@ class TypeResolver {
     }
 
     /*
-     * ResolveEnum - An enum's members and their values. A member with no value continues from the
-     * previous one, and an explicit value is a constant integer EXPRESSION, not just a literal.
+     * ResolveEnum - An enum's members and their values.
      */
     IrEnum func ResolveEnum(EnumDecl ed, ResolveCtx ctx) {
         if (ed.members.Length() == 0) {
@@ -7167,7 +6643,6 @@ class TypeResolver {
                 case None { }
             }
 
-            // Members are read as 'int', so a value outside that range is not representable
             if (next < 0L - 2147483648L || next > 2147483647L) {
                 let List[String] hints = new List[String]();
                 hints.Add("enum members are read as 'int', so this would be used as " +
@@ -7188,8 +6663,7 @@ class TypeResolver {
 
     /*
      * TryConstEval - Folds a constant integer expression: literals, unary negate and complement,
-     * the arithmetic and bitwise operators, and EARLIER members of the enclosing enum. False on
-     * any non-constant subexpression, or a division by zero.
+     * the arithmetic and bitwise operators, and EARLIER members of the enclosing enum.
      */
     bool func TryConstEval(Expr e, String enumName, StringMap[int64] members, ref int64 v) {
         match (e) {
@@ -7207,7 +6681,6 @@ class TypeResolver {
                 }
             }
             case MemberAccessExpr(ma) {
-                // 'Enum.Member' is only constant when it names THIS enum's earlier member
                 match (ma.object) {
                     case IdentExpr(oid) {
                         if (oid.name != enumName) { return false; }
@@ -7248,9 +6721,7 @@ class TypeResolver {
     }
 
     /*
-     * UnionContains - True when a union stores another by VALUE, directly or through further
-     * unions. A pointer is a fixed-size field and breaks the cycle, which is why the walk only
-     * follows named specs.
+     * UnionContains - True when a union stores another by VALUE, directly or through further unions.
      */
     bool func UnionContains(String from, String target, StringSet visited) {
         if (from == target) { return true; }
@@ -7337,7 +6808,6 @@ class TypeResolver {
                         "variant '" + v.name + "' already declares a field '" + f.name + "'");
                 }
 
-                // A union cannot contain itself by value: the two would have no size
                 match (f.type) {
                     case NamedSpec(ns) {
                         if (self.UnionContains(ns.Mangled(), ud.name, new StringSet())) {
@@ -7369,10 +6839,6 @@ class TypeResolver {
 
     /*
      * ResolveProcessState - A process's variables, and the generated function that assigns them.
-     *
-     * Two passes: every slot is registered first, so a read of one declared BELOW can be reported
-     * as exactly that rather than as an unknown name, then the initialisers run in declaration
-     * order with each variable dropping out of 'pending' as it gets its value.
      */
     void func ResolveProcessState(ProcessDecl pd, String procFull, ResolveCtx ctx, Visibility vis,
                                   List[IrProcessVar] state, ref Optional[IrFunction] init) {
@@ -7422,7 +6888,6 @@ class TypeResolver {
 
             match (pv.init) {
                 case None {
-                    // The parser already reported the missing initialiser
                     self.processStatePending.Remove(pv.name);
                 }
                 case Some(ie) {
@@ -7489,7 +6954,7 @@ class TypeResolver {
             let TopLevel item = pd.items.Get(j);
             j = j + 1;
             match (item) {
-                case ProcessVarDecl(pv) { continue; }   // resolved above
+                case ProcessVarDecl(pv) { continue; }
                 case FuncDecl(ef) {
                     if (ef.isEntry) {
                         let List[String] hints = new List[String]();
@@ -7506,7 +6971,6 @@ class TypeResolver {
             self.ResolveTop(item, ctx, mod);
         }
 
-        // The names are per-process, so the next one does not inherit this one's shadow warnings
         self.processStateNames.Clear();
         self.processStatePending.Clear();
 
@@ -7520,8 +6984,7 @@ class TypeResolver {
      * ResolveThreadEntry - A thread's entry function. The runtime dispatches it through a fixed
      * void(*)(void*) ABI, so it takes no parameters and returns nothing.
      */
-    IrFunction func ResolveThreadEntry(String fullName, EntryFuncDecl ef, ResolveCtx ctx,
-                                       Visibility vis) {
+    IrFunction func ResolveThreadEntry(String fullName, EntryFuncDecl ef, ResolveCtx ctx, Visibility vis) {
         self.CheckParamTypes(ef.params, ctx);
         self.CheckParams(ef.params, ctx);
         let List[IrParam] pars = self.ParamsToIr(ef.params);
@@ -7537,16 +7000,8 @@ class TypeResolver {
             Optional[String].None(), new List[Annotation]());
     }
 
-    /* ---------------------------------------------------------------------------------------
-     * The pass itself
-     * ------------------------------------------------------------------------------------ */
-
     /*
      * Resolve - Every program in the build, resolved into one typed IrModule.
-     *
-     * Templates are collected first across ALL files, because a call site may reach a generic
-     * declared in a file resolved later. The instances those calls ask for are stamped after the
-     * main pass, which is what DrainGenericInstances is for.
      */
     public IrModule func Resolve(List[ProgramFile] programs) {
         let IrModule mod = new IrModule(new List[IrNativeBlock](), new List[IrNativeType](),
@@ -7555,8 +7010,7 @@ class TypeResolver {
 
         let int i = 0;
         while (i < programs.Length()) {
-            self.CollectFuncTemplates(programs.Get(i).prog.items, Realm.None,
-                                      programs.Get(i).path);
+            self.CollectFuncTemplates(programs.Get(i).prog.items, Realm.None, programs.Get(i).path);
             i = i + 1;
         }
 
@@ -7596,10 +7050,6 @@ class TypeResolver {
 
     /*
      * ScopeFor - The module scope a top-level item resolves under.
-     *
-     * The enclosing file's, except for a stamped generic instance: the Monomorphizer splices one
-     * into the TEMPLATE's file, though its type arguments were named at the use site, so it also
-     * needs to see whatever the file that named them could.
      */
     StringSet func ScopeFor(TopLevel item, String file) {
         let String name = "";
@@ -7623,9 +7073,6 @@ class TypeResolver {
     /*
      * InstanceScope - The scope a stamped instance resolves under: the file it is emitted into,
      * widened by whatever the file that named the type arguments could see.
-     *
-     * Taken from the TEMPLATE's file rather than fileScope, because the drain runs after the main
-     * pass, where fileScope still holds whichever file happened to be resolved last.
      */
     StringSet func InstanceScope(String templateFile, StringSet requestScope) {
         let StringSet baseScope = self.VisibleTo(templateFile);
@@ -7650,8 +7097,6 @@ class TypeResolver {
             match (items.Get(i)) {
                 case FuncDecl(fd) {
                     if (fd.genericParams.Length() > 0) {
-                        // Bucketed by name: several files may each declare their own private
-                        // generic under one name without clobbering each other
                         let List[FuncTemplate] bucket = new List[FuncTemplate]();
                         match (self.funcTemplates.Find(fd.name)) {
                             case Some(b) { bucket = b; }
@@ -7689,7 +7134,6 @@ class TypeResolver {
      */
     void func ResolveTop(TopLevel item, ResolveCtx ctx, IrModule mod) {
         match (item) {
-            // Nothing to resolve: an import is a visibility fact, and an extern has no body
             case ImportDecl(x)     { }
             case ExternFuncDecl(x) { }
 
@@ -7715,18 +7159,16 @@ class TypeResolver {
             }
 
             case FuncDecl(fd) {
-                // A generic template is stamped per call site, not resolved here
                 if (fd.genericParams.Length() == 0) {
                     mod.freeFunctions.Add(self.ResolveFreeFunc(fd, ctx));
                 }
             }
 
             case NativeTypeDecl(nd) {
-                mod.nativeTypes.Add(new IrNativeType(nd.name, self.mangler.Class(nd.name),
-                                                     nd.cBody, self.VisOf(ctx.realmKind)));
+                mod.nativeTypes.Add(new IrNativeType(nd.name, self.mangler.Class(nd.name), nd.cBody, self.VisOf(ctx.realmKind)));
             }
-            case EnumDecl(ed)   { mod.enums.Add(self.ResolveEnum(ed, ctx)); }
-            case UnionDecl(ud)  { mod.unions.Add(self.ResolveUnion(ud, ctx)); }
+            case EnumDecl(ed) { mod.enums.Add(self.ResolveEnum(ed, ctx)); }
+            case UnionDecl(ud) { mod.unions.Add(self.ResolveUnion(ud, ctx)); }
             case ProcessDecl(pd) { mod.processes.Add(self.ResolveProcess(pd, ctx, mod)); }
             default { }
         }
@@ -7754,7 +7196,6 @@ class TypeResolver {
                 "a native block can carry only one '@preamble'; remove the extra one(s)");
         }
 
-        // Without a preamble the block is a type declaration, emitted into its realm's unit
         let NativeSection section = NativeSection.Types;
         let Visibility vis = self.VisOf(ctx.realmKind);
         if (preambles.Length() > 0) {
@@ -7775,9 +7216,6 @@ class TypeResolver {
 
     /*
      * DrainGenericInstances - Stamps every instantiation the main pass asked for.
-     *
-     * Both queues are drained until neither grows, because stamping one instance can name another
-     * - 'List[Pair[int]]' asks for 'Pair[int]' only once its own body is resolved.
      */
     void func DrainGenericInstances(IrModule mod) {
         while (self.genericQueue.Length() > 0 || self.genericMethodQueue.Length() > 0) {
@@ -7827,8 +7265,7 @@ class TypeResolver {
         let ResolveCtx ctx = new ResolveCtx(job.file).WithRealm(job.realmKind);
         let bool isModule = self.sym.modules.Has(job.owner);
         let bool lib = job.realmKind == Realm.None;
-        let IrFunction fn = self.ResolveMethod(job.owner, inst, ctx.WithClass(job.owner), lib,
-                                               self.VisOf(job.realmKind), isModule);
+        let IrFunction fn = self.ResolveMethod(job.owner, inst, ctx.WithClass(job.owner), lib, self.VisOf(job.realmKind), isModule);
 
         let int i = 0;
         while (i < mod.classes.Length()) {
@@ -7840,16 +7277,6 @@ class TypeResolver {
         }
     }
 }
-
-
-
-/* ===========================================================================================
- * The analysis walkers.
- *
- * Each is a state class plus one or two hook functions, standing in for a C# nested class that
- * overrode IrWalker. The hooks are free functions because Gata has no closures: everything they
- * touch travels through the walker's state.
- * ======================================================================================== */
 
 /*
  * A plain "did we see one" flag, for the walks that only answer yes or no
@@ -7870,9 +7297,6 @@ bool func FindNativeStmt(IrWalk[FoundFlag] w, IrStmt s) {
 /*
  * What CheckBodyQuality collects in one pass: every local declared, every name read, and whether
  * the body contains raw C - which makes the other two unreliable and turns the warnings off.
- *
- * Declarations are two parallel lists rather than a list of pairs, since Gata has no tuples and a
- * carrier class for a purely local pairing would not earn its name.
  */
 class BodyQuality {
     public List[String] declNames;
@@ -7920,8 +7344,7 @@ bool func DeliberatelyUnused(String name) {
 
 
 /*
- * SameSpan - Two spans pointing at the same text. TextSpan is a union, so '==' would compare it
- * structurally; this says the intent, and is what the report-once checks compare on.
+ * SameSpan - Two spans pointing at the same text.
  */
 bool func SameSpan(TextSpan a, TextSpan b) {
     return TS.Start(a) == TS.Start(b) && TS.Length(a) == TS.Length(b);
@@ -7976,11 +7399,6 @@ List[IrExpr] func ChildExprs(IrExpr e) {
 
 /*
  * The whole-body backstop for throws placement.
- *
- * Written by hand rather than as an IrWalk hook, because the two node kinds are not treated the
- * same: a statement routes its ONE legal root slot through WalkRoot, where a throwing call is
- * permitted, and everything else lands in WalkExpr, where by definition it is nested. That is a
- * traversal difference, not a visit difference, so a hook could not express it.
  */
 class ThrowsPlacement {
     TypeResolver r;
@@ -8065,12 +7483,10 @@ class ThrowsPlacement {
     void func WalkExpr(IrExpr e) {
         match (e) {
             case IrThrowsCall(tc) {
-                self.Report(Exprs2.SpanOf(e), "throwing call cannot appear inside a larger expression",
-                            new List[String]());
+                self.Report(Exprs2.SpanOf(e), "throwing call cannot appear inside a larger expression", new List[String]());
             }
             case IrThrowsInstanceCall(ti) {
-                self.Report(Exprs2.SpanOf(e), "throwing call cannot appear inside a larger expression",
-                            new List[String]());
+                self.Report(Exprs2.SpanOf(e), "throwing call cannot appear inside a larger expression", new List[String]());
             }
             case IrCatchCall(cc) {
                 self.Report(Exprs2.SpanOf(e), self.r.CatchNotAtRoot(), self.r.CatchNotAtRootHints());
@@ -8082,8 +7498,6 @@ class ThrowsPlacement {
         let List[IrExpr] kids = ChildExprs(e);
         let int i = 0;
         while (i < kids.Length()) { self.WalkExpr(kids.Get(i)); i = i + 1; }
-
-        // A catch handler nested in an expression still has statements worth checking
         match (e) {
             case IrCatchCall(cc2) { self.WalkStmt(IrStmt.IrBlock(cc2.handler)); }
             default { }
@@ -8148,15 +7562,8 @@ List[IrExpr] func RootExprs(IrStmt s) {
 /*
  * Walks a body in EXECUTION ORDER, tracking which uninitialised locals have been stored into and
  * reporting a read of one that has not.
- *
- * Hand-written rather than hooked, for the same reason the C# original is: statement order and
- * branch merging both matter here, and the shared traversal promises neither. The merging rule is
- * deliberately permissive - PreAssign marks everything a subtree stores into before walking it -
- * so a store later in a loop body counts for a read earlier in it, and the analysis reports only
- * what is wrong on every path rather than guessing about paths it cannot order.
  */
 class DefiniteAssignment {
-    // Declared with no initialiser and not yet stored into: name -> the declaration's span
     StringMap[TextSpan] pending;
     StringSet assigned;
 
@@ -8173,9 +7580,7 @@ class DefiniteAssignment {
     public void func Run(IrBlock body) { self.WalkStmt(IrStmt.IrBlock(body)); }
 
     /*
-     * PreAssign - Marks every variable a subtree stores into, without walking its reads. Run ahead
-     * of a loop body and each branch arm, so a store later in the subtree still counts as having
-     * possibly happened before a read earlier in it.
+     * PreAssign - Marks every variable a subtree stores into, without walking its reads.
      */
     void func PreAssign(IrStmt s) {
         let StoreFinder f = new StoreFinder();
@@ -8204,8 +7609,6 @@ class DefiniteAssignment {
                 match (d.init) {
                     case Some(e) { self.WalkExpr(e); self.assigned.AddNew(d.name); }
                     case None {
-                        // Only primitives are tracked: a managed local is zeroed on declaration,
-                        // so reading one before a store is defined, if useless
                         match (d.type) {
                             case IrPrimType(p) { self.pending.Put(d.name, d.span); }
                             default { }
@@ -8215,7 +7618,6 @@ class DefiniteAssignment {
             }
             case IrAssign(a) {
                 self.WalkExpr(a.value);
-                // A compound assignment READS its target as well as writing it
                 if (a.op != AssignOp.Assign) { self.WalkExpr(a.target); }
                 match (a.target) {
                     case IrVar(v) { self.assigned.AddNew(v.name); }
@@ -8290,13 +7692,11 @@ class DefiniteAssignment {
                 }
                 match (m.otherwise) { case Some(d) { self.WalkStmt(IrStmt.IrBlock(d)); } case None { } }
             }
-            // A defer runs on exit, so its stores may have happened by any later read
-            case IrDefer(d2)      { self.PreAssign(d2.action); }
-            case IrReturn(r)      { match (r.value) { case Some(v) { self.WalkExpr(v); } case None { } } }
-            case IrExprStmt(es)   { self.WalkExpr(es.expr); }
+            case IrDefer(d2) { self.PreAssign(d2.action); }
+            case IrReturn(r) { match (r.value) { case Some(v) { self.WalkExpr(v); } case None { } } }
+            case IrExprStmt(es) { self.WalkExpr(es.expr); }
             case IrAssignValue(av) { self.WalkExpr(av.value); }
             case IrNativeStmt(n) {
-                // Raw C can store into anything the analysis is watching
                 let List[String] keys = self.pending.Keys();
                 let int i = 0;
                 while (i < keys.Length()) { self.assigned.AddNew(keys.Get(i)); i = i + 1; }
@@ -8316,7 +7716,6 @@ class DefiniteAssignment {
                         if (!self.assigned.Has(v.name)) {
                             self.foundNames.Add(v.name);
                             self.foundSpans.Add(TS.IsNone(v.span) ? declSpan : v.span);
-                            // Reported once: every later read would say the same thing
                             self.assigned.AddNew(v.name);
                         }
                     }
@@ -8325,7 +7724,6 @@ class DefiniteAssignment {
                 return;
             }
             case IrAddrOf(a) {
-                // Taking a variable's address hands it to something that may store through it
                 match (a.target) {
                     case IrVar(av) { self.assigned.AddNew(av.name); return; }
                     default { }
@@ -8382,12 +7780,7 @@ bool func FindStoreExpr(IrWalk[StoreFinder] w, IrExpr e) {
 
 /*
  * Finds the first expression in an unsafe block that ALLOCATES a managed value: an interpolation,
- * a 'new', or a call handing one back. Reading an existing managed binding is fine - nothing was
- * allocated, so nothing leaks.
- *
- * Two exemptions keep it quiet where it should be. A value bound to a declaration or returned is
- * owned by something, so it is not a temporary. And a block that names retain or release is being
- * counted by hand, which is exactly what 'unsafe' is for.
+ * a 'new', or a call handing one back.
  */
 class UnsafeAlloc {
     TypeResolver r;
@@ -8443,14 +7836,14 @@ class UnsafeAlloc {
      */
     public bool func Allocates(IrExpr e) {
         match (e) {
-            case IrInterp(x)             { return true; }
-            case IrNew(x)                { return true; }
-            case IrNewInit(x)            { return true; }
-            case IrStaticCall(x)         { return true; }
-            case IrInstanceCall(x)       { return true; }
-            case IrThrowsCall(x)         { return true; }
+            case IrInterp(x) { return true; }
+            case IrNew(x) { return true; }
+            case IrNewInit(x) { return true; }
+            case IrStaticCall(x) { return true; }
+            case IrInstanceCall(x) { return true; }
+            case IrThrowsCall(x) { return true; }
             case IrThrowsInstanceCall(x) { return true; }
-            case IrIndirectCall(x)       { return true; }
+            case IrIndirectCall(x) { return true; }
             default { return false; }
         }
     }
@@ -8492,10 +7885,5 @@ bool func UnsafeAllocExpr(IrWalk[UnsafeAlloc] w, IrExpr e) {
 
 /*
  * SameIrExpr - Reference identity over IR expressions, standing in for C#'s ReferenceEquals.
- *
- * The question is deliberately "is this the very same node", not "do these mean the same thing":
- * UnsafeAlloc asks whether the expression it is looking at IS the one the current statement binds.
- * Funnelled here so G083, which is right that a union compares its payload by identity, is raised
- * once rather than at the call site. Mirrors Types.Same and Monomorphizer.g's SameExpr family.
  */
 bool func SameIrExpr(IrExpr a, IrExpr b) { return a == b; }

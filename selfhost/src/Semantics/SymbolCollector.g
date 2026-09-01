@@ -1,15 +1,7 @@
 /*
- * SymbolCollector.g - pass 1: every declaration in the build, registered before anything is typed
+ * SymbolCollector.g - every declaration in the build, registered before anything is typed
  *
  * Ports Appa/src/Semantics/SymbolCollector.cs.
- *
- * The resolver needs to know that a name exists before it can check a body that uses it, and a
- * body may use a name declared in a file parsed later. So this pass walks every program first and
- * does nothing but record: what types exist, what members they have, what functions are callable,
- * and which @intrinsic/@builtin roles are bound to which emitted C symbol. It resolves no types
- * and checks no bodies - the only diagnostics it can raise are the ones answerable from a
- * declaration alone, which is why they are all duplicates, misplaced annotations, or modifiers
- * that cannot mean anything where they were written.
  */
 
 import "selfhostlib/String.g";
@@ -28,14 +20,7 @@ import "src/Semantics/TypeResolver.g";
 import "src/Backend/Mangler.g";
 
 /*
- * What pass 1 produces. The symbol table is the substance; the three sets beside it are facts the
- * later passes cannot recompute from the table alone.
- *
- *   hasInit             classes that declare '_init', so the allocator knows whether to call one
- *   preDefinedStructs   struct names the emitted C must NOT define again, because a native block
- *                       or a native type declaration already did
- *   opaqueFieldClasses  classes with a 'fields { }' block, whose members the compiler cannot see,
- *                       so an unknown member access on one is not an error
+ * What pass 1 produces.
  */
 class CollectionResult {
     public SymbolTable sym;
@@ -56,10 +41,6 @@ class CollectionResult {
 
 /*
  * Walks every parsed program and fills a SymbolTable. One instance per build; call Collect once.
- *
- * The mangler is the ONE the pipeline threads, not a fresh one: DisplayName reads the generic
- * instances the Monomorphizer stamped, so a diagnostic here says 'List[int]' rather than
- * 'List_int', and AssignCNames must agree with every other pass about what a name is emitted as.
  */
 class SymbolCollector {
     DiagnosticBag diag;
@@ -70,20 +51,16 @@ class SymbolCollector {
     StringSet declaredTypes;
     StringSet preDefinedStructs;
     StringSet opaqueFieldClasses;
-
-    // C# keeps a Dictionary<string, HashSet<...>> per class. A flat set on SymbolTable's own
-    // MemberKey says the same thing, and keeps one key convention across the two files.
-    StringSet declaredFieldNames;      // cls|field
-    StringSet declaredMethodNames;     // cls|method
-    StringSet declaredMethodSigs;      // cls|sigkey
-    StringSet declaredAsConversions;   // cls|as-sigkey
-    StringSet declaredOperatorSigs;    // cls|op|arity
-
-    StringSet declaredFuncs;           // name
-    StringSet declaredFuncSigs;        // sigkey|isEntry
-    StringSet declaredPrivateFuncSigs; // file|sigkey
-    StringSet externFuncs;             // name
-    StringMap[String] externShapes;    // name -> the signature as written
+    StringSet declaredFieldNames;
+    StringSet declaredMethodNames; 
+    StringSet declaredMethodSigs;
+    StringSet declaredAsConversions;
+    StringSet declaredOperatorSigs;
+    StringSet declaredFuncs;
+    StringSet declaredFuncSigs;
+    StringSet declaredPrivateFuncSigs;
+    StringSet externFuncs;
+    StringMap[String] externShapes;
 
     func _init(DiagnosticBag diag, Mangler mangler) {
         self.diag = diag;
@@ -119,19 +96,13 @@ class SymbolCollector {
             }
             p = p + 1;
         }
-
-        // Every bucket is complete now, so a name can finally be told whether it is overloaded,
-        // which is what decides the C name it is emitted under.
         self.sym.AssignCNames(self.mangler);
 
-        return new CollectionResult(self.sym, self.hasInit, self.preDefinedStructs,
-                                    self.opaqueFieldClasses, self.diag);
+        return new CollectionResult(self.sym, self.hasInit, self.preDefinedStructs, self.opaqueFieldClasses, self.diag);
     }
 
     /*
-     * P1Top - Dispatches one top-level item. Realms and processes are pure grouping here: pass 1
-     * records what exists, and which scope a declaration belongs to is the ScopeBinder's answer,
-     * already folded into the name by the time this runs.
+     * P1Top - Dispatches one top-level item.
      */
     void func P1Top(TopLevel item, String file) {
         match (item) {
@@ -150,7 +121,7 @@ class SymbolCollector {
                 self.ScanNativeForStructs(nb.body.c);
             }
             case NativeTypeDecl(nd) { self.P1NativeType(nd, file); }
-            case ClassDecl(cd)      { self.P1Class(cd, file); }
+            case ClassDecl(cd) { self.P1Class(cd, file); }
             case ContextDecl(ctx) {
                 let int i = 0;
                 while (i < ctx.items.Length()) { self.P1Top(ctx.items.Get(i), file); i = i + 1; }
@@ -159,7 +130,7 @@ class SymbolCollector {
                 let int i = 0;
                 while (i < proc.items.Length()) { self.P1Top(proc.items.Get(i), file); i = i + 1; }
             }
-            case FuncDecl(fd)       { self.P1Func(fd, file); }
+            case FuncDecl(fd) { self.P1Func(fd, file); }
             case ExternFuncDecl(ed) { self.P1Extern(ed, file); }
             case EnumDecl(ed) {
                 self.DeclareType(ed.name, file, ed.span);
@@ -180,9 +151,7 @@ class SymbolCollector {
     }
 
     /*
-     * DeclareType - Claims a type name for the build, reporting a duplicate. Reported but still
-     * registered by the caller, so the resolver goes on finding the type and does not pile a
-     * second wave of "undefined type" errors on top of the real one.
+     * DeclareType - Claims a type name for the build, reporting a duplicate.
      */
     void func DeclareType(String name, String file, TextSpan span) {
         if (!self.declaredTypes.AddNew(name)) {
@@ -194,11 +163,6 @@ class SymbolCollector {
     /*
      * BindIntrinsics - Binds any @intrinsic(role) or @builtin(name) on a declaration to the C name
      * the declaration is emitted under, validating the role and rejecting a double bind.
-     *
-     * This is where the compiler learns what to CALL for alloc, retain, release and the rest: it
-     * never hardcodes a runtime symbol, it emits whatever name carries the role. The allow* flags
-     * say which annotations mean anything on this kind of declaration; the ones that do not are
-     * reported here rather than being silently ignored.
      */
     void func BindIntrinsics(List[Annotation] anns, String cName, String file, TextSpan span,
                              bool allowKeep, bool allowBuiltin, bool allowShadows) {
@@ -237,7 +201,6 @@ class SymbolCollector {
                     }
                 }
                 default {
-                    // Only @preamble is left, and it belongs on a native block
                     self.diag.Error(Codes.WrongAnnotationKind(), file, span,
                         "only '@intrinsic' is valid here, not '@preamble'");
                 }
@@ -248,11 +211,9 @@ class SymbolCollector {
 
     /*
      * BindSlot - Binds one role or builtin slot to a C name. Rebinding a slot to the SAME name is
-     * silent, which is what lets a declaration be seen twice without becoming an error; binding it
-     * to a different one is not, because only one of the two could ever be called.
+     * silent, which is what lets a declaration be seen twice without becoming an error.
      */
-    void func BindSlot(StringMap[String] table, String kind, String slot, String cName,
-                       String file, TextSpan span) {
+    void func BindSlot(StringMap[String] table, String kind, String slot, String cName, String file, TextSpan span) {
         match (table.Find(slot)) {
             case Some(prev) {
                 if (prev != cName) {
@@ -269,19 +230,16 @@ class SymbolCollector {
      */
     void func P1Class(ClassDecl cd, String file) {
         self.DeclareType(cd.name, file, cd.span);
-
         self.sym.RegisterClass(cd.name, file, self.mangler);
         if (cd.isModule) { self.sym.modules.AddNew(cd.name); }
-
-        // @builtin binds to the readable Gata name, which is what the resolver compares against
         self.BindIntrinsics(cd.annotations, cd.name, file, cd.span, true, true, true);
 
         let int i = 0;
         while (i < cd.members.Length()) {
             match (cd.members.Get(i)) {
-                case FieldsBlock(fb)  { self.opaqueFieldClasses.AddNew(cd.name); }
-                case FieldDecl(fd)    { self.P1Field(cd, fd, file); }
-                case MethodDecl(md)   { self.P1Method(cd, md, file); }
+                case FieldsBlock(fb) { self.opaqueFieldClasses.AddNew(cd.name); }
+                case FieldDecl(fd) { self.P1Field(cd, fd, file); }
+                case MethodDecl(md) { self.P1Method(cd, md, file); }
                 case OperatorDecl(od) { self.P1Operator(cd, od, file); }
             }
             i = i + 1;
@@ -290,9 +248,7 @@ class SymbolCollector {
 
     /*
      * P1Field - Registers one field. A field's type has to be known now, before any body is
-     * resolved, so an inferred one is read straight off its literal initializer; anything else
-     * falls back to 'int' here and is reported as G054 by the resolver, which is the pass that
-     * can say what the initializer actually was.
+     * resolved, so an inferred one is read straight off its literal initializer.
      */
     void func P1Field(ClassDecl cd, FieldDecl fd, String file) {
         if (cd.isModule) {
@@ -350,17 +306,13 @@ class SymbolCollector {
 
         // Every member of a module is static whether or not it says so
         let bool isStatic = Mods.Has(md.modifiers, Modifiers.Static) || cd.isModule;
-        let MethodSig sig = new MethodSig(md.returnType, md.params, isStatic, md.isThrows,
-                                          md.isEntry, md.annotations, false);
+        let MethodSig sig = new MethodSig(md.returnType, md.params, isStatic, md.isThrows, md.isEntry, md.annotations, false);
         self.sym.RegisterMethod(cd.name, md.name, sig);
 
         if (!Mods.Has(md.modifiers, Modifiers.Public)) {
             self.sym.MarkPrivateMember(cd.name, md.name);
         }
 
-        // Not yet knowing whether the name is overloaded is fine: an @intrinsic names a symbol
-        // the environment calls, and a role bound to an overloaded method is not a shape any
-        // floor uses.
         self.BindIntrinsics(md.annotations,
             self.mangler.Method(cd.name, md.name, md.params, false), file, md.span,
             false, false, false);
@@ -378,10 +330,6 @@ class SymbolCollector {
 
     /*
      * P1Operator - Registers one operator overload.
-     *
-     * 'as' is the only operator that may be declared more than once on a class - one conversion
-     * per source type - so it is keyed by its parameter type where every other operator is keyed
-     * by symbol and arity. Arity is part of the key because '-' is both negation and subtraction.
      */
     void func P1Operator(ClassDecl cd, OperatorDecl od, String file) {
         let bool isAs = od.op == "as" && od.params.Length() == 1;
@@ -398,8 +346,6 @@ class SymbolCollector {
             return;
         }
 
-        // An omitted return type takes the operator's default: the class itself for the
-        // arithmetic family, bool for the comparisons.
         let Optional[TypeSpec] retType = self.OperatorReturn(od, cd.name);
         self.sym.RegisterOperator(cd.name, od.op, retType, od.params);
 
@@ -423,25 +369,19 @@ class SymbolCollector {
 
     /*
      * P1Func - Registers a free function, private or public.
-     *
-     * A generic template is skipped entirely: it has no signature until the Monomorphizer stamps
-     * it, and each stamped instance arrives here as an ordinary function.
      */
     void func P1Func(FuncDecl fd, String file) {
         if (Mods.Has(fd.modifiers, Modifiers.Static)) {
             self.diag.Error(Codes.StaticOnFreeFunc(), file, fd.span,
                 "'static' has no meaning on the free function '" +
-                self.mangler.DisplayName(fd.name) + "' — it is never an instance member");
+                self.mangler.DisplayName(fd.name) + "' - it is never an instance member");
         }
 
         if (fd.genericParams.Length() > 0) { return; }
 
-        let MethodSig sig = new MethodSig(fd.returnType, fd.params, true, fd.isThrows,
-                                          fd.isEntry, fd.annotations, false);
+        let MethodSig sig = new MethodSig(fd.returnType, fd.params, true, fd.isThrows, fd.isEntry, fd.annotations, false);
 
         if (Mods.Has(fd.modifiers, Modifiers.Private)) {
-            // Two files may each declare a private function of one name with no clash, so the
-            // declaring file is part of the key.
             if (!self.declaredPrivateFuncSigs.AddNew(MemberKey(file, SigKey.Of(fd.name, fd.params)))) {
                 self.diag.Error(Codes.DuplicateName(), file, fd.span,
                     "private function '" + self.mangler.DisplayName(fd.name) +
@@ -453,8 +393,6 @@ class SymbolCollector {
             return;
         }
 
-        // isEntry is part of the key because an entry func is emitted under a different C name,
-        // so it does not actually collide with a plain function of the same signature.
         if (!self.declaredFuncSigs.AddNew(
                 SigKey.Of(fd.name, fd.params) + "|" + (fd.isEntry as String))) {
             self.diag.Error(Codes.DuplicateName(), file, fd.span,
@@ -472,9 +410,7 @@ class SymbolCollector {
     }
 
     /*
-     * P1NativeType - Registers a native type: a C struct given a Gata name. It is a class as far
-     * as the type system is concerned, and a pre-defined struct as far as the emitter is - the C
-     * already exists, so emitting it again would be a redefinition.
+     * P1NativeType - Registers a native type: a C struct given a Gata name.
      */
     void func P1NativeType(NativeTypeDecl nd, String file) {
         self.DeclareType(nd.name, file, nd.span);
@@ -498,11 +434,6 @@ class SymbolCollector {
 
     /*
      * P1Extern - Registers an @extern forward declaration.
-     *
-     * An @extern names ONE C symbol, and is emitted verbatim so the linker can find it, so every
-     * declaration of that name has to describe the same function. Two declarations that disagree
-     * would compile and then call through the wrong signature at runtime, which is why the
-     * written shapes are compared as text rather than left to the C compiler.
      */
     void func P1Extern(ExternFuncDecl ed, String file) {
         if (self.declaredFuncs.Has(ed.name)) {
@@ -515,8 +446,7 @@ class SymbolCollector {
             self.externFuncs.AddNew(ed.name);
         }
 
-        let MethodSig sig = new MethodSig(ed.returnType, ed.params, true, false, false,
-                                          Anns.Empty(), true);
+        let MethodSig sig = new MethodSig(ed.returnType, ed.params, true, false, false, Anns.Empty(), true);
 
         let String shape = ExternShape(ed);
         match (self.externShapes.Find(ed.name)) {
@@ -535,22 +465,18 @@ class SymbolCollector {
         }
 
         self.sym.RegisterFreeFunc(ed.name, sig, file);
-
-        // The C name is the written one: an @extern is never mangled, or the linker would not
-        // find the symbol it names.
         self.BindIntrinsics(ed.annotations, ed.name, file, ed.span, false, false, true);
     }
 }
 
 /*
- * ExternShape - An extern declaration's signature as text, for comparing one declaration of a
- * name against another
+ * ExternShape - An extern declaration's signature as text, for comparing one declaration of a name against another
  */
 String func ExternShape(ExternFuncDecl ed) {
     let StringBuilder sb = new StringBuilder();
     match (ed.returnType) {
         case Some(t) { sb.Put(Specs.ToSpecString(t)); }
-        case None    { sb.Put("void"); }
+        case None { sb.Put("void"); }
     }
     sb.Put(" func ");
     sb.Put(ed.name);

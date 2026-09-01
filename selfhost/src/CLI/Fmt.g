@@ -2,10 +2,6 @@
  * Fmt.g - terminal layout: wrapping, padding, tables, and the right-justified step lines
  *
  * Ports Appa/src/CLI/Fmt.cs.
- *
- * Everything appa prints goes through here, so reproducing its output means reproducing this
- * exactly - the clamp, the gutter, and above all Visible(), which counts an SGR escape as nothing
- * because that is what the terminal does with it.
  */
 
 import "selfhostlib/String.g";
@@ -31,8 +27,6 @@ module Fmt {
      * default when there is no terminal to ask (a pipe, a test harness, a CI log)
      */
     public int func Width() {
-        // Redirected output has no window to measure, so it takes a fixed 80 rather than the
-        // terminal's - the same branch C#'s Console.IsOutputRedirected picks.
         let int w = 80;
         if (Console.IsTty()) {
             w = Console.Width();
@@ -44,23 +38,10 @@ module Fmt {
     }
 
     /*
-     * Visible - The width a string actually occupies on screen. An SGR colour escape counts as
-     * nothing, because that is what the terminal does with it.
+     * Visible - The width a string actually occupies on screen. A colour marker counts as nothing,
+     * because Console.Print consumes it rather than writing it.
      */
-    public int func Visible(String s) {
-        let int len = 0;
-        let int i = 0;
-        while (i < s.Length()) {
-            if (s.CharAt(i) == (27 as char)) {
-                while (i < s.Length() && s.CharAt(i) != 'm') { i = i + 1; }
-                i = i + 1;
-                continue;
-            }
-            len = len + 1;
-            i = i + 1;
-        }
-        return len;
-    }
+    public int func Visible(String s) { return Console.Visible(s); }
 
     /*
      * Pad - Pads to a VISIBLE width, so a column stays aligned whether or not its cells are coloured
@@ -71,8 +52,7 @@ module Fmt {
     }
 
     /*
-     * Wrap - Greedy word wrap at a visible width. Explicit newlines are honoured as paragraph
-     * breaks; everything else is free to reflow.
+     * Wrap - Greedy word wrap at a visible width.
      */
     public List[String] func Wrap(String text, int width) {
         let List[String] lines = new List[String]();

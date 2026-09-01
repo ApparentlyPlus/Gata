@@ -74,14 +74,12 @@ enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, A
 
 /*
  * The one table of user-overloadable operator shape rules: required arity, default return type,
- * and the bool/void return constraints. SymbolCollector (declaration keys and tentative
- * signatures) and TypeResolver (validation) both read it, so they cannot drift.
+ * and the bool/void return constraints.
  */
 module OperatorRules {
 
     /*
-     * RequiredArity - The parameter count the operator's declaration must have. '-' alone is
-     * dual-arity: zero parameters declares unary negation, one declares binary subtraction.
+     * RequiredArity - The parameter count the operator's declaration must have.
      */
     public int func RequiredArity(String op, int declaredParams) {
         if (op == "[]=") { return 2; }
@@ -170,9 +168,6 @@ module Ops {
     }
 
     /*
-     * AssignSym - The canonical source spelling for an assignment operator
-     */
-    /*
      * PostfixSym - The written symbol of a postfix operator, for diagnostics and for the operator
      * overload lookup, which is keyed on exactly this text
      */
@@ -181,6 +176,9 @@ module Ops {
         return "--";
     }
 
+    /*
+     * AssignSym - The canonical source spelling for an assignment operator
+     */
     public String func AssignSym(AssignOp op) {
         switch (op as int) {
             case 0  { return "="; }
@@ -199,8 +197,7 @@ module Ops {
     }
 
     /*
-     * BaseOp - The underlying binary operator a compound assignment combines with the store, or
-     * None for plain '='
+     * BaseOp - The underlying binary operator a compound assignment combines with the store, or None for plain '='
      */
     public Optional[BinOp] func BaseOp(AssignOp op) {
         switch (op as int) {
@@ -231,8 +228,6 @@ module Ops {
 
 /*
  * Structured type specifier. The parser builds it once; every later pass walks it structurally.
- * Specs.ToSpecString() reproduces the legacy flat spelling used for mangling and
- * duplicate-signature keys, so emitted C names stay byte identical.
  */
 union TypeSpec {
     NamedSpec(NamedSpec s),
@@ -243,8 +238,7 @@ union TypeSpec {
 
 /*
  * A named type: primitive, class, enum, union or generic instantiation. args holds the type
- * arguments structurally, each itself a named type. Specs.Mangled flattens the name the way the
- * rest of the compiler identifies it: Base or Base_Arg1_Arg2.
+ * arguments structurally, each itself a named type.
  */
 class NamedSpec {
     public String name;
@@ -253,15 +247,9 @@ class NamedSpec {
 
     /*
      * The scope this name was written under: ["kernel", "P"] for 'kernel.P.Config', an EMPTY
-     * list for the root scope written '::Config', None when the name was written bare. The
-     * ScopeBinder resolves it into name and clears it, so every later pass sees an ordinary
-     * flat name.
+     * list for the root scope written '::Config', None when the name was written bare.
      */
     public Optional[List[String]] scope;
-
-    // Read at least thirteen times per spec in the resolver alone, plus the parser, the binder,
-    // the monomorphizer and the symbol table - so the flattened spelling is memoized. Gata has
-    // no `??=`, so the "computed yet" bit is explicit.
     String mangled;
     bool mangledSet;
 
@@ -275,8 +263,7 @@ class NamedSpec {
     }
 
     /*
-     * Mangled - The flat spelling of this named spec, computed once and remembered. C#'s
-     * `Mangled` property; a method rather than a module function so the memo stays private.
+     * Mangled - The flat spelling of this named spec, computed once and remembered.
      */
     public String func Mangled() {
         if (!self.mangledSet) {
@@ -382,7 +369,7 @@ module Specs {
     public String func ToSpecString(TypeSpec t) {
         match (t) {
             case NamedSpec(s) { return s.Mangled(); }
-            case PtrSpec(s)   { return Specs.ToSpecString(s.inner) + "*"; }
+            case PtrSpec(s) { return Specs.ToSpecString(s.inner) + "*"; }
             case ArraySpec(s) { return "[" + s.sizeText + "]" + Specs.ToSpecString(s.elem); }
             case FuncSpec(s)  {
                 let StringBuilder sb = new StringBuilder();
@@ -404,8 +391,7 @@ module Specs {
 
 
 /*
- * A function or method parameter. isRef = true means the argument is passed by reference; the
- * call site must supply an lvalue prefixed with ref.
+ * A function or method parameter. 
  */
 class Param {
     public TypeSpec type;
@@ -442,8 +428,7 @@ union Annotation {
 }
 
 /*
- * @intrinsic(role): binds a function or method to a named compiler intrinsic. role identifies
- * which intrinsic slot this declaration fills, eg. "arc_retain".
+ * @intrinsic(role): binds a function or method to a named compiler intrinsic.
  */
 class IntrinsicAnnotation {
     public String role;
@@ -462,9 +447,7 @@ class PreambleAnnotation {
 }
 
 /*
- * @keep: exempts a class or free function from dead-code elimination and dense renaming. Use when
- * native code references the Gata-mangled name directly and the compiler cannot see that
- * reference through static analysis.
+ * @keep: exempts a class or free function from dead-code elimination and dense renaming.
  */
 class KeepAnnotation {
     public TextSpan span;
@@ -473,8 +456,7 @@ class KeepAnnotation {
 
 /*
  * @shadows: declares that this scoped declaration deliberately displaces one of the same name
- * from an enclosing scope. Shadowing is legal but never silent - unmarked, it is a hard error, so
- * a name changing meaning is always something the author wrote down.
+ * from an enclosing scope.
  */
 class ShadowsAnnotation {
     public TextSpan span;
@@ -483,8 +465,7 @@ class ShadowsAnnotation {
 
 /*
  * @builtin(name): binds a class or native type declaration to a named compiler builtin type slot
- * (eg. "String", "Process", "Thread"), the same way @intrinsic binds a role - the compiler never
- * hardcodes these names, it resolves them from this declaration.
+ * (eg. "String", "Process", "Thread"), the same way @intrinsic binds a role.
  */
 class BuiltinAnnotation {
     public String name;
@@ -508,7 +489,6 @@ module Anns {
 
     /*
      * Empty - The empty annotation list, standing in for C#'s `Annotation[]? = null` default
-     * (every consumer reads a null annotation array as no annotations)
      */
     public List[Annotation] func Empty() { return new List[Annotation](); }
 }
@@ -578,7 +558,7 @@ class FloatLitExpr {
 }
 
 /*
- * A boolean literal. value is "true" or "false".
+ * A boolean literal. 
  */
 class BoolLitExpr {
     public String value;
@@ -604,9 +584,7 @@ class NullExpr {
 }
 
 /*
- * An interpolated string. parts alternates between StrLitExpr (literal segments) and arbitrary
- * Expr (embedded expressions). Built by the parser from the InterpStrStart, StrLit,
- * brace-delimited expr, and InterpStrEnd token stream the lexer emits.
+ * An interpolated string. parts alternates between StrLitExpr (literal segments) and arbitrary Expr (embedded expressions).
  */
 class InterpStrExpr {
     public List[Expr] parts;
@@ -626,8 +604,7 @@ class IdentExpr {
 /*
  * A name reached through an explicit scope qualifier: 'kernel.Step', 'kernel.P.Config',
  * '::Helper'. path holds every dotted segment after it, because only the scope tree can tell a
- * process segment from the name or from a trailing member access. The ScopeBinder splits it and
- * rewrites the node.
+ * process segment from the name or from a trailing member access.
  */
 class ScopedNameExpr {
     public List[String] scope;
@@ -644,7 +621,7 @@ class ScopedNameExpr {
 
 /*
  * Stands in for an expression whose meaning was already reported as an error, so nothing
- * downstream invents a type for it and complains again. The AST-level twin of IrType.Error.
+ * downstream invents a type for it and complains again.
  */
 class PoisonExpr {
     public TextSpan span;
@@ -722,9 +699,7 @@ class IndexExpr {
 }
 
 /*
- * 'Name[Args]' where a value is expected, as in 'Maybe[int].Found(7)'. With one identifier in the
- * brackets this is the same tokens as an index, so the parser keeps both readings - args and
- * indexForm - and the resolver picks, knowing what is in scope.
+ * 'Name[Args]' where a value is expected, as in 'Maybe[int].Found(7)'.
  */
 class GenericTypeRefExpr {
     public String name;
@@ -800,8 +775,7 @@ class PostfixExpr {
 }
 
 /*
- * Object construction. args holds constructor arguments for class instantiation; collectionInit
- * holds the bracketed element list for collection construction.
+ * Object construction.
  */
 class NewExpr {
     public TypeSpec type;
@@ -835,8 +809,7 @@ class AddrOfExpr {
 }
 
 /*
- * A ref argument at a call site, eg. ref x. Passes an lvalue by reference. Only legal as a direct
- * call argument, not in any other expression position.
+ * A ref argument at a call site, eg. ref x. Passes an lvalue by reference.
  */
 class RefArgExpr {
     public Expr target;
@@ -916,12 +889,6 @@ module Exprs {
     /*
      * Written - The reference as written, e.g. Maybe[int] - for diagnostics, which must never
      * show a mangled name for a type the author never spelled that way.
-     *
-     * Each argument goes through Mangler.DisplayName, which unflattens a nested instance
-     * argument back to bracket form, so 'Map[List[int], String]' reads that way rather than as
-     * 'Map[List_int, String]'. C#'s Mangler is static and reads a global name table; here it is
-     * an instance, so the caller passes the ONE mangler the pipeline threads - a fresh one has
-     * no stamped instances and would silently fall back to the flat spelling.
      */
     public String func Written(GenericTypeRefExpr g, Mangler m) {
         let StringBuilder sb = new StringBuilder();
@@ -986,8 +953,7 @@ class NativeStmt {
 }
 
 /*
- * A local variable declaration. type is None when the type is inferred from the initializer.
- * init is None for declarations without an initializer.
+ * A local variable declaration. 
  */
 class LetStmt {
     public Optional[TypeSpec] type;
@@ -1003,8 +969,7 @@ class LetStmt {
 }
 
 /*
- * An assignment statement. op is the assignment operator kind (plain '=' or a compound form).
- * target must be an lvalue expression.
+ * An assignment statement. 
  */
 class AssignStmt {
     public Expr target;
@@ -1029,7 +994,7 @@ class ExprStmt {
 }
 
 /*
- * An if/else statement. otherwise is None when there is no else branch.
+ * An if/else statement.
  */
 class IfStmt {
     public Expr cond;
@@ -1059,8 +1024,7 @@ class WhileStmt {
 }
 
 /*
- * A C-style for loop. init, cond, and step are all optional. init and step are statements so both
- * clauses accept a plain or compound assignment as well as an expression.
+ * A C-style for loop.
  */
 class ForStmt {
     public Optional[Stmt] init;
@@ -1078,7 +1042,7 @@ class ForStmt {
 }
 
 /*
- * A for-in loop that iterates over a collection. varName is the loop variable name.
+ * A for-in loop that iterates over a collection.
  */
 class ForInStmt {
     public String varName;
@@ -1094,7 +1058,7 @@ class ForInStmt {
 }
 
 /*
- * A return statement. value is None for void returns.
+ * A return statement.
  */
 class ReturnStmt {
     public Optional[Expr] value;
@@ -1119,8 +1083,7 @@ class ContinueStmt {
 }
 
 /*
- * A try/catch statement for Result-based error propagation. The catch block receives control when
- * the try block throws.
+ * A try/catch statement for Result-based error propagation.
  */
 class TryCatchStmt {
     public Block tryBlock;
@@ -1134,8 +1097,7 @@ class TryCatchStmt {
 }
 
 /*
- * A switch statement. cases is the list of arms; otherwise is the optional fallback block. There
- * is no fallthrough: break and continue inside a case target the enclosing loop.
+ * A switch statement. cases is the list of arms; otherwise is the optional fallback block.
  */
 class SwitchStmt {
     public Expr scrutinee;
@@ -1165,8 +1127,7 @@ class SwitchCase {
 }
 
 /*
- * A match statement that scrutinizes a union value by variant. Each case binds the variant's
- * fields as locals in its body. otherwise is the optional fallback block.
+ * A match statement that scrutinizes a union value by variant.
  */
 class MatchStmt {
     public Expr scrutinee;
@@ -1208,8 +1169,7 @@ class UnsafeBlock {
 }
 
 /*
- * A defer statement. action runs on every exit from the enclosing block, in LIFO order with other
- * defers. action may not itself transfer control.
+ * A defer statement.
  */
 class DeferStmt {
     public Stmt action;
@@ -1227,8 +1187,7 @@ class ThrowStmt {
 
 /*
  * `assign expr;` supplies the replacement value for the declaration a `catch` handler is attached
- * to, then resumes after it. Its own keyword rather than `return`, so it can never be misread as
- * returning out of the enclosing function.
+ * to, then resumes after it.
  */
 class AssignValueStmt {
     public Expr value;
@@ -1238,7 +1197,7 @@ class AssignValueStmt {
 
 /*
  * A debug statement. raw is the raw string literal including quotes. Lowered to the environment's
- * debug binding. Hard error in a release build.
+ * debug binding.
  */
 class DebugStmt {
     public String raw;
@@ -1248,7 +1207,7 @@ class DebugStmt {
 
 /*
  * A panic statement. raw is the raw string literal including quotes. Lowered to the environment's
- * panic binding. Only legal in kernel context. Hard error in a release build.
+ * panic binding. Only legal in kernel context.
  */
 class PanicStmt {
     public String raw;
@@ -1346,8 +1305,7 @@ class FieldsBlock {
 }
 
 /*
- * A Gata field declaration. init is the optional initializer expression; type is None when
- * inferred.
+ * A Gata field declaration.
  */
 class FieldDecl {
     public Modifiers modifiers;
@@ -1365,9 +1323,7 @@ class FieldDecl {
 }
 
 /*
- * A method declaration inside a class or module. isEntry marks it as a thread entry point; throws
- * means it participates in the Result error-propagation protocol. genericParams empty = ordinary
- * method; non-empty = generic, monomorphized per call site like a generic free function.
+ * A method declaration inside a class or module.
  */
 class MethodDecl {
     public Modifiers modifiers;
@@ -1434,14 +1390,11 @@ module Members {
 
 
 /*
- * A thread inside a process, pointing at exactly one entry function. Deployment mode belongs to
- * the process, so mode is Some only when the source invalidly wrote one before 'thread' - which
- * the resolver rejects as G043.
+ * A thread inside a process, pointing at exactly one entry function.
  */
 class ThreadDecl {
     public String name;
     public Optional[String] mode;
-    // Named entryFunc, not entry: 'entry' is a reserved keyword.
     public EntryFuncDecl entryFunc;
     public TextSpan span;
     func _init(String name, Optional[String] mode, EntryFuncDecl entryFunc, TextSpan span) {
@@ -1492,8 +1445,7 @@ union TopLevel {
 }
 
 /*
- * import "path" or import name. Pulls another Gata source file into the build. isPath
- * distinguishes a filesystem path (true) from a bare module name (false).
+ * import "path" or import name.
  */
 class ImportDecl {
     public String name;
@@ -1507,8 +1459,7 @@ class ImportDecl {
 }
 
 /*
- * Marks exactly one file in the build as the environment definition. The environment file
- * provides the intrinsic bindings (I/O, ARC, panic) for the target.
+ * Marks exactly one file in the build as the environment definition.
  */
 class EnvironmentDecl {
     public TextSpan span;
@@ -1516,8 +1467,7 @@ class EnvironmentDecl {
 }
 
 /*
- * A native { ... } block containing raw C source captured verbatim. Routed to the kernel and/or
- * user translation unit(s) by its enclosing context.
+ * A native { ... } block containing raw C source captured verbatim.
  */
 class NativeBlock {
     public NativeBody body;
@@ -1531,9 +1481,7 @@ class NativeBlock {
 }
 
 /*
- * class or module declaration. isModule = true means all members are implicitly static, meaning
- * no self parameter, no instances. genericParams non-empty makes it a generic class monomorphized
- * per concrete type argument set.
+ * class or module declaration.
  */
 class ClassDecl {
     public String name;
@@ -1542,8 +1490,6 @@ class ClassDecl {
     public List[ClassMember] members;
     public TextSpan span;
     public bool isModule;
-
-    // The template this declaration was stamped from; equal to name for a non-generic class.
     public String baseName;
 
     func _init(String name, List[String] genericParams, List[Annotation] annotations,
@@ -1559,8 +1505,7 @@ class ClassDecl {
 }
 
 /*
- * realm kernel { ... } or realm userspace { ... } block. Groups top-level declarations that belong
- * to one execution environment, which decides the translation unit they are emitted into.
+ * realm kernel { ... } or realm userspace { ... } block.
  */
 class ContextDecl {
     public Realm kind;
@@ -1574,9 +1519,7 @@ class ContextDecl {
 }
 
 /*
- * A free function declaration. genericParams empty = ordinary function; non-empty = generic
- * template monomorphized per call site with type arguments inferred from the argument types.
- * isEntry marks it as a thread entry point; isThrows means it may propagate a Result error.
+ * A free function declaration.
  */
 class FuncDecl {
     public Modifiers modifiers;
@@ -1606,16 +1549,13 @@ class FuncDecl {
 }
 
 /*
- * A process declaration is pure deployment topology. A process is a named bag of threads; it holds
- * no logic of its own. mode is the deployment mode ("foreground" or "background").
+ * A process declaration is pure deployment topology.
  */
 class ProcessDecl {
     public String name;
     public String mode;
     public List[ThreadDecl] threads;
     public TextSpan span;
-
-    // The process's own declarations (classes, functions, process variables), empty by default.
     public List[TopLevel] items;
 
     func _init(String name, String mode, List[ThreadDecl] threads, TextSpan span) {
@@ -1647,7 +1587,7 @@ class ProcessVarDecl {
 
 /*
  * An extern function pre-declaration that tells the compiler a C function exists so it can be
- * called from Gata without a Gata body. Translated to a forward prototype in the backend.
+ * called from Gata without a Gata body.
  */
 class ExternFuncDecl {
     public Optional[TypeSpec] returnType;
@@ -1666,8 +1606,7 @@ class ExternFuncDecl {
 }
 
 /*
- * native type Name { C body }. It registers a C struct as a named Gata type. The cBody is emitted
- * verbatim as a typedef; the name becomes resolvable in type positions.
+ * native type Name { C body }. It registers a C struct as a named Gata type.
  */
 class NativeTypeDecl {
     public String name;
@@ -1683,8 +1622,7 @@ class NativeTypeDecl {
 }
 
 /*
- * enum Name { A, B = 2, C } is a distinct integer-backed type with named members. Members may
- * carry explicit integer values; unspecified members follow C's increment rule.
+ * enum Name { A, B = 2, C } is a distinct integer-backed type with named members.
  */
 class EnumDecl {
     public String name;
@@ -1700,7 +1638,7 @@ class EnumDecl {
 }
 
 /*
- * One member of an enum. value is None when the member takes the implicit next integer.
+ * One member of an enum.
  */
 class EnumMember {
     public String name;
@@ -1714,9 +1652,7 @@ class EnumMember {
 }
 
 /*
- * A tagged union; each variant carries named fields or no payload, lowered to a tag enum plus a C
- * union. genericParams is non-empty for a template, which the Monomorphizer replaces with one
- * stamped UnionDecl per instantiation.
+ * A tagged union; each variant carries named fields or no payload, lowered to a tag enum plus a C union.
  */
 class UnionDecl {
     public String name;
@@ -1724,8 +1660,6 @@ class UnionDecl {
     public List[UnionVariant] variants;
     public TextSpan span;
     public List[Annotation] annotations;
-
-    // The template this declaration was stamped from; equal to name for a non-generic union.
     public String baseName;
 
     func _init(String name, List[String] genericParams, List[UnionVariant] variants,
@@ -1740,7 +1674,7 @@ class UnionDecl {
 }
 
 /*
- * One variant of a union. fields is empty for a payload-free variant like Point.
+ * One variant of a union.
  */
 class UnionVariant {
     public String name;
@@ -1778,9 +1712,7 @@ module Tops {
 
 
 /*
- * A generic instantiation site found during parsing, telling the Monomorphizer which concrete
- * copies to stamp. args is mangled ("int"); argSpecs keeps the same arguments unflattened, so
- * substituting inside them is structural rather than string surgery.
+ * A generic instantiation site found during parsing, telling the Monomorphizer which concrete copies to stamp.
  */
 class GenericUse {
     public String base;
@@ -1806,8 +1738,7 @@ class Program {
     public List[GenericUse] genericUses;
 
     /*
-     * True when the file writes a scope qualifier anywhere. Lets the ScopeBinder keep its
-     * do-nothing path for a program that declares nothing scoped and names nothing scoped.
+     * True when the file writes a scope qualifier anywhere.
      */
     public bool hasScopedRefs;
 

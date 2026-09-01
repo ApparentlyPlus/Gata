@@ -11,8 +11,7 @@ import "src/Syntax/Ast.g";
 module SigKey {
 
     /*
-     * Of - The key for a declaration written with a parameter list. Ref-ness is not part of it,
-     * matching the overload rule: two functions differing only in 'ref' are one signature.
+     * Of - The key for a declaration written with a parameter list.
      */
     public String func Of(String name, List[Param] ps) {
         let StringBuilder sb = new StringBuilder();
@@ -29,9 +28,7 @@ module SigKey {
     }
 
     /*
-     * ShapeString - A type spec's shape, rendered so two specs render alike exactly when SameShape
-     * accepts them. Every construct is bracketed, so no name containing a delimiter can spell
-     * another shape's rendering.
+     * ShapeString - A type spec's shape, rendered so two specs render alike exactly when SameShape accepts them.
      */
     public String func ShapeString(TypeSpec t) {
         match (t) {

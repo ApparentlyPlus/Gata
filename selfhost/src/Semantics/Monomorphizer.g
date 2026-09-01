@@ -31,10 +31,7 @@ class GenericSeed {
     public String file;
 
     /*
-     * The module scope in force where the instantiation was discovered. Carried rather than
-     * recovered from file, because the discovery happens while resolving a stamped generic body,
-     * whose file is the template's - the type argument came from somewhere that file need never
-     * import. The stamped instance is resolved under this.
+     * The module scope in force where the instantiation was discovered.
      */
     public List[String] scope;
 
@@ -61,16 +58,12 @@ class SubstitutionContext {
     public StringMap[String] cMap;
 
     /*
-     * Rewrites the base name of a generic reference: 'Box[int]' inside a realm declaring Box means
-     * 'Box@kernel[int]'. specMap binds whole types and cannot say this. Empty for
-     * monomorphization, where a template's base is never scoped.
+     * Rewrites the base name of a generic reference
      */
     public StringMap[String] nameMap;
 
     /*
-     * Also rewrite bare identifiers naming a substituted type, not just type positions. Off for
-     * monomorphization, where an identifier spelled like a type parameter is a variable; on for
-     * scope binding, where 'Tagged.Ident(...)' has to follow 'let Tagged x'.
+     * Also rewrite bare identifiers naming a substituted type, not just type positions.
      */
     public bool rewriteTypeNames;
 
@@ -147,8 +140,7 @@ class SubstitutionContext {
 
     /*
      * SubWords - Substitutes type parameters in raw native C text, replacing whole words that match
-     * a type parameter with its concrete C type. Native bodies are the one place where substitution
-     * is genuinely textual. Everything else is rewritten structurally.
+     * a type parameter with its concrete C type.
      */
     public String func SubWords(String text) {
         let List[String] keys = self.cMap.Keys();
@@ -180,8 +172,7 @@ class SubstitutionContext {
     }
 
     /*
-     * SubType - Structurally substitutes type parameters in a type spec tree. Returns the same
-     * reference when nothing changed so callers can cheaply detect no-ops.
+     * SubType - Structurally substitutes type parameters in a type spec tree.
      */
     public TypeSpec func SubType(TypeSpec t) {
         match (t) {
@@ -261,9 +252,7 @@ class SubstitutionContext {
     }
 
     /*
-     * SubArg - Substitutes one generic argument slot. Argument slots hold named types only, so a
-     * binding to a non named spec (like a pointer bound by generic-function inference) folds to its
-     * sanitized mangled fragment to stay a valid slot.
+     * SubArg - Substitutes one generic argument slot.
      */
     NamedSpec func SubArg(NamedSpec a) {
         let TypeSpec sub = self.SubType(TypeSpec.NamedSpec(a));
@@ -292,8 +281,7 @@ class GenericRequest {
 
 /*
  * A generic template, either a class or a union. Both are stamped through the same worklist so one
- * can reach the other - a union variant holding a List[T], a class field holding a Maybe[T] - and
- * so the two share one namespace for duplicate detection.
+ * can reach the other.
  */
 class Template {
     public TopLevel decl;
@@ -332,8 +320,7 @@ class Monomorphizer {
 
     /*
      * Process - Stamps a concrete class per distinct instantiation breadth-first, rewriting each
-     * program's items to replace templates with instances. A use deferred because one template
-     * reaches another through its own parameters replays once its owner is stamped.
+     * program's items to replace templates with instances.
      */
     public StringMap[String] func Process(List[ProgramFile] programs, List[GenericSeed] seeds) {
         let StringMap[Template] templates = new StringMap[Template]();
@@ -611,8 +598,7 @@ class Monomorphizer {
 
     /*
      * SubstituteArgs - Rewrites a deferred use's type arguments against its owner's bindings, so
-     * 'List[T]' in 'Foo[T]' becomes 'List[int]' when Foo[int] is stamped. Structural where the
-     * parse kept the shape, since a whole-string lookup only catches a bare parameter.
+     * 'List[T]' in 'Foo[T]' becomes 'List[int]' when Foo[int] is stamped.
      */
     List[String] func SubstituteArgs(GenericUse du, StringMap[String] binds) {
         let List[NamedSpec] specs = null;
@@ -654,8 +640,7 @@ class Monomorphizer {
 
     /*
      * Instantiate - Clones a generic template with concrete type arguments, substituting type
-     * parameters throughout signatures, native fields, and statement bodies. Fills `binds` with the
-     * parameter-to-argument mapping the deferred replay needs.
+     * parameters throughout signatures, native fields, and statement bodies.
      */
     TopLevel func Instantiate(Template tmpl, List[String] args, String mangled, StringMap[String] binds) {
         let StringMap[TypeSpec] specMap = new StringMap[TypeSpec]();
@@ -692,9 +677,6 @@ class Monomorphizer {
 /*
  * CTypeOf - The C-type spelling for a Gata type argument, used when substituting type parameters
  * inside native struct fields and native bodies.
- *
- * A free function rather than a method because it needs nothing but the mangler, and the
- * TypeResolver has to answer the same question when it stamps an instance of its own.
  */
 String func CTypeOf(TypeSpec t, Mangler m) {
     match (t) {
@@ -707,7 +689,6 @@ String func CTypeOf(TypeSpec t, Mangler m) {
             if (name == BuiltinTypes.Process() || name == BuiltinTypes.Thread()) { return "void*"; }
             return m.Class(name) + "*";
         }
-        // Array/function specs cannot appear as generic type arguments.
         default { return Specs.ToSpecString(t); }
     }
 }
@@ -912,10 +893,6 @@ List[Expr] func SubExprList(List[Expr] xs, SubstitutionContext ctx) {
 /*
  * SubStmt - Substitutes type parameters in a single statement, recursively processing any nested
  * statements or expressions.
- *
- * The match is exhaustive on purpose: C# guards its default arm with a DEBUG-only assertion that a
- * statement reaching it has nothing to substitute, and an exhaustive match makes a new statement
- * kind a compile error instead.
  */
 Stmt func SubStmt(Stmt s, SubstitutionContext ctx) {
     match (s) {
@@ -1080,12 +1057,12 @@ Stmt func SubStmt(Stmt s, SubstitutionContext ctx) {
         }
 
         // Nothing to substitute in any of these.
-        case NativeStmt(x)   { return s; }
-        case BreakStmt(x)    { return s; }
+        case NativeStmt(x) { return s; }
+        case BreakStmt(x) { return s; }
         case ContinueStmt(x) { return s; }
-        case ThrowStmt(x)    { return s; }
-        case DebugStmt(x)    { return s; }
-        case PanicStmt(x)    { return s; }
+        case ThrowStmt(x) { return s; }
+        case DebugStmt(x) { return s; }
+        case PanicStmt(x) { return s; }
     }
 }
 
@@ -1235,14 +1212,13 @@ Expr func SubExpr(Expr e, SubstitutionContext ctx) {
             return Expr.DefaultExpr(new DefaultExpr(nt, de.span));
         }
 
-        // Literals and the poison node: nothing to substitute.
-        case IntLitExpr(x)   { return e; }
-        case CharLitExpr(x)  { return e; }
+        case IntLitExpr(x) { return e; }
+        case CharLitExpr(x) { return e; }
         case FloatLitExpr(x) { return e; }
-        case BoolLitExpr(x)  { return e; }
-        case StrLitExpr(x)   { return e; }
-        case NullExpr(x)     { return e; }
-        case PoisonExpr(x)   { return e; }
+        case BoolLitExpr(x) { return e; }
+        case StrLitExpr(x) { return e; }
+        case NullExpr(x) { return e; }
+        case PoisonExpr(x) { return e; }
     }
 }
 
@@ -1347,7 +1323,7 @@ TypeSpec func SpecOf(IrType t) {
 
 /*
  * SanitizeTypeName - Reduces a type name to a valid C-identifier fragment for use in mangled
- * generic names. Pointer stars become "_p"; all other non-identifier characters are dropped.
+ * generic names.
  */
 String func SanitizeTypeName(TypeSpec t) {
     let StringBuilder sb = new StringBuilder();
@@ -1396,9 +1372,7 @@ void func AppendIdentifierChars(StringBuilder sb, String s) {
 }
 
 /*
- * EachDecl - Every declaration in a program, descending into realm and process bodies. The single
- * walk shared by template collection, owner lookup, the splice and the reference-cycle report, so
- * a declaration form one of them can see is never one another silently cannot.
+ * EachDecl - Every declaration in a program, descending into realm and process bodies.
  */
 List[TopLevel] func EachDecl(List[TopLevel] items) {
     let List[TopLevel] out = new List[TopLevel]();
@@ -1448,8 +1422,6 @@ bool func Within(TextSpan inner, TextSpan outer) {
 
 /*
  * MentionsParam - True if any type argument mentions one of the given parameters, at any depth.
- * Testing whether an argument *is* one caught 'List[T]' in 'Foo[T]' but not 'List[Node[T]]' in
- * 'Node[T]'; requiring *every* argument to be one missed 'Pair[T, int]'.
  */
 bool func MentionsParam(GenericUse use, List[String] parameters) {
     if (parameters.Length() == 0) { return false; }
@@ -1520,9 +1492,7 @@ Optional[Block] func SubOptBlock(Optional[Block] b, SubstitutionContext ctx) {
 }
 
 /*
- * The identity comparisons standing in for C#'s ReferenceEquals. A union holding one class
- * reference compares by exactly that identity, so each of these is the reference check C# writes -
- * funnelled to one site per union so G083, which is right, is raised once rather than everywhere.
+ * The identity comparisons standing in for C#'s ReferenceEquals.
  */
 bool func SameSpec(TypeSpec a, TypeSpec b) { return a == b; }
 bool func SameExpr(Expr a, Expr b) { return a == b; }

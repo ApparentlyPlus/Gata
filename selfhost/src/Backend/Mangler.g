@@ -22,22 +22,10 @@ module Mangle {
      */
     public String func KernelEntry() { return "gata_kernelspace_main"; }
 
-    /*
+    
     /*
      * IsCReserved - True if the name is a C keyword or a standard macro behaving like one, and so
-     * cannot stand as an identifier in emitted C. For the names this compiler cannot rename because
-     * the author pinned them to C text of their own.
-     *
-     * The list is the one in Appa/src/Backend/Mangler.cs and has to stay identical to it: the two
-     * compilers disagreeing about what C reserves means one of them emits a name the preprocessor
-     * eats. The Windows entries are not optional decoration - windows.h defines 'cdecl', 'IN',
-     * 'min' and the rest as object-like macros, so a Gata local of that name vanishes under MinGW
-     * while compiling clean on Linux.
-     *
-     * C# holds this as a FrozenSet; a Gata module cannot hold state, so the set is spelled out.
-     * Dispatching on the first character first keeps that from being 130 string compares per
-     * emitted local - the common case is an identifier whose initial matches no group at all, and
-     * that answers in one switch.
+     * cannot stand as an identifier in emitted C.
      */
     public bool func IsCReserved(String name) {
         if (name.Length() == 0) { return false; }
@@ -174,9 +162,7 @@ module Mangle {
     }
 
     /*
-     * Local - The C spelling of a local or parameter name. Names printed as written can collide
-     * with C's vocabulary; those get a trailing underscore. Apply at every site that prints the
-     * name.
+     * Local - The C spelling of a local or parameter name.
      */
     public String func Local(String name) {
         return Mangle.IsCReserved(name) ? name + "_" : name;
@@ -196,8 +182,7 @@ module Mangle {
     public bool func IsReservedLocal(String name) { return name.StartsWith("__"); }
 
     /*
-     * Hash - A stable 8-hex C-identifier fragment derived from a string via 32-bit FNV-1a. Stable
-     * across builds and machines, which matters because it ends up in emitted C.
+     * Hash - A stable 8-hex C-identifier fragment derived from a string via 32-bit FNV-1a.
      */
     public String func Hash(String s) { return FnvHash(s); }
 
@@ -249,9 +234,7 @@ module Mangle {
     }
 
     /*
-     * MangleTypeName - Converts a Gata type name to a C-identifier fragment. Every non-identifier
-     * character becomes a separating underscore (collapsed to prevent runs); pointer stars become
-     * _p markers so distinct pointer types never collapse to the same suffix.
+     * MangleTypeName - Converts a Gata type name to a C-identifier fragment.
      */
     public String func MangleTypeName(String t) {
         let String s = t.Trim();
@@ -344,9 +327,7 @@ class Mangler {
 
     /*
      * GenericInstance - Composes the internal name of a generic instantiation: ("List", ["int"]) is
-     * "List_int". The single place this rule is spelled, so no caller's own concatenation can drift
-     * from it - and the composed key is filed here, which is what later lets DisplayName spell a
-     * flat name back as 'List[int]'.
+     * "List_int".
      */
     public String func GenericInstance(String baseName, List[String] args) {
         let StringBuilder sb = new StringBuilder();
@@ -371,8 +352,7 @@ class Mangler {
 
     /*
      * TryGetGenericInstance - The base name and type arguments of a STAMPED generic instance, such
-     * as Map_int_String, which yields ("Map", ["int", "String"]). Structural consumers
-     * (generic-function type inference) use this instead of re-splitting the mangled string.
+     * as Map_int_String, which yields ("Map", ["int", "String"]).
      */
     public Optional[GenericKey] func TryGetGenericInstance(String mangled) {
         return self.names.stamped.Find(mangled);
@@ -385,8 +365,7 @@ class Mangler {
 
     /*
      * TrySplitInstance - Splits a mangled instance name back into the template it instantiates and
-     * its arguments, for a name that reached a pass already flattened. The split is the key filed
-     * when the name was composed, so a base or an argument containing an underscore costs nothing.
+     * its arguments, for a name that reached a pass already flattened.
      */
     public Optional[GenericKey] func TrySplitInstance(String mangled) {
         match (self.names.composed.Find(mangled)) {
@@ -415,8 +394,7 @@ class Mangler {
     }
 
     /*
-     * ScopedKind - What a scope-qualified name was declared as, or None when nothing scoped
-     * declares it
+     * ScopedKind - What a scope-qualified name was declared as, or None when nothing scoped declares it
      */
     public Optional[String] func ScopedKind(String qualified) {
         match (self.names.scopes) {
@@ -426,8 +404,7 @@ class Mangler {
     }
 
     /*
-     * ScopedCandidates - The readable paths of every scope declaring this bare name, ordinally
-     * sorted. Empty when nothing scoped declares it, which is the ordinary case.
+     * ScopedCandidates - The readable paths of every scope declaring this bare name, ordinally sorted.
      */
     public List[String] func ScopedCandidates(String bare) {
         match (self.names.scopes) {
@@ -452,8 +429,7 @@ class Mangler {
     }
 
     /*
-     * IsScoped - True when a scope declares this exact qualified name, as opposed to it merely
-     * containing one
+     * IsScoped - True when a scope declares this exact qualified name, as opposed to it merely containing one
      */
     bool func IsScoped(String name) {
         match (self.names.scopes) {
@@ -572,7 +548,7 @@ class Mangler {
 
     /*
      * ProcessStateInit - The C name of the generated function that assigns a process's variables
-     * their initial values. External linkage: the launcher lives in its own translation unit.
+     * their initial values.
      */
     public String func ProcessStateInit(String procFull) {
         return "gata_" + self.Sanitize(procFull) + "_state_init";
@@ -604,8 +580,7 @@ class Mangler {
 
     /*
      * UnionRetain - The C name of a managed union's generated retain, which switches on the tag and
-     * returns the union unchanged so it composes like the runtime intrinsic. Not densified, since
-     * unions keep their readable typedef name and one type must be spelled one way.
+     * returns the union unchanged so it composes like the runtime intrinsic.
      */
     public String func UnionRetain(String name) { return "gata_" + self.Sanitize(name) + "__retain"; }
 
@@ -630,8 +605,7 @@ class Mangler {
     }
 
     /*
-     * FreeFunc - The C function name for a free function. Entry functions use the kernel entry
-     * constant; extern functions use their bare C name; all others get the gata_ prefix.
+     * FreeFunc - The C function name for a free function.
      */
     public String func FreeFunc(String name, List[Param] ps, bool overloaded, bool isEntry, bool isExtern) {
         if (isEntry) { return Mangle.KernelEntry(); }
@@ -650,9 +624,7 @@ class Mangler {
     }
 
     /*
-     * Operator - The C name for an operator overload. 'overloaded' appends a disambiguating suffix
-     * - only 'as' can have more than one per class today, distinguished by parameter type as every
-     * other parameterized overload already is.
+     * Operator - The C name for an operator overload.
      */
     public String func Operator(String owner, String op, List[Param] ps, bool overloaded) {
         let String bare = "gata_" + self.Sanitize(owner) + "_" + Mangle.OpSuffix(op);
@@ -663,8 +635,6 @@ class Mangler {
 
     /*
      * CType - The C spelling of an IR type under the current naming, composed on first ask.
-     * Replaces the ComposeCType that lived on IrType in C#; it has to live here because every
-     * named case consults the dense map, and Ir.g must not depend on the NameTable.
      */
     public String func CType(IrType t) {
         let String key = Types.Key(t);
@@ -678,8 +648,7 @@ class Mangler {
     }
 
     /*
-     * ComposeCType - Composes the C type spelling from scratch. Reached once per type per naming
-     * round.
+     * ComposeCType - Composes the C type spelling from scratch. Reached once per type per naming round.
      */
     String func ComposeCType(IrType t) {
         match (t) {

@@ -2,18 +2,6 @@
  * CodeWriter.g - the indented text buffer every emitted translation unit is built in
  *
  * Ports Appa/src/Backend/CodeWriter.cs.
- *
- * PORTING NOTE. C# expresses indentation with two `IDisposable` structs used through `using`:
- * `Scope` (a block that dedents and writes its closer on dispose) and `Pending` (a line whose
- * newline is written on dispose, so a caller can compose straight into the writer's buffer).
- * Gata has neither `using` nor destructors that run at scope exit, so both become explicit pairs:
- *
- *   using (w.Block("if (x) {"))   ->   w.Block("if (x) {");  ...  w.End("}");
- *   using (w.Braces())            ->   w.Braces();           ...  w.EndBrace();
- *   using (var l = w.Open())      ->   w.Open();  w.Put(...);  w.Close();
- *
- * Every call site in Emitter.g and Layout.g is written as such a pair. The one thing lost is the
- * compiler enforcing the closer, so the pairs are kept adjacent and short.
  */
 
 import "selfhostlib/String.g";
@@ -82,9 +70,7 @@ class CodeWriter {
     }
 
     /*
-     * Open - Begins a line composed in pieces. The indent is written now and the newline by Close,
-     * so a caller writes straight into the buffer rather than building a string of its own first.
-     * The text written must not contain a newline; use Line for anything multi-line.
+     * Open - Begins a line composed in pieces.
      */
     public void func Open() { self.WriteIndent(); }
 

@@ -12,8 +12,7 @@ import "src/Diagnostics/Diagnostic.g";
 import "src/Syntax/Token.g";
 
 /*
- * Converts a Gata source string into a flat list of tokens. One instance per file. Call Tokenize()
- * once and discard.
+ * Converts a Gata source string into a flat list of tokens.
  */
 class Lexer {
     String src;
@@ -139,7 +138,6 @@ class Lexer {
      * ReadOne - Reads the next token from the source string and adds it to the token list
      */
     throws void func ReadOne() {
-        // Whitespace
         if (IsWhiteSpace(self.CurChar())) { self.Advance(); return; }
 
         if (self.CurChar() == '/' && self.PeekChar() == '/') {
@@ -195,8 +193,6 @@ class Lexer {
                 self.SkipWS();
                 if (self.CurChar() == '{' && tname.Length() > 0) {
                     let String body = self.ReadBalanced();
-
-                    // C#'s "\x1F" (ASCII Unit Separator) isn't spellable as a Gata string escape
                     self.Emit(TK.NativeTypeDecl, tname + String.FromChar(31 as char) + body);
                     return;
                 }
@@ -262,7 +258,6 @@ class Lexer {
             }
             if (self.PeekChar() == '=') { self.Advance(2); self.Emit(TK.GtEq, ">="); return; }
         } else if (self.CurChar() == ':') {
-            // '::' names the root scope
             if (self.PeekChar() == ':') { self.Advance(2); self.Emit(TK.ColonColon, "::"); return; }
         }
 
@@ -305,14 +300,12 @@ class Lexer {
     void func SkipWS() { while (self.pp < self.src.Length() && IsWhiteSpace(self.CurChar())) { self.Advance(); } }
 
     /*
-     * ReadParenArg - Reads the required (identifier) argument after an annotation keyword, like
-     * @intrinsic(retain). A missing, empty, or unclosed argument list is a lex-time error.
+     * ReadParenArg - Reads the required (identifier) argument after an annotation keyword, like @intrinsic(retain).
      */
     throws String func ReadParenArg(String ann) {
         self.SkipWS();
         if (self.CurChar() != '(') {
-            self.FailHint("'" + ann + "' requires a parenthesized argument", Codes.BadAnnotation(),
-                          HintList.Of1("e.g. " + ann + "(name)"));
+            self.FailHint("'" + ann + "' requires a parenthesized argument", Codes.BadAnnotation(), HintList.Of1("e.g. " + ann + "(name)"));
         }
         self.Advance();
         self.SkipWS();
@@ -321,8 +314,7 @@ class Lexer {
         while (self.pp < self.src.Length() && IsIdentPart(self.CurChar())) { self.Advance(); }
         let String arg = self.src.Substring(s, self.pp - s);
         if (arg.Length() == 0) {
-            self.FailHint("'" + ann + "' argument must be a name", Codes.BadAnnotation(),
-                          HintList.Of1("e.g. " + ann + "(name)"));
+            self.FailHint("'" + ann + "' argument must be a name", Codes.BadAnnotation(), HintList.Of1("e.g. " + ann + "(name)"));
         }
         self.SkipWS();
         if (self.CurChar() != ')') {
@@ -333,9 +325,7 @@ class Lexer {
     }
 
     /*
-     * ReadBalanced - Reads a balanced block of text enclosed in braces '{' and '}'. Understands C
-     * style line comments, block comments, and string/char literals so a brace inside any of those
-     * does not alter the nesting depth.
+     * ReadBalanced - Reads a balanced block of text enclosed in braces '{' and '}'. 
      */
     throws String func ReadBalanced() {
         self.Advance(); // opening {
@@ -375,8 +365,7 @@ class Lexer {
     }
 
     /*
-     * ReadID - Reads an identifier or keyword from the source string starting at the current
-     * position
+     * ReadID - Reads an identifier or keyword from the source string starting at the current position
      */
     void func ReadID() {
         let int start = self.pp;
@@ -393,7 +382,6 @@ class Lexer {
 
     /*
      * ReadNumber - Reads a numeric literal: hex (0x...), integer, or float with optional suffix.
-     * The full lexeme including any suffix is stored verbatim as the token value.
      */
     throws void func ReadNumber() {
         let int start = self.pp;
@@ -415,14 +403,12 @@ class Lexer {
 
         let bool isFloat = false;
 
-        // A '.' only starts a fraction when a digit follows; '1.f' is a member access on 1.
         if (self.CurChar() == '.' && self.PeekChar() >= '0' && self.PeekChar() <= '9') {
             isFloat = true;
             self.Advance();
             while (self.pp < self.src.Length() && self.CurChar() >= '0' && self.CurChar() <= '9') { self.Advance(); }
         }
 
-        // e/E, optional sign, then at least one digit
         if ((self.CurChar() == 'e' || self.CurChar() == 'E') &&
             ((self.PeekChar() >= '0' && self.PeekChar() <= '9') ||
              ((self.PeekChar() == '+' || self.PeekChar() == '-') && self.PeekCharN(2) >= '0' && self.PeekCharN(2) <= '9'))) {
@@ -461,7 +447,6 @@ class Lexer {
 
     /*
      * ReadInterp - Reads an interpolated string $"...{expr}..." as a sequence of distinct tokens.
-     * Emits InterpStrStart, StrLit, Punct for braces, standard expression tokens, and InterpStrEnd.
      */
     throws void func ReadInterp() {
         self.Advance(2); // consume $"
@@ -507,8 +492,7 @@ class Lexer {
                         if (self.pp >= self.src.Length()) { break; }
                         let char ev = '\0';
                         if (!TryEscape(self.CurChar(), ref ev)) {
-                            self.Fail("unrecognized escape '\\" + (self.CurChar() as String) +
-                                      "' in interpolated string", Codes.BadEscape());
+                            self.Fail("unrecognized escape '\\" + (self.CurChar() as String) + "' in interpolated string", Codes.BadEscape());
                         }
                         self.Advance();
                     } else { self.Advance(); }
@@ -551,8 +535,7 @@ class Lexer {
     }
 
     /*
-     * ReadCharLit - Reads a character literal from the source string starting at the current
-     * position
+     * ReadCharLit - Reads a character literal from the source string starting at the current position
      */
     throws void func ReadCharLit() {
         self.Advance(); // opening '

@@ -2,11 +2,6 @@
  * NativeC.g - reading raw C out of a native block
  *
  * Ports Appa/src/Syntax/NativeC.cs.
- *
- * The compiler never parses C. It only needs to know which struct and typedef names a native
- * block already defines, so the emitter does not define them a second time. C# does that with a
- * regex over comment-masked text; Gata has no regex, so the two patterns are matched by hand -
- * which is why Mask and the scanner are kept as separate steps here exactly as they are there.
  */
 
 import "selfhostlib/String.g";
@@ -19,10 +14,6 @@ module NativeC {
      * Mask - Same-length copy of a C body with comments and string/char literals blanked to
      * spaces. Real code is left untouched, and newlines survive everywhere, so an offset into the
      * masked text is an offset into the original and line numbers still line up.
-     *
-     * C# walks a mutable char array and shuffles the loop index; this emits one character per
-     * character consumed instead, which keeps "same length" true by construction rather than by
-     * an argument about the index arithmetic.
      */
     public String func Mask(String s) {
         let int n = s.Length();
@@ -35,10 +26,8 @@ module NativeC {
             let char d = i + 1 < n ? s.CharAt(i + 1) : '\0';
 
             if (c == '/' && d == '/') {
-                // Line comment: blank to the newline, which is left for the next iteration
                 while (i < n && s.CharAt(i) != '\n') { out.AppendChar(' '); i = i + 1; }
             } else if (c == '/' && d == '*') {
-                // Block comment. C block comments do not nest, so the first '*/' ends it.
                 out.AppendChar(' ');
                 out.AppendChar(' ');
                 i = i + 2;
@@ -46,11 +35,9 @@ module NativeC {
                     out.AppendChar(s.CharAt(i) == '\n' ? '\n' : ' ');
                     i = i + 1;
                 }
-                if (i < n) { out.AppendChar(' '); i = i + 1; }   // the '*'
-                if (i < n) { out.AppendChar(' '); i = i + 1; }   // the '/'
+                if (i < n) { out.AppendChar(' '); i = i + 1; }
+                if (i < n) { out.AppendChar(' '); i = i + 1; }
             } else if (c == '"' || c == '\'') {
-                // String or char literal. An unterminated one blanks to end of input, which is
-                // what C# does too - the C compiler is the one that reports it.
                 let char q = c;
                 out.AppendChar(' ');
                 i = i + 1;
@@ -64,7 +51,7 @@ module NativeC {
                         i = i + 1;
                     }
                 }
-                if (i < n) { out.AppendChar(' '); i = i + 1; }   // the closing quote
+                if (i < n) { out.AppendChar(' '); i = i + 1; }
             } else {
                 out.AppendChar(c);
                 i = i + 1;
@@ -77,14 +64,6 @@ module NativeC {
     /*
      * ScanStructs - The struct/typedef names a native body declares, for the pre-defined-struct
      * registry. Scanned over masked text, so a name written in a comment or a string is not one.
-     *
-     * The two shapes, which are C#'s one regex `GATA_(\w+)_DEFINED|struct gata_(\w+)\s*\{`:
-     *
-     *     GATA_Foo_DEFINED            the include guard libgata stamps around a type
-     *     struct gata_Foo {           the definition itself
-     *
-     * Matching is left to right and non-overlapping, and a match is never sought inside an
-     * earlier one, which is what .NET's Matches does.
      */
     public List[String] func ScanStructs(String raw) {
         let String s = NativeC.Mask(raw);
@@ -104,10 +83,6 @@ module NativeC {
     /*
      * MatchDefined - Matches `GATA_(\w+)_DEFINED` at i, appending the captured name. Returns the
      * index just past the match, or -1.
-     *
-     * `\w+` is greedy and then backtracks, so it gives up the LAST '_DEFINED' in the run rather
-     * than the first: 'GATA_A_DEFINED_DEFINED' names 'A_DEFINED'. Dropping the trailing suffix
-     * from the whole run reproduces that without backtracking.
      */
     private int func MatchDefined(String s, int i, List[String] found) {
         if (!NativeC.At(s, i, "GATA_")) { return -1; }
@@ -161,8 +136,7 @@ module NativeC {
     }
 
     /*
-     * WordEnd - The index just past the run of `\w` characters starting at i. Equal to i when
-     * there is no run.
+     * WordEnd - The index just past the run of `\w` characters starting at i. Equal to i when there is no run.
      */
     private int func WordEnd(String s, int i) {
         let int j = i;

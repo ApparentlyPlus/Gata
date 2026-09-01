@@ -2,22 +2,6 @@
  * Layout.g - composing the emitter's sections into the build's translation-unit files
  *
  * Ports Appa/src/Backend/Layout.cs.
- *
- * Which files a build produces is decided entirely by which realms it has:
- *   kernel + user  ->  shared.h, kmain.c, uproc.c, uproc.h, umain.c
- *   user only      ->  shared.h, program.c   (with a generated main())
- *   kernel only    ->  shared.h, kmain.c
- *
- * The process launcher gets a translation unit of its own only in the split build, because only
- * there do the realms live in separate units; otherwise it is appended to the single unit that
- * already holds the thread entries.
- *
- * PORTING NOTE. ContentSeed hashes the emitted sections and hands the first four digest bytes to
- * Finesse as a Random seed, which is what makes a rebuild of identical input produce identical
- * decorative headers - and what makes THIS compiler's output comparable to the C# one's byte for
- * byte. So the hash has to be the same hash (Sha256.g), fed the same sections in the same order,
- * and read the same way (little-endian int32, Sha256.SeedFromDigest). C# chunks the feed through a
- * rented buffer; chunking cannot change a digest, so this feeds each section whole.
  */
 
 import "selfhostlib/String.g";
@@ -43,8 +27,7 @@ class OutputFile {
 module Layout {
 
     /*
-     * LauncherName - The C function generated to create every process and spawn its threads. Named
-     * here so the collision check can reserve it against a declaration that would take it over.
+     * LauncherName - The C function generated to create every process and spawn its threads.
      */
     public String func LauncherName() { return "uapps"; }
 
@@ -52,8 +35,6 @@ module Layout {
      * Compose - The emitter output as the set of translation-unit files for this build
      */
     public List[OutputFile] func Compose(EmitOutput o, SymbolTable sym) {
-        // Seed the header generator with a stable hash of the content, so a rebuild of identical
-        // input is identical output.
         let Finesse fin = new Finesse(Layout.ContentSeed(o));
 
         let List[OutputFile] files = new List[OutputFile]();
@@ -94,9 +75,7 @@ module Layout {
     }
 
     /*
-     * HostedMain - The generated main() for a hosted build. It stashes argc/argv into the
-     * gata_argc/gata_argv globals an environment's _env_argc/_env_argv read, then calls the
-     * launcher and the user entry function, in the order a GatOS kernel_main does.
+     * HostedMain - The generated main() for a hosted build.
      */
     String func HostedMain(Optional[String] entryCName, bool launch) {
         let bool hasEntry = false;
@@ -116,9 +95,7 @@ module Layout {
     }
 
     /*
-     * ContentSeed - A stable SHA-256 of the emitted content, as the header generator's seed. Fed
-     * section by section, in exactly the order C# feeds them: the digest depends on the order, and
-     * the seed depends on the digest.
+     * ContentSeed - A stable SHA-256 of the emitted content, as the header generator's seed.
      */
     int func ContentSeed(EmitOutput o) {
         let Sha256 h = new Sha256();
@@ -148,9 +125,7 @@ module Layout {
     }
 
     /*
-     * Concat - Sections into one translation unit, behind a file header comment. The first four are
-     * the unit's skeleton and are written whether or not they carry text; anything after them is
-     * optional and an empty one contributes nothing, not even a blank line.
+     * Concat - Sections into one translation unit, behind a file header comment.
      */
     String func Concat(Finesse fin, String name, String s1, String s2, String s3, String s4,
                        List[String] rest) {
@@ -199,8 +174,7 @@ module Layout {
 
     /*
      * Launcher - The userspace launcher that creates processes and spawns their threads through
-     * environment bindings, so porting the OS is an edit to env.*.g and never to this file. No C
-     * name is hardcoded here; they all come from whatever @intrinsic binds.
+     * environment bindings, so porting the OS is an edit to env.*.g and never to this file.
      */
     String func Launcher(Finesse fin, List[IrProcess] procs, SymbolTable sym, bool ownUnit) {
         let String procCreate  = sym.FloorName(Roles.EnvProcCreate());
