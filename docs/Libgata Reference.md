@@ -8,6 +8,7 @@ The language itself is documented in [The Gata Programming Language](The%20Gata%
 |---|---|
 | [libgata(7)](#libgata7) | library overview and conventions |
 | [algorithms(3)](#algorithms3) | sort, search, min/max |
+| [args(3)](#args3) | command-line argument access |
 | [bigint(3)](#bigint3) | arbitrary-precision integers |
 | [char(3)](#char3) | character classification |
 | [console(3)](#console3) | text I/O and screen control |
@@ -24,8 +25,10 @@ The language itself is documented in [The Gata Programming Language](The%20Gata%
 | [priorityqueue(3)](#priorityqueue3) | binary min-heap |
 | [queue(3)](#queue3) | FIFO queue |
 | [random(3)](#random3) | pseudo-random numbers |
+| [result(3)](#result3) | success-or-error values |
 | [runtime(3)](#runtime3) | reference-counting runtime |
 | [set(3)](#set3) | hash sets |
+| [span(3)](#span3) | non-owning buffer views |
 | [stack(3)](#stack3) | LIFO stack |
 | [string(3)](#string3) | strings and string building |
 | [sync(3)](#sync3) | locks and atomics |
@@ -87,9 +90,9 @@ Reaching these links the matching GatOS subsystem into the image. Everything els
 
 | File | Imports |
 |---|---|
-| `Char.g`, `Mem.g`, `Optional.g`, `Runtime.g`, `Sync.g`, `Sys.g`, `Time.g` | — |
-| `Format.g`, `Hash.g` | `String` |
-| `Algorithms.g` | `List` |
+| `Char.g`, `Mem.g`, `Optional.g`, `Result.g`, `Runtime.g`, `Span.g`, `Sync.g`, `Sys.g`, `Time.g` | — |
+| `Args.g`, `Format.g`, `Hash.g` | `String` |
+| `Algorithms.g` | `List`, `Span` |
 | `Math.g` | `Algorithms` |
 | `Random.g` | `Time` |
 | `Int.g`, `Long.g` | `String`, `Char` |
@@ -97,8 +100,8 @@ Reaching these links the matching GatOS subsystem into the image. Everything els
 | `Misc.g` | `String`, `Console` |
 | `Stack.g`, `Queue.g`, `PriorityQueue.g` | `Runtime`, `String`, `Mem` |
 | `BigInt.g` | `String`, `Char`, `Mem`, `Runtime` |
-| `List.g` | `Runtime`, `Optional`, `String`, `Mem` |
-| `String.g` | `Runtime`, `Char`, `Mem`, `List`, `Int`, `Long`, `Format` |
+| `List.g` | `Runtime`, `Optional`, `String`, `Mem`, `Span` |
+| `String.g` | `Runtime`, `Char`, `Mem`, `List`, `Span`, `Int`, `Long`, `Format` |
 | `Set.g` | `Runtime`, `String`, `List`, `Hash`, `Mem` |
 | `Map.g` | `Runtime`, `String`, `List`, `Mem`, `Hash`, `Optional` |
 
@@ -131,6 +134,12 @@ public      func SortBy[T](List[T] list, func(T, T) -> bool less)
 public int  func BinarySearch[T](List[T] sortedList, T target)
 public T    func MinBy[T](List[T] list, func(T, T) -> bool less)
 public T    func MaxBy[T](List[T] list, func(T, T) -> bool less)
+
+public      func SortSpan[T](Span[T] s)
+public      func SortSpanBy[T](Span[T] s, func(T, T) -> bool less)
+public int  func BinarySearchSpan[T](Span[T] s, T target)
+public bool func IsSortedSpan[T](Span[T] s)
+public      func ReverseSpan[T](Span[T] s)
 ```
 
 ### DESCRIPTION
@@ -155,23 +164,71 @@ These are generic methods, not members of a generic class, so each is stamped on
 
 **`MinBy()`**, **`MaxBy()`** — Extreme element of *list* by *less*.
 
+**`SortSpan()`**, **`SortSpanBy()`**, **`BinarySearchSpan()`**, **`IsSortedSpan()`**, **`ReverseSpan()`** — The same five, over a [span(3)](#span3) instead of a `List[T]`. Kept as their own engine rather than routed through `List`, since building a temporary list just to sort a buffer that already has one is exactly the allocation `Span` exists to avoid.
+
 ### RETURN VALUE
 
 `Min()` returns *b* on a tie; `Max()` returns *a*. Only `<` is consulted.
 
-`BinarySearch()` returns the index, or -1 if absent.
+`BinarySearch()` and `BinarySearchSpan()` return the index, or -1 if absent.
 
 `MinBy()` and `MaxBy()` return the zero value if *list* is empty.
 
 ### NOTES
 
-`Sort()` and `SortBy()` are not stable.
+`Sort()`, `SortBy()`, `SortSpan()` and `SortSpanBy()` are not stable.
 
-`BinarySearch()` on an unsorted list returns a meaningless result, not an error.
+`BinarySearch()` and `BinarySearchSpan()` on an unsorted input return a meaningless result, not an error.
 
 ### SEE ALSO
 
-[list(3)](#list3), [math(3)](#math3)
+[list(3)](#list3), [span(3)](#span3), [math(3)](#math3)
+
+---
+
+## args(3)
+
+### NAME
+
+Args, Argc, Arg — command-line argument access
+
+### LIBRARY
+
+libgata (`Args.g`)
+
+### SYNOPSIS
+
+```go
+import Args;
+
+module Args
+
+public int    func Argc()
+public String func Arg(int i)
+```
+
+### DESCRIPTION
+
+**`Argc()`** — The process's argument count, `argv[0]` (the program name) included.
+
+**`Arg()`** — Argument *i*, or an empty string if *i* is out of range.
+
+Hosted only, and deliberately its own file rather than folded into [sys(3)](#sys3): floor validation walks every declared method body in every *imported* file looking for `_env_*` references, and it runs before dead-code elimination decides what's actually reachable - so it does not matter whether `Argc()`/`Arg()` are ever called, only whether they are declared anywhere the build imports. `Sys.g` is imported by nearly every GatOS project too (for `Yield`/`Sleep`/`Exit`), and `env.GatOS.g` correctly has no `_env_argc`/`_env_argv` bind - a kernel has no argv. Had `Argc`/`Arg` lived in `Sys.g`, importing `Sys.g` at all - not calling `Argc()`/`Arg()`, merely importing the file - would fail every such GatOS build. Keeping this as a separate, explicit import means only a program that actually wants argv pulls in the requirement for it.
+
+Calling `Argc()`/`Arg()` from a `kernel` realm (having imported `Args.g` there, which nothing stops you from doing) fails at `appa check`, before it ever reaches C, naming exactly what's missing:
+
+```
+<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argc'; add one
+<environment>: error[G020]: the active environment's @preamble provides no definition of '_env_argv'; add one
+```
+
+### NOTES
+
+`Argc()`/`Arg()` read two globals (`gata_argc`, `gata_argv`) that a Hosted build's generated `main(int argc, char** argv)` populates before anything else runs - unconditionally, for every Hosted build, regardless of whether the program reads them back. There is nothing to gate there: `main()` with this shape is only ever emitted for a pure Hosted build in the first place, so a GatOS image never carries it regardless of what it imports.
+
+### SEE ALSO
+
+[sys(3)](#sys3)
 
 ---
 
@@ -654,6 +711,8 @@ public Optional[T] func At(int i)
 public T           func First()
 public T           func Last()
 public T*          func Raw()
+public Span[T]     func AsSpan()
+public Span[T]     func SubSpan(int start, int len)
 
 public void func Set(int i, T v)
 public void func Add(T v)
@@ -686,6 +745,10 @@ Growth doubles from 8.
 **`First()`**, **`Last()`** — `Get(0)` and `Get(Length() - 1)`.
 
 **`Raw()`** — Borrow-only view of the backing buffer: no bounds checks, no retain, elements stay owned by the list. Used by the sorts in [algorithms(3)](#algorithms3).
+
+**`AsSpan()`** — A [span(3)](#span3) over the whole backing buffer. Same borrow-only deal as `Raw()`, with bounds carried alongside the pointer.
+
+**`SubSpan()`** — A span over `[start, start + len)`, clamped the way `Substring` clamps.
 
 **`Set()`** — Store *v* at *i*. Does not grow the list.
 
@@ -729,7 +792,7 @@ for v in xs { Console.PrintLine($"{v}"); }
 
 ### SEE ALSO
 
-[algorithms(3)](#algorithms3), [optional(3)](#optional3), [stack(3)](#stack3), [queue(3)](#queue3)
+[algorithms(3)](#algorithms3), [optional(3)](#optional3), [span(3)](#span3), [stack(3)](#stack3), [queue(3)](#queue3)
 
 ---
 
@@ -1128,7 +1191,7 @@ let int n = ValueOr(map.Find("count"), 0);
 
 ### SEE ALSO
 
-[list(3)](#list3), [map(3)](#map3)
+[list(3)](#list3), [map(3)](#map3), [result(3)](#result3)
 
 ---
 
@@ -1309,6 +1372,66 @@ Not thread-safe. Two threads drawing from one instance interleave into its state
 
 ---
 
+## result(3)
+
+### NAME
+
+Result, IsOk, IsErr, UnwrapOr, ErrorOr — a value that succeeded with a value or failed with an error
+
+### LIBRARY
+
+libgata (`Result.g`)
+
+### SYNOPSIS
+
+```go
+import Result;
+
+union Result[T, E] { Ok(T v), Err(E e) }
+
+bool func IsOk[T, E](Result[T, E] r)
+bool func IsErr[T, E](Result[T, E] r)
+T    func UnwrapOr[T, E](Result[T, E] r, T fallback)
+E    func ErrorOr[T, E](Result[T, E] r, E fallback)
+```
+
+### DESCRIPTION
+
+The generic-union sibling of [optional(3)](#optional3): where `Optional` says only whether a value is there, `Result` keeps the reason for a failure instead of discarding it. A `throws` function still returns a bare pass/fail underneath everything a Gata program sees; `Result` is for the call site that wants to hold on to the detail rather than throw it away.
+
+A tagged union, so a value type: assigning copies it, and an `Ok`/`Err` holding a class retains its payload correctly.
+
+The helpers are free functions, called bare: `IsOk(r)`, not `Result.IsOk(r)`.
+
+**`IsOk()`**, **`IsErr()`** — Which variant *r* holds.
+
+**`UnwrapOr()`** — The value if `Ok`, otherwise *fallback*.
+
+**`ErrorOr()`** — The error if `Err`, otherwise *fallback*.
+
+The point of receiving one is usually the `match`, which the compiler checks for exhaustiveness.
+
+### NOTES
+
+`Result[int, String].Err("bad")` infers its instantiation from the argument the same way `Optional.Some()` does; a variant call that leaves a type argument unsettled needs it written out, exactly as `Optional[int].None()` does.
+
+### EXAMPLES
+
+```go
+match (parse(line)) {
+    case Ok(v)    { Console.PrintLine($"got {v}"); }
+    case Err(msg) { Console.PrintLine($"error: {msg}"); }
+}
+
+let int n = UnwrapOr(parse(line), 0);
+```
+
+### SEE ALSO
+
+[optional(3)](#optional3)
+
+---
+
 ## runtime(3)
 
 ### NAME
@@ -1452,6 +1575,87 @@ There is no difference operator; filter with `Has()`.
 
 ---
 
+## span(3)
+
+### NAME
+
+Span, FromRaw, Length, IsEmpty, Raw, At, Slice, Equal, StartsWith — a non-owning, bounds-carrying view over a contiguous buffer
+
+### LIBRARY
+
+libgata (`Span.g`)
+
+### SYNOPSIS
+
+```go
+import Span;
+
+union Span[T] { View(T* ptr, int len) }
+
+Span[T] func FromRaw[T](T* ptr, int len)
+
+int  func Length[T](Span[T] s)
+bool func IsEmpty[T](Span[T] s)
+T*   func Raw[T](Span[T] s)
+T    func At[T](Span[T] s, int i)
+
+Span[T] func Slice[T](Span[T] s, int start, int len)
+bool    func Equal[T](Span[T] a, Span[T] b)
+bool    func StartsWith[T](Span[T] s, Span[T] prefix)
+```
+
+### DESCRIPTION
+
+A Span borrows memory it does not own: copying one is a plain (pointer, length) copy, the same cost `sizeof(T*) + sizeof(int)` always is, and it never retains or releases anything by holding it. Build one from [string(3)](#string3)'s `AsSpan()`/`SubSpan()`, [list(3)](#list3)'s `AsSpan()`/`SubSpan()`, or `FromRaw()` over your own buffer.
+
+`T` works for both unmanaged element types (`int`, `char`, an enum) and managed class types: a `Span[String]` never retains or releases its elements either way, so it borrows a class element exactly like it borrows a primitive one — the underlying `List`/`String` still owns it.
+
+A Span is only as long-lived as what it borrows from. Nothing checks that for you, the same deal every raw pointer in Gata already makes.
+
+The helpers are free functions, called bare: `Length(s)`, not `Span.Length(s)`.
+
+**`FromRaw()`** — A span over an existing buffer. A null pointer or a non-positive *len* both collapse to the zero-length span, so a caller never has to special-case "the buffer might not exist".
+
+**`Length()`**, **`IsEmpty()`** — Element count, and whether it's zero.
+
+**`Raw()`** — The raw pointer, for library code that wants to walk the buffer itself, inside `unsafe`.
+
+**`At()`** — Element *i*. Retains before returning, same as `List.Get()`: the return value is a value the caller now owns, per Gata's calling convention, regardless of whether the Span itself owns anything. Free for unmanaged `T`, where `retain`/`release` compile to nothing.
+
+**`Slice()`** — The sub-span `[start, start + len)`, clamped to *s*'s own bounds.
+
+**`Equal()`** — Element-wise `==` over both spans. Different lengths are never equal. Generic like `Algorithms.Min`/`Max`: fails to instantiate, once, named, on a `T` with no `==`, rather than silently comparing pointers.
+
+**`StartsWith()`** — True if *prefix* occurs at the start of *s*. An empty *prefix* always matches.
+
+### RETURN VALUE
+
+`At()` returns the zero value if *i* is out of range.
+
+`FromRaw()` and `Slice()` return the zero-length span rather than an out-of-bounds one; indices are clamped, never rejected.
+
+### NOTES
+
+There is no zero-argument `Empty[T]()`: a generic free function with nothing in its argument list to infer `T` from cannot be called, and a call site has no way to spell the type argument explicitly for a plain function call the way a union's own constructor call can (`Span[T].View(...)`). `FromRaw(nullTypedPointer, 0)` is the spelling for an empty span of a known element type.
+
+[algorithms(3)](#algorithms3) has a Span-shaped `SortSpan()`/`SortSpanBy()`/`BinarySearchSpan()`/`IsSortedSpan()`/`ReverseSpan()`, kept as their own engine rather than routed through `List`.
+
+### EXAMPLES
+
+```go
+let Span[char] sp = s.SubSpan(6, 5);
+Console.PrintLine(String.FromSpan(sp));
+
+let Span[int] xs = list.AsSpan();
+Algorithms.SortSpan(xs);
+```
+
+### SEE ALSO
+
+[string(3)](#string3), [list(3)](#list3), [algorithms(3)](#algorithms3)
+
+---
+
 ## stack(3)
 
 ### NAME
@@ -1528,6 +1732,8 @@ public int   func Length()
 public bool  func IsEmpty()
 public char  func CharAt(int i)
 public char* func CStr()
+public Span[char] func AsSpan()
+public Span[char] func SubSpan(int start, int len)
 
 public bool func Equals(String other)
 public int  func CompareTo(String other)
@@ -1556,6 +1762,7 @@ public static String func Join(List[String] parts, String sep)
 public static String func FromChar(char c)
 public static String func FromRaw(char* raw)
 public static String func FromBuffer(char* raw, int len)
+public static String func FromSpan(Span[char] s)
 
 public operator char   func [](int i)
 public operator bool   func ==(String other)
@@ -1588,6 +1795,10 @@ Everything here is ASCII and byte-indexed.
 
 **`CStr()`** — The raw NUL-terminated buffer, for platform calls. Borrow-only; the string owns it.
 
+**`AsSpan()`** — A [span(3)](#span3) over the whole string: a borrowed, non-allocating view, where `Substring` allocates a new `String`.
+
+**`SubSpan()`** — Like `Substring()`, but borrows instead of allocating. Clamped the same way.
+
 **`CompareTo()`** — Lexicographic order.
 
 **`IndexOf(sub, from)`** — First index of *sub* at or after *from*. An empty *sub* matches at *from*.
@@ -1607,6 +1818,8 @@ Everything here is ASCII and byte-indexed.
 **`FromChar()`** — A one-character string. Carries the `stringify_char` role, which is why an interpolated `char` prints the character rather than its codepoint.
 
 **`FromRaw()`**, **`FromBuffer()`** — Wrap a `char*`, NUL-terminated or of known length. Both copy the bytes, so the source is yours to free immediately.
+
+**`FromSpan()`** — Materialize a borrowed `Span[char]` into a new, owned `String`. Copies the bytes, same as `FromBuffer()`.
 
 `StringBuilder` is mutable text. Interpolation with three or more parts lowers to one, so a ten-part interpolation costs one growable buffer rather than nine intermediate strings. Growth doubles from 16.
 
@@ -1644,7 +1857,7 @@ A class used in an interpolation needs its own `String func ToString()`; without
 
 ### SEE ALSO
 
-[char(3)](#char3), [format(3)](#format3), [console(3)](#console3), [int(3)](#int3), [long(3)](#long3)
+[char(3)](#char3), [format(3)](#format3), [console(3)](#console3), [int(3)](#int3), [long(3)](#long3), [span(3)](#span3)
 
 ---
 
@@ -1766,7 +1979,7 @@ public void func Reboot()
 
 ### SEE ALSO
 
-[time(3)](#time3), [sync(3)](#sync3)
+[args(3)](#args3), [time(3)](#time3), [sync(3)](#sync3)
 
 ---
 

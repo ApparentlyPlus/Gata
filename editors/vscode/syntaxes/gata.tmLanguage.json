@@ -30,6 +30,7 @@
         { "include": "#strings" },
         { "include": "#chars" },
         { "include": "#numbers" },
+        { "include": "#import-declaration" },
         { "include": "#realm-declaration" },
         { "include": "#process-declaration" },
         { "include": "#thread-declaration" },
@@ -175,6 +176,15 @@
       "end": "\\}",
       "endCaptures": { "0": { "name": "keyword.control.risk.gata" } },
       "patterns": [{ "include": "#native-inner" }]
+    },
+
+    "import-declaration": {
+      "comment": "'import Name;' names a library module, resolved as <stdlib>/Name.g; 'import \"a/b.g\";' names a file relative to the project root and is claimed by #strings. Matched here so a one-letter module name is not mistaken for a generic parameter.",
+      "match": "\\b(import)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.gata" },
+        "2": { "name": "entity.name.type.class.gata" }
+      }
     },
 
     "realm-declaration": {

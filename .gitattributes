@@ -1,0 +1,26 @@
+# GitHub Linguist overrides.
+#
+# Linguist maps *.g to GAP (see languages.yml), so without this the repo reads
+# as ~60% GAP. Gata is not a Linguist-recognised language, and getting it added
+# upstream requires evidence of use across ~200 unique repositories, so the best
+# available option is to borrow a grammar for highlighting and stay out of the
+# language statistics rather than claim a language we are not.
+#
+# linguist-language  -> picks the TextMate grammar used to highlight blobs/diffs
+# linguist-detectable -> whether the files count toward the language bar
+#
+# Swift is the closest grammar by keyword overlap with Gata: func, let, self,
+# class, public, import, as, while, else, return, if, plus // and /* */
+# comments. It does not know unsafe, void, null, or the lowercase primitives
+# (int, uint, usize, double, char), which simply render unstyled.
+*.g linguist-language=Swift
+*.g linguist-detectable=false
+
+# The VS Code extension is tooling built around the language, not the language
+# itself; left detectable it would make Gata read as a TypeScript project.
+editors/** linguist-vendored
+
+# .gconf is an XML project file; Linguist has no mapping for the extension, so
+# it renders as plain text. Borrow the XML grammar for highlighting only.
+*.gconf linguist-language=XML
+*.gconf linguist-detectable=false

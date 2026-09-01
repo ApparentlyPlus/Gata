@@ -178,6 +178,7 @@ export class Lexer {
         if (this.cur() === '{' && tname.length > 0) {
           const body = this.readBalanced();
           this.emit(TK.NativeTypeDecl, tname + '\x1F' + body);
+          this.tokens[this.tokens.length - 1].nameSpan = { start: ns, length: tname.length };
           return;
         }
       }

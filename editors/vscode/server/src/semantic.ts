@@ -17,7 +17,7 @@ const HEADER_NO_SPAN = /^(.*?): (error|warning)\[(G\d+)\]: (.*)$/;
 const HELP_LINE = /^\s*=\s*help:\s*(.*)$/;
 const CARET_LINE = /^[^|]*\|[ \t]*(\^+)\s*$/;
 
-function findGconf(startDir: string): string | undefined {
+export function findGconf(startDir: string): string | undefined {
   let dir = startDir;
   for (let i = 0; i < 64; i++) {
     let entries: string[];
@@ -53,7 +53,7 @@ function detectAppaDll(startDir: string): string | undefined {
   });
 }
 
-function detectLibgata(startDir: string): string | undefined {
+export function detectLibgata(startDir: string): string | undefined {
   return findUpward(startDir, (dir) => {
     const candidate = path.join(dir, 'Gata', 'libgata');
     return fs.existsSync(candidate) ? candidate : undefined;

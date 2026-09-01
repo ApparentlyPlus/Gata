@@ -521,13 +521,6 @@ private int func _bi_digit(char c, int radix) {
     return v;
 }
 
-
-/*
- * ============================================================================
- * BigInt
- * ============================================================================
- */
-
 class BigInt {
     int   sign;   // -1, 0 or +1; 0 exactly when the value is zero
     uint* mag;    // |value| in little-endian 32-bit limbs; null when sign is 0
@@ -583,12 +576,6 @@ class BigInt {
         }
         return BigInt.Adopt(-1, buf, n);
     }
-
-    /*
-     * ------------------------------------------------------------------------
-     * Construction
-     * ------------------------------------------------------------------------
-     */
 
     public static BigInt func Zero()     { return new BigInt(); }
     public static BigInt func One()      { return BigInt.FromInt(1); }
@@ -649,12 +636,6 @@ class BigInt {
     }
 
     /*
-     * ------------------------------------------------------------------------
-     * Inspection
-     * ------------------------------------------------------------------------
-     */
-
-    /*
      * Sign - -1, 0 or 1
      */
     public int func Sign() { return self.sign; }
@@ -713,12 +694,6 @@ class BigInt {
     }
 
     /*
-     * ------------------------------------------------------------------------
-     * Comparison
-     * ------------------------------------------------------------------------
-     */
-
-    /*
      * CompareTo - -1, 0 or 1; a null operand compares as zero
      */
     public int func CompareTo(BigInt o) {
@@ -754,12 +729,6 @@ class BigInt {
 
     public static BigInt func Min(BigInt a, BigInt b) { if (BigInt.Compare(a, b) <= 0) { return a; } return b; }
     public static BigInt func Max(BigInt a, BigInt b) { if (BigInt.Compare(a, b) >= 0) { return a; } return b; }
-
-    /*
-     * ------------------------------------------------------------------------
-     * Addition and subtraction
-     * ------------------------------------------------------------------------
-     */
 
     /*
      * AddMag - |a| + |b| carrying the given sign
@@ -846,12 +815,6 @@ class BigInt {
     }
 
     /*
-     * ------------------------------------------------------------------------
-     * Multiplication
-     * ------------------------------------------------------------------------
-     */
-
-    /*
      * * - Product. A value multiplied by itself takes the squaring path, which
      * is worth checking for because ModPow's inner loop is exactly that case.
      */
@@ -879,16 +842,6 @@ class BigInt {
         if (a == null || b == null) { return new BigInt(); }
         return a * b;
     }
-
-    /*
-     * ------------------------------------------------------------------------
-     * Division
-     *
-     * Truncated, as in C and C#: the quotient rounds toward zero and the
-     * remainder carries the DIVIDEND's sign, so a == (a / b) * b + a % b holds
-     * for every sign combination.
-     * ------------------------------------------------------------------------
-     */
 
     /*
      * DivRem - Quotient, with the remainder written through rem
@@ -964,12 +917,6 @@ class BigInt {
 
     public operator BigInt func /(BigInt o) { return BigInt.Divide(self, o); }
     public operator BigInt func %(BigInt o) { return BigInt.Remainder(self, o); }
-
-    /*
-     * ------------------------------------------------------------------------
-     * Shifts
-     * ------------------------------------------------------------------------
-     */
 
     /*
      * << - Multiply by 2^shift. A negative shift reads as the opposite shift.
@@ -1056,17 +1003,6 @@ class BigInt {
     }
 
     /*
-     * ------------------------------------------------------------------------
-     * Bitwise
-     *
-     * The operators behave as if the value were held in two's complement with
-     * infinite sign extension, which is what makes -1 & x == x and ~x == -(x+1)
-     * come out right. No temporary two's-complement buffer is built: limbs are
-     * converted one at a time as the walk needs them.
-     * ------------------------------------------------------------------------
-     */
-
-    /*
      * TwosLimb - Limb i of the two's-complement form of self
      *
      * borrow carries the +1 of the negation and must start at 1. It stays 1 only
@@ -1144,12 +1080,6 @@ class BigInt {
     }
 
     /*
-     * ------------------------------------------------------------------------
-     * Powers
-     * ------------------------------------------------------------------------
-     */
-
-    /*
      * Pow - value raised to a non-negative exponent, by square and multiply
      *
      * A negative exponent has no integer value, so it yields zero rather than
@@ -1222,12 +1152,6 @@ class BigInt {
         }
         return x;
     }
-
-    /*
-     * ------------------------------------------------------------------------
-     * Conversion out
-     * ------------------------------------------------------------------------
-     */
 
     /*
      * FitsInt / FitsLong - Whether the value survives ToInt / ToLong unchanged
@@ -1337,8 +1261,6 @@ class BigInt {
                     else { text[pos] = ('a' + d - 10) as char; }
                     rem = rem / (radix as uint);
                     k = k + 1;
-                    /* stop mid-chunk only once the whole value is exhausted, so
-                       interior chunks keep their leading zeros */
                     if (wn == 0 && rem == (0 as uint)) { break; }
                 }
             }
@@ -1346,13 +1268,7 @@ class BigInt {
             return String.FromBuffer(text + pos, cap - pos);
         }
     }
-
-    /*
-     * ------------------------------------------------------------------------
-     * Parsing
-     * ------------------------------------------------------------------------
-     */
-
+    
     /*
      * Parse - Lenient decimal parse: skips leading whitespace, takes an optional
      * sign, stops at the first non-digit; null, empty and invalid all give zero
