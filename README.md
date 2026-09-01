@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/License-Custom-red.svg" alt="License: Custom"></a>
-  <img src="https://img.shields.io/badge/libgata-24%20modules-00e676" alt="libgata: 24 modules">
+  <img src="https://img.shields.io/badge/libgata-27%20modules-00e676" alt="libgata: 27 modules">
   <img src="https://img.shields.io/badge/extension-v2.3.0-1263cf" alt="Extension v2.3.0">
   <img src="https://img.shields.io/badge/compiler-appa-fe7648" alt="Compiler: appa">
   <img src="https://img.shields.io/badge/targets-GatOS%20%7C%20Hosted-ffd35c" alt="Targets: GatOS | Hosted">
@@ -137,7 +137,7 @@ This repo exists to maintain the things that make up Gata *as a language*, separ
 
 | Directory | What it holds |
 |---|---|
-| **[`libgata/`](libgata/)** | The standard library. 24 modules, roughly 6,900 lines, written in ordinary Gata with no privileges the language itself does not have. |
+| **[`libgata/`](libgata/)** | The standard library. 27 modules, roughly 7,300 lines, written in ordinary Gata with no privileges the language itself does not have. |
 | **[`docs/`](docs/)** | [The Gata Programming Language](docs/The%20Gata%20Programming%20Language.md) — the book — plus the [Gata Quick Reference](docs/Gata%20Quick%20Reference.txt) and the [Libgata Reference](docs/Libgata%20Reference.md), the standard library's manual pages. |
 | **[`envs/`](envs/)** | The environment files: the binding layer between Gata and whatever sits underneath it, one per target. |
 | **[`editors/vscode/`](editors/vscode/)** | The VS Code extension: syntax and semantic highlighting, live diagnostics, hovers, outline and completion. |
@@ -199,12 +199,13 @@ import List;
 
 | | | | |
 |---|---|---|---|
-| [`Algorithms`](libgata/Algorithms.g) | [`BigInt`](libgata/BigInt.g) | [`Char`](libgata/Char.g) | [`Console`](libgata/Console.g) |
-| [`Format`](libgata/Format.g) | [`Hash`](libgata/Hash.g) | [`Int`](libgata/Int.g) | [`List`](libgata/List.g) |
-| [`Long`](libgata/Long.g) | [`Map`](libgata/Map.g) | [`Math`](libgata/Math.g) | [`Mem`](libgata/Mem.g) |
-| [`Misc`](libgata/Misc.g) | [`Optional`](libgata/Optional.g) | [`PriorityQueue`](libgata/PriorityQueue.g) | [`Queue`](libgata/Queue.g) |
-| [`Random`](libgata/Random.g) | [`Runtime`](libgata/Runtime.g) | [`Set`](libgata/Set.g) | [`Stack`](libgata/Stack.g) |
-| [`String`](libgata/String.g) | [`Sync`](libgata/Sync.g) | [`Sys`](libgata/Sys.g) | [`Time`](libgata/Time.g) |
+| [`Algorithms`](libgata/Algorithms.g) | [`Args`](libgata/Args.g) | [`BigInt`](libgata/BigInt.g) | [`Char`](libgata/Char.g) |
+| [`Console`](libgata/Console.g) | [`Format`](libgata/Format.g) | [`Hash`](libgata/Hash.g) | [`Int`](libgata/Int.g) |
+| [`List`](libgata/List.g) | [`Long`](libgata/Long.g) | [`Map`](libgata/Map.g) | [`Math`](libgata/Math.g) |
+| [`Mem`](libgata/Mem.g) | [`Misc`](libgata/Misc.g) | [`Optional`](libgata/Optional.g) | [`PriorityQueue`](libgata/PriorityQueue.g) |
+| [`Queue`](libgata/Queue.g) | [`Random`](libgata/Random.g) | [`Result`](libgata/Result.g) | [`Runtime`](libgata/Runtime.g) |
+| [`Set`](libgata/Set.g) | [`Span`](libgata/Span.g) | [`Stack`](libgata/Stack.g) | [`String`](libgata/String.g) |
+| [`Sync`](libgata/Sync.g) | [`Sys`](libgata/Sys.g) | [`Time`](libgata/Time.g) |  |
 
 Every one of them is ordinary Gata, written with the features documented in the book. That is deliberate: the standard library has no special access, so anything it can do, your own code can do too.
 
@@ -300,7 +301,7 @@ They double as a smoke test: if an example stops building, something in the lang
 ### Repository Layout
 
 ```
-libgata/            The standard library, 24 modules of ordinary Gata
+libgata/            The standard library, 27 modules of ordinary Gata
 docs/               The book, the quick reference and the libgata manual pages
 envs/               Environment files, one per target
 editors/vscode/     The VS Code extension and its language server
