@@ -22,6 +22,7 @@ import { Lexer } from './lexer';
 import { Parser } from './parser';
 import { CODE_SUMMARIES, ParseError, Span } from './codes';
 import { checkProject, GataSettings, defaultSettings } from './semantic';
+import { ImportIndex, emptyIndex, forgetFile, indexFor } from './imports';
 import { validateGconf } from './gconf';
 import { classify, TOKEN_TYPES, TOKEN_MODIFIERS } from './semtokens';
 import { symbolsOf, GataSymbol } from './symbols';
@@ -163,6 +164,8 @@ documents.onDidOpen((change) => {
 });
 
 documents.onDidSave((change) => {
+  const filePath = uriToPath(change.document.uri);
+  if (filePath) forgetFile(filePath);
   void runSemanticCheck(change.document);
 });
 
@@ -193,6 +196,17 @@ async function runSemanticCheck(doc: TextDocument): Promise<void> {
   }
 }
 
+function importIndex(doc: TextDocument): ImportIndex {
+  const filePath = uriToPath(doc.uri);
+  if (!filePath) return emptyIndex();
+  try {
+    return indexFor(filePath, doc.getText(), settings);
+  } catch (e) {
+    connection.console.warn(`gata: could not resolve imports: ${e instanceof Error ? e.message : String(e)}`);
+    return emptyIndex();
+  }
+}
+
 function uriToPath(uri: string): string | undefined {
   try {
     const u = new URL(uri);
@@ -209,7 +223,7 @@ connection.languages.semanticTokens.on((params: SemanticTokensParams): SemanticT
   const doc = documents.get(params.textDocument.uri);
   if (!doc || doc.languageId !== 'gata') return { data: [] };
   try {
-    return { data: encode(doc, classify(doc.getText())) };
+    return { data: encode(doc, classify(doc.getText(), importIndex(doc).external)) };
   } catch (e) {
     connection.console.warn(`gata: semantic tokens failed: ${e instanceof Error ? e.message : String(e)}`);
     return { data: [] };
@@ -236,7 +250,7 @@ function encode(doc: TextDocument, tokens: ReturnType<typeof classify>): number[
 connection.onHover((params): Hover | null => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc || doc.languageId !== 'gata') return null;
-  const markdown = hoverFor(doc.getText(), doc.offsetAt(params.position));
+  const markdown = hoverFor(doc.getText(), doc.offsetAt(params.position), importIndex(doc).symbols);
   if (!markdown) return null;
   return { contents: { kind: MarkupKind.Markdown, value: markdown } };
 });
@@ -287,7 +301,7 @@ const COMPLETION_KINDS: Readonly<Record<CompletionEntry['kind'], CompletionItemK
 connection.onCompletion((params): CompletionItem[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc || doc.languageId !== 'gata') return [];
-  return completionsFor(doc.getText()).map((entry) => ({
+  return completionsFor(doc.getText(), importIndex(doc).symbols).map((entry) => ({
     label: entry.label,
     kind: COMPLETION_KINDS[entry.kind],
     detail: entry.detail,

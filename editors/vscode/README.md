@@ -5,7 +5,7 @@
 <h1 align="center">Gata for VS Code</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/extension-v2.2.0-00e676" alt="Extension v2.2.0">
+  <img src="https://img.shields.io/badge/extension-v2.3.0-00e676" alt="Extension v2.3.0">
   <img src="https://img.shields.io/badge/vscode-%5E1.75.0-1263cf" alt="VS Code ^1.75.0">
   <img src="https://img.shields.io/badge/languages-.g%20%7C%20.gconf-e0b34d" alt="Languages">
 </p>
@@ -26,6 +26,7 @@ There is no build step to run before using it and nothing to configure. Open a `
 - [Project Manifests](#project-manifests)
 - [Repository Layout](#repository-layout)
 - [Known Limits](#known-limits)
+- [What Changed in v2.3.0](#what-changed-in-v230)
 - [What Changed in v2.2.0](#what-changed-in-v220)
 
 ## What You Get
@@ -37,9 +38,10 @@ There is no build step to run before using it and nothing to configure. Open a `
 | **Illegal shapes, marked** | An unknown annotation, a role outside the closed `@intrinsic` vocabulary, a malformed numeric literal, a bad escape, a name starting with two underscores, a prefix `++`: all of them are colored as errors by the grammar alone. |
 | **Live syntax diagnostics** | The ported lexer and parser run in process on every keystroke, with the compiler's own codes, messages and help lines. |
 | **Real semantic diagnostics** | On open and on save, `appa check` runs over the project the file belongs to and its output becomes squiggles, help lines included. |
-| **Hovers** | Every keyword, annotation and primitive carries an explanation of the rule behind it. Hovering a name declared in the file shows the declaration as written. |
+| **Imports, followed** | An `import` names a file, so the server reads it. `import Span;` resolves to `<stdlib>/Span.g` and `import "src/Syntax/Ast.g";` to that path under the project root, transitively, exactly as `appa` resolves them. Every name those files declare is colored for what it is, and the standard library is marked as such. |
+| **Hovers** | Every keyword, annotation and primitive carries an explanation of the rule behind it. Hovering a name declared in the file, or in anything it imports, shows the declaration as written. |
 | **Outline and breadcrumbs** | Types, methods, operators, enum members, union variants, realms, processes and threads, each under what contains it. |
-| **Completion** | Keywords, primitives, annotations and everything the current file declares, each with the same documentation the hover shows. |
+| **Completion** | Keywords, primitives, annotations, everything the current file declares and everything it imports, each with the same documentation the hover shows. |
 | **Themes** | `Gata Canopy` (dark) and `Gata Daylight` (light), both entirely optional and never selected for you. The extension does not need any of them: the palette lands as foreground-only defaults on top of whatever theme you already use, and follows it from dark to light. |
 
 ## Installing
@@ -47,7 +49,7 @@ There is no build step to run before using it and nothing to configure. Open a `
 If you have a `.vsix`:
 
 ```bash
-code --install-extension gata-highlighting-2.2.0.vsix
+code --install-extension gata-highlighting-2.3.0.vsix
 ```
 
 For development against a checkout, link it into your extensions folder and build the server once:
@@ -74,7 +76,7 @@ npm install
 npm run package
 ```
 
-That runs [`@vscode/vsce`](https://github.com/microsoft/vscode-vsce), which triggers `vscode:prepublish`, which installs the server's dependencies and bundles it with esbuild before packaging. The result is `gata-highlighting-2.2.0.vsix` in the same folder.
+That runs [`@vscode/vsce`](https://github.com/microsoft/vscode-vsce), which triggers `vscode:prepublish`, which installs the server's dependencies and bundles it with esbuild before packaging. The result is `gata-highlighting-2.3.0.vsix` in the same folder.
 
 To do it by hand, or to pin a version of `vsce`:
 
@@ -105,7 +107,9 @@ Two layers, in this order.
 
 **The grammar** (`syntaxes/gata.tmLanguage.json`) paints immediately, from shape alone. It knows the structure of the language, so it can be far more precise than a keyword list: a `[T, U]` after a class name is a parameter list and colors as parameters, while a `[String, List[int]]` in a type is an argument list and colors as types. It reads declaration heads as regions, so a parameter name is told apart from its type, an operator symbol from the `func` in front of it, and a union variant from a call. Raw C inside `native { }`, `native type X { }` and `fields { }` is deliberately flat, marking the point where you have left Gata.
 
-**The language server** then classifies the same file properly and sends semantic tokens back. This is where guessing stops. `class Box[Element]` gives `Element` the generic-parameter color everywhere it appears, no matter how many letters it has. `Shape.Circle` is a union variant because `Shape` is a union that declares it. `Dir.North` is an enum member for the same reason. A call is a function, a member is a property, a `let` binds a variable, a parameter list binds parameters.
+**The language server** then classifies the same file properly and sends semantic tokens back. This is where guessing stops. `class Box[Element]` gives `Element` the generic-parameter color everywhere it appears, no matter how many letters it has. `Shape.Circle` is a union variant because `Shape` is a union that declares it. `Shape[int].Circle` is the same variant, because the qualifier steps back over the type arguments. `Dir.North` is an enum member for the same reason. A call is a function, a method declared in a class body is a method at its declaration and not only at its call sites, a field is a property, a `let` binds a variable, a parameter list binds parameters.
+
+It reads the file's imports to do it. `server/src/imports.ts` resolves each one the way `Pipeline.ResolveOne` does in the compiler — a bare `import Name;` is `<stdlib>/Name.g`, a quoted `import "a/b.g";` is that path under the project root — and follows the graph transitively, because a Gata name is visible to a file exactly when it is declared somewhere in the closure of its imports. Nothing is keyed off a built-in list of module names: `import Span;` is a stdlib union because `Span.g` says `union Span[T]`, and a module you write yourself is read the same way. Each file is cached against its mtime, so the walk costs a `stat` per import after the first read.
 
 Both sets of colors ship as configuration *defaults*, contributed from `package.json`. Nothing is written to your `settings.json`, no color theme is selected for you, and your current theme keeps every one of its own colors: the extension only adds foreground rules whose TextMate scopes all end in `.gata` and whose semantic selectors are all qualified with `:gata`, neither of which any other grammar produces. Outside a `.g` file nothing changes at all.
 
@@ -234,6 +238,7 @@ editors/vscode/
     ├── src/token.ts                 Port of Appa's TK enum
     ├── src/codes.ts                 The G000 to G102 table, with one-line meanings
     ├── src/semtokens.ts             Semantic classification, behind the colors
+    ├── src/imports.ts               Import resolution, the cross-file name index
     ├── src/symbols.ts               Declarations, behind the outline and the hovers
     ├── src/language.ts              Keyword, annotation and primitive documentation
     ├── src/semantic.ts              The 'appa check' bridge
@@ -246,10 +251,37 @@ editors/vscode/
 Both layers read one file at a time and neither is a type checker, so a few things are out of reach without the compiler:
 
 - A name a file never declares is classified from context. `let cb = AddOne;` gives `AddOne` the type color, because a bare capitalized name used as a value looks exactly like a type reference.
-- Imports are not followed. A type from another file is colored as a type, but its members are not known, so `other.Thing` is a property rather than whatever it really is. Anything that depends on cross-file knowledge is left to `appa check`.
+- Imports are followed, but only to their declarations. The server knows that another file declares `Shape` and that `Shape` has a `Circle`, not what type an arbitrary expression has, so `other.Thing` behind a local variable is still a property rather than whatever it really is. Anything that depends on inferring a type is left to `appa check`.
+- An import that cannot be resolved — a loose file with no `*.gconf` above it and no reachable `libgata` — leaves the module name colored as a library type and contributes no other names. Point `gata.libgataPath` at a checkout to fix it.
 - The syntax layer reports the first error in a file, exactly as the compiler's parser does, rather than recovering and continuing.
 
 None of this affects the compiler. It is all cosmetic, or it is a diagnostic the real one repeats.
+
+## What Changed in v2.3.0
+
+- **Imports are followed.** `import Span;` used to leave `Span` colored as a plain variable, because
+  the server carried a hardcoded list of standard-library module names and `Span` was not on it. That
+  list is gone. What succeeds an `import` is resolved to a file, the file is read, and its
+  declarations are what decide the color — transitively, and by the same rule the compiler uses. A
+  name from another file is now a class, an enum, a union or a function because that is what it was
+  declared as, and the standard library is marked as such because of where the file it came from
+  lives, not because of what it is called.
+- **Hovers and completion cross files too.** Hovering an imported name shows its declaration as
+  written; completion offers everything the closure of the imports declares.
+- **Annotations no longer swallow their argument.** `@intrinsic(alloc)` is one token in the lexer,
+  whose span runs to the closing parenthesis, so the semantic layer painted the argument and the
+  parentheses as part of the keyword. Only `@intrinsic` is painted now, and the grammar's own colors
+  for the role and the brackets come back.
+- **Fields are properties, methods are methods.** A field declaration in a class body was colored as
+  a local variable while `self.field` was colored as a property; a method declaration was colored as
+  a free function while its call sites were colored as methods. Both now agree with themselves.
+- **`Shape[int].Circle` is a variant.** The owner of a member access is now found by stepping back
+  over the type argument list, so a qualified variant or enum member on a generic type is no longer
+  read as a property, and constructing a variant is no longer read as a method call.
+- **Enum members are declarations** where they are declared, matching union variants, and a
+  `native type` name is now colored as the class it declares.
+- **A one-letter module import.** `import S;` matched the grammar's generic-parameter shape before
+  anything else; imports are now read as imports.
 
 ## What Changed in v2.2.0
 

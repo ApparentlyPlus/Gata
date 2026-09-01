@@ -1,14 +1,7 @@
-// Semantic classification of a Gata file, over the same token stream the parser reads.
-//
-// A TextMate grammar can only guess at an identifier from its shape. This walks the file
-// once to learn what each name was declared as, then walks it again to label every use, so
-// a generic parameter is a generic parameter because it was declared as one, a call is a
-// call because something with that name is a function, and a member is a member because of
-// what sits to the left of the dot. The editor paints these on top of the grammar.
 import { Lexer } from './lexer';
 import { TK, Token } from './token';
+import { Span } from './codes';
 
-/** The legend, in the order the LSP encodes them. Kept in sync with server.ts. */
 export const TOKEN_TYPES = [
   'namespace',
   'class',
@@ -40,13 +33,17 @@ export interface SemanticToken {
   modifiers: number;
 }
 
-const LIBGATA = new Set([
-  'Algorithms', 'Char', 'Console', 'Format', 'Hash', 'Int', 'List', 'Long', 'Map', 'Math',
-  'Mem', 'Misc', 'Optional', 'PriorityQueue', 'Process', 'Queue', 'Random', 'Runtime', 'Set',
-  'Stack', 'String', 'StringBuilder', 'Sync', 'Sys', 'Thread', 'Time',
+const ANNOTATION_WORD: ReadonlyMap<TK, string> = new Map([
+  [TK.AtIntrinsic, '@intrinsic'],
+  [TK.AtPreamble, '@preamble'],
+  [TK.AtExtern, '@extern'],
+  [TK.AtEnvironment, '@environment'],
+  [TK.AtKeep, '@keep'],
+  [TK.AtBuiltin, '@builtin'],
+  [TK.AtShadows, '@shadows'],
 ]);
 
-interface Declarations {
+export interface Declarations {
   classes: Set<string>;
   enums: Set<string>;
   unions: Set<string>;
@@ -55,40 +52,112 @@ interface Declarations {
   functions: Set<string>;
   typeParams: Set<string>;
   namespaces: Set<string>;
+  imports: Set<string>;
 }
 
-function emptyDeclarations(): Declarations {
+export interface External {
+  classes: Set<string>;
+  enums: Set<string>;
+  unions: Set<string>;
+  functions: Set<string>;
+  namespaces: Set<string>;
+  members: Set<string>;
+  library: Set<string>;
+}
+
+export function emptyDeclarations(): Declarations {
   return {
     classes: new Set(), enums: new Set(), unions: new Set(), variants: new Set(),
     enumMembers: new Set(), functions: new Set(), typeParams: new Set(), namespaces: new Set(),
+    imports: new Set(),
   };
 }
 
-export function classify(text: string): SemanticToken[] {
-  const tokens = new Lexer(text).tokenizeLenient();
-  return label(tokens, collect(tokens));
+export function emptyExternal(): External {
+  return {
+    classes: new Set(), enums: new Set(), unions: new Set(), functions: new Set(),
+    namespaces: new Set(), members: new Set(), library: new Set(),
+  };
 }
 
-function isIdent(t: Token): boolean {
-  return t.kind === TK.Ident;
+export function classify(text: string, external: External = emptyExternal()): SemanticToken[] {
+  const tokens = new Lexer(text).tokenizeLenient();
+  return label(tokens, collectDeclarations(tokens), external);
+}
+
+function isIdent(t: Token | undefined): boolean {
+  return t?.kind === TK.Ident;
 }
 
 function valueIs(t: Token, word: string): boolean {
   return t.kind === TK.Ident && t.value === word;
 }
 
-function nativeTypeName(t: Token): string {
+export function nativeTypeName(t: Token): string {
   const sep = t.value.indexOf('\x1F');
   return sep < 0 ? t.value : t.value.slice(0, sep);
 }
 
-function collect(tokens: Token[]): Declarations {
+type Scope = 'type' | 'members' | 'topology' | 'block';
+
+function scopeStack(tokens: Token[]): Array<Scope | undefined> {
+  const at = new Array<Scope | undefined>(tokens.length);
+  const stack: Scope[] = [];
+  let pending: Scope | undefined;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+
+    if (t.kind === TK.LBrace) {
+      at[i] = stack[stack.length - 1];
+      stack.push(pending ?? 'block');
+      pending = undefined;
+      continue;
+    }
+    if (t.kind === TK.RBrace) {
+      stack.pop();
+      at[i] = stack[stack.length - 1];
+      pending = undefined;
+      continue;
+    }
+
+    at[i] = stack[stack.length - 1];
+
+    switch (t.kind) {
+      case TK.Class:
+      case TK.Module:
+        pending = 'type';
+        break;
+      case TK.Enum:
+      case TK.Union:
+        pending = 'members';
+        break;
+      case TK.Realm:
+        pending = 'topology';
+        break;
+      case TK.Func:
+      case TK.Operator:
+        pending = 'block';
+        break;
+      default:
+        if (valueIs(t, 'process') || valueIs(t, 'thread')) pending = 'topology';
+        break;
+    }
+  }
+  return at;
+}
+
+export function collectDeclarations(tokens: Token[]): Declarations {
   const d = emptyDeclarations();
 
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
 
     switch (t.kind) {
+      case TK.Import: {
+        if (isIdent(tokens[i + 1])) d.imports.add(tokens[i + 1].value);
+        break;
+      }
       case TK.Class:
       case TK.Module: {
         if (isIdent(tokens[i + 1])) {
@@ -222,15 +291,32 @@ function collectVariants(tokens: Token[], i: number, d: Declarations): void {
   }
 }
 
-function label(tokens: Token[], d: Declarations): SemanticToken[] {
-  const labels = new Array<{ type: TokenType; modifiers: number } | undefined>(tokens.length);
+function ownerBeforeDot(tokens: Token[], dot: number): Token | undefined {
+  let n = dot - 1;
+  if (tokens[n]?.kind === TK.RBrack) {
+    let depth = 0;
+    for (; n >= 0; n--) {
+      if (tokens[n].kind === TK.RBrack) depth++;
+      else if (tokens[n].kind === TK.LBrack && --depth === 0) { n--; break; }
+    }
+  }
+  return n >= 0 ? tokens[n] : undefined;
+}
+
+type Label = { type: TokenType; modifiers: number } | undefined;
+
+function label(tokens: Token[], d: Declarations, ext: External): SemanticToken[] {
+  const labels = new Array<Label>(tokens.length);
   const declParens = collectDeclarationParens(tokens);
+  const scopes = scopeStack(tokens);
 
   const set = (i: number, type: TokenType, modifiers = 0) => {
     if (i < 0 || i >= tokens.length) return;
     if (tokens[i].kind !== TK.Ident && tokens[i].kind !== TK.Kernel && tokens[i].kind !== TK.Userspace) return;
     labels[i] = { type, modifiers };
   };
+
+  const isLibrary = (name: string): boolean => d.imports.has(name) || ext.library.has(name);
 
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
@@ -242,6 +328,7 @@ function label(tokens: Token[], d: Declarations): SemanticToken[] {
         break;
       case TK.Enum:
         set(i + 1, 'enum', MOD_DECLARATION);
+        markEnumMembers(tokens, i + 2, labels);
         break;
       case TK.Union: {
         set(i + 1, 'struct', MOD_DECLARATION);
@@ -251,7 +338,7 @@ function label(tokens: Token[], d: Declarations): SemanticToken[] {
       }
       case TK.Func:
         if (isIdent(tokens[i + 1])) {
-          set(i + 1, 'function', MOD_DECLARATION);
+          set(i + 1, scopes[i] === 'type' ? 'method' : 'function', MOD_DECLARATION);
           markGenericParams(tokens, i + 2, labels);
         }
         break;
@@ -274,6 +361,8 @@ function label(tokens: Token[], d: Declarations): SemanticToken[] {
     if (t.kind === TK.LParen && declParens.has(i)) markParameters(tokens, i, labels);
   }
 
+  markFields(tokens, scopes, labels);
+
   // Uses.
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
@@ -288,65 +377,95 @@ function label(tokens: Token[], d: Declarations): SemanticToken[] {
 
     const prev = tokens[i - 1];
     const next = tokens[i + 1];
+    const library = isLibrary(t.value) ? MOD_DEFAULT_LIBRARY : 0;
 
     if (prev?.kind === TK.Dot) {
-      const owner = tokens[i - 2];
-      if (next?.kind === TK.LParen) { labels[i] = { type: 'method', modifiers: 0 }; continue; }
-      if (owner?.kind === TK.Ident && d.enums.has(owner.value) && d.enumMembers.has(t.value)) {
-        labels[i] = { type: 'enumMember', modifiers: 0 };
-        continue;
+      const owner = ownerBeforeDot(tokens, i - 1);
+      const ownerName = owner?.kind === TK.Ident ? owner.value : undefined;
+      if (ownerName !== undefined) {
+        const isEnumOwner = d.enums.has(ownerName) || ext.enums.has(ownerName);
+        const isUnionOwner = d.unions.has(ownerName) || ext.unions.has(ownerName);
+        const known = d.enumMembers.has(t.value) || d.variants.has(t.value) || ext.members.has(t.value);
+        if ((isEnumOwner || isUnionOwner) && known) { labels[i] = { type: 'enumMember', modifiers: 0 }; continue; }
       }
-      if (owner?.kind === TK.Ident && d.unions.has(owner.value) && d.variants.has(t.value)) {
-        labels[i] = { type: 'enumMember', modifiers: 0 };
-        continue;
-      }
-      labels[i] = { type: 'property', modifiers: 0 };
+      labels[i] = { type: next?.kind === TK.LParen ? 'method' : 'property', modifiers: 0 };
       continue;
     }
 
     if (d.typeParams.has(t.value)) { labels[i] = { type: 'typeParameter', modifiers: 0 }; continue; }
 
-    const library = LIBGATA.has(t.value) ? MOD_DEFAULT_LIBRARY : 0;
-    if (d.classes.has(t.value)) { labels[i] = { type: 'class', modifiers: library }; continue; }
-    if (d.enums.has(t.value)) { labels[i] = { type: 'enum', modifiers: library }; continue; }
-    if (d.unions.has(t.value)) { labels[i] = { type: 'struct', modifiers: library }; continue; }
-    if (d.namespaces.has(t.value)) { labels[i] = { type: 'namespace', modifiers: 0 }; continue; }
+    if (d.classes.has(t.value) || ext.classes.has(t.value)) { labels[i] = { type: 'class', modifiers: library }; continue; }
+    if (d.enums.has(t.value) || ext.enums.has(t.value)) { labels[i] = { type: 'enum', modifiers: library }; continue; }
+    if (d.unions.has(t.value) || ext.unions.has(t.value)) { labels[i] = { type: 'struct', modifiers: library }; continue; }
+    if (d.namespaces.has(t.value) || ext.namespaces.has(t.value)) { labels[i] = { type: 'namespace', modifiers: 0 }; continue; }
     if (d.enumMembers.has(t.value) && !d.functions.has(t.value)) { labels[i] = { type: 'enumMember', modifiers: 0 }; continue; }
 
     if (next?.kind === TK.LParen) { labels[i] = { type: 'function', modifiers: library }; continue; }
-    if (d.functions.has(t.value)) { labels[i] = { type: 'function', modifiers: library }; continue; }
+    if (d.functions.has(t.value) || ext.functions.has(t.value)) { labels[i] = { type: 'function', modifiers: library }; continue; }
 
-    if (library !== 0) { labels[i] = { type: 'class', modifiers: library }; continue; }
+    // An imported module whose file could not be read still names a type, not a variable.
+    if (d.imports.has(t.value)) { labels[i] = { type: 'class', modifiers: MOD_DEFAULT_LIBRARY }; continue; }
+
     if (/^[A-Z]/.test(t.value) && (next?.kind === TK.LBrack || next?.kind === TK.Ident || prev?.kind === TK.New)) {
-      labels[i] = { type: 'type', modifiers: 0 };
+      labels[i] = { type: 'type', modifiers: library };
       continue;
     }
     labels[i] = { type: 'variable', modifiers: 0 };
   }
 
-  for (let i = 0; i < tokens.length; i++) {
-    const k = tokens[i].kind;
-    if (k === TK.AtIntrinsic || k === TK.AtPreamble || k === TK.AtExtern || k === TK.AtEnvironment
-      || k === TK.AtKeep || k === TK.AtBuiltin || k === TK.AtShadows)
-      labels[i] = { type: 'macro', modifiers: 0 };
-  }
-
   const out: SemanticToken[] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const l = labels[i];
-    if (!l) continue;
-    const span = tokens[i].span;
-    if (span.length <= 0) continue;
+  const push = (span: Span, l: Exclude<Label, undefined>) => {
+    if (span.length <= 0) return;
     out.push({ start: span.start, length: span.length, type: TYPE_INDEX.get(l.type) ?? 0, modifiers: l.modifiers });
+  };
+
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+
+    const word = ANNOTATION_WORD.get(t.kind);
+    if (word !== undefined) {
+      push({ start: t.span.start, length: Math.min(word.length, t.span.length) }, { type: 'macro', modifiers: 0 });
+      continue;
+    }
+
+    if (t.kind === TK.NativeTypeDecl) {
+      if (t.nameSpan) push(t.nameSpan, { type: 'class', modifiers: MOD_DECLARATION });
+      continue;
+    }
+
+    const l = labels[i];
+    if (l) push(t.span, l);
   }
   return out;
 }
 
-function markGenericParams(
-  tokens: Token[],
-  i: number,
-  labels: Array<{ type: TokenType; modifiers: number } | undefined>,
-): number {
+const FIELD_HEAD: ReadonlySet<TK> = new Set([
+  TK.LBrack, TK.RBrack, TK.Punct, TK.Public, TK.Private, TK.Static,
+  TK.Kernel, TK.Userspace, TK.ColonColon, TK.Dot,
+  TK.TBool, TK.TInt, TK.TChar, TK.TFloat, TK.TDouble, TK.TShort, TK.TVoid, TK.TPrim,
+]);
+
+function markFields(tokens: Token[], scopes: Array<Scope | undefined>, labels: Label[]): void {
+  for (let i = 0; i < tokens.length; i++) {
+    if (scopes[i] !== 'type') continue;
+    const opener = tokens[i - 1]?.kind;
+    if (i > 0 && opener !== TK.LBrace && opener !== TK.RBrace && opener !== TK.Semi) continue;
+
+    let last = -1;
+    for (let n = i; n < tokens.length; n++) {
+      const k = tokens[n].kind;
+      if (k === TK.Semi) {
+        if (last >= 0 && !labels[last]) labels[last] = { type: 'property', modifiers: MOD_DECLARATION };
+        break;
+      }
+      if (k === TK.Ident) { last = n; continue; }
+      if (FIELD_HEAD.has(k)) continue;
+      break;
+    }
+  }
+}
+
+function markGenericParams(tokens: Token[], i: number, labels: Label[]): number {
   if (tokens[i]?.kind !== TK.LBrack) return i;
   let n = i + 1;
   for (; n < tokens.length && tokens[n].kind !== TK.RBrack && tokens[n].kind !== TK.EOF; n++)
@@ -354,11 +473,17 @@ function markGenericParams(
   return n + 1;
 }
 
-function markVariants(
-  tokens: Token[],
-  i: number,
-  labels: Array<{ type: TokenType; modifiers: number } | undefined>,
-): void {
+function markEnumMembers(tokens: Token[], i: number, labels: Label[]): void {
+  if (tokens[i]?.kind !== TK.LBrace) return;
+  let expect = true;
+  for (let n = i + 1; n < tokens.length && tokens[n].kind !== TK.RBrace && tokens[n].kind !== TK.EOF; n++) {
+    if (tokens[n].kind === TK.Comma) { expect = true; continue; }
+    if (expect && tokens[n].kind === TK.Ident) labels[n] = { type: 'enumMember', modifiers: MOD_DECLARATION };
+    expect = false;
+  }
+}
+
+function markVariants(tokens: Token[], i: number, labels: Label[]): void {
   if (tokens[i]?.kind !== TK.LBrace) return;
   let expect = true;
   let depth = 0;
@@ -374,11 +499,7 @@ function markVariants(
   }
 }
 
-function markLetName(
-  tokens: Token[],
-  i: number,
-  labels: Array<{ type: TokenType; modifiers: number } | undefined>,
-): void {
+function markLetName(tokens: Token[], i: number, labels: Label[]): void {
   let last = -1;
   for (let n = i + 1; n < tokens.length; n++) {
     const k = tokens[n].kind;
@@ -388,11 +509,7 @@ function markLetName(
   if (last >= 0) labels[last] = { type: 'variable', modifiers: MOD_DECLARATION };
 }
 
-function markMatchCase(
-  tokens: Token[],
-  i: number,
-  labels: Array<{ type: TokenType; modifiers: number } | undefined>,
-): void {
+function markMatchCase(tokens: Token[], i: number, labels: Label[]): void {
   if (tokens[i + 1]?.kind !== TK.Ident) return;
   const opens = tokens[i + 2]?.kind === TK.LParen;
   if (!opens && tokens[i + 2]?.kind !== TK.LBrace) return;
@@ -402,11 +519,7 @@ function markMatchCase(
     if (tokens[n].kind === TK.Ident) labels[n] = { type: 'variable', modifiers: MOD_DECLARATION };
 }
 
-function markParameters(
-  tokens: Token[],
-  open: number,
-  labels: Array<{ type: TokenType; modifiers: number } | undefined>,
-): void {
+function markParameters(tokens: Token[], open: number, labels: Label[]): void {
   let depth = 1;
   let last = -1;
   for (let n = open + 1; n < tokens.length && tokens[n].kind !== TK.EOF; n++) {
@@ -427,4 +540,3 @@ function markParameters(
     if (k === TK.Ident) last = n;
   }
 }
-

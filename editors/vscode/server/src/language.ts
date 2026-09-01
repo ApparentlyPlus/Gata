@@ -116,7 +116,7 @@ function renderSymbol(sym: GataSymbol): string {
   ].join('\n');
 }
 
-export function hoverFor(text: string, offset: number): string | null {
+export function hoverFor(text: string, offset: number, imported: GataSymbol[] = []): string | null {
   const word = wordAt(text, offset);
   if (!word) return null;
 
@@ -124,9 +124,11 @@ export function hoverFor(text: string, offset: number): string | null {
   if (PRIMITIVE_DOCS[word]) return render(PRIMITIVE_DOCS[word]);
   if (KEYWORD_DOCS[word]) return render(KEYWORD_DOCS[word]);
 
-  const symbols = symbolsOf(text);
-  const own = symbols.find((s) => s.name === word);
+  const own = symbolsOf(text).find((s) => s.name === word);
   if (own) return renderSymbol(own);
+
+  const external = imported.find((s) => s.name === word);
+  if (external) return renderSymbol(external);
 
   if (/^G\d{3}$/.test(word) && CODE_SUMMARIES[word]) return `**${word}** ${CODE_SUMMARIES[word]}`;
   return null;
@@ -139,7 +141,7 @@ export interface CompletionEntry {
   documentation?: string;
 }
 
-export function completionsFor(text: string): CompletionEntry[] {
+export function completionsFor(text: string, imported: GataSymbol[] = []): CompletionEntry[] {
   const out: CompletionEntry[] = [];
 
   for (const [word, doc] of Object.entries(KEYWORD_DOCS))
@@ -150,7 +152,7 @@ export function completionsFor(text: string): CompletionEntry[] {
     out.push({ label: word, kind: 'annotation', detail: doc.signature, documentation: doc.body });
 
   const seen = new Set(out.map((e) => e.label));
-  for (const sym of symbolsOf(text)) {
+  for (const sym of [...symbolsOf(text), ...imported]) {
     if (seen.has(sym.name)) continue;
     seen.add(sym.name);
     out.push({

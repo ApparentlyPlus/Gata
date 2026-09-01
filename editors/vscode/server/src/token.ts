@@ -26,4 +26,5 @@ export interface Token {
   kind: TK;
   value: string;
   span: Span;
+  nameSpan?: Span;
 }
