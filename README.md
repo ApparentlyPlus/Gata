@@ -7,22 +7,41 @@
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/License-Custom-red.svg" alt="License: Custom"></a>
   <img src="https://img.shields.io/badge/libgata-24%20modules-00e676" alt="libgata: 24 modules">
-  <img src="https://img.shields.io/badge/extension-v2.2.0-1263cf" alt="Extension v2.2.0">
+  <img src="https://img.shields.io/badge/extension-v2.3.0-1263cf" alt="Extension v2.3.0">
   <img src="https://img.shields.io/badge/compiler-appa-fe7648" alt="Compiler: appa">
   <img src="https://img.shields.io/badge/targets-GatOS%20%7C%20Hosted-ffd35c" alt="Targets: GatOS | Hosted">
 </p>
 
-Gata is a statically typed systems language whose compiler produces a **bootable operating system image** instead of an executable. It is also part of my undergraduate thesis at the [University of Macedonia](https://www.uom.gr/en/dai), and is the frontent of the OS building toolchain called PawStack.
+Gata is a statically typed systems language whose compiler produces a **bootable operating system image** instead of an executable. It is also part of my undergraduate thesis at the [University of Macedonia](https://www.uom.gr/en/dai), and is the frontend of the OS building toolchain called PawStack.
 
 This repository is the **home of the language**, not of the compiler. It holds the standard library, the book, the environment files, the editor tooling and the examples. The compiler that reads all of it lives in [the Appa repository](https://github.com/ApparentlyPlus/Appa).
 
 > [!IMPORTANT]
-> **You cannot write Gata without `appa`.** There is no interpreter and no standalone build here; nothing in this repository compiles on its own. Install the compiler first, either by following [Chapter 1 of the book](docs/The%20Gata%20Programming%20Language.md) or the [Getting Started section of the Appa repo](https://github.com/ApparentlyPlus/Appa#getting-started). `appa install` then pulls `libgata` and the environment files down from here for you, so a normal user never has to clone this repository at all.
+> **You cannot write Gata without `appa`.** There is no interpreter and no standalone build here; nothing in this repository compiles on its own. Install the compiler first. The four steps below are the short version, and [Chapter 1 of the book](docs/The%20Gata%20Programming%20Language.md) is the long one.
+
+## Start Here
+
+If you are here to *write* an operating system rather than to read about how one gets built, this is the whole path. Four steps, about five minutes:
+
+1. **Install [VS Code](https://code.visualstudio.com/).**
+2. **Install the Gata extension.** Grab the `.vsix` from the [Gata releases](https://github.com/ApparentlyPlus/Gata/releases/latest). In VS Code, open the Extensions tab (`Ctrl + Shift + X`), click the three dots at the top right of the tab and pick **Install from VSIX**. Dragging the file onto that tab works too.
+3. **Install `appa`.** Grab the binary for your platform from the [Appa releases](https://github.com/ApparentlyPlus/Appa/releases/latest), then run `appa install`, which pulls down the toolchain, the standard library and the environment files.
+4. **Code away.**
+
+    ```bash
+    appa new myos && cd myos
+    appa run
+    ```
+
+That's it. You now have an operating system.
+
+You never have to clone this repository to do any of that. `appa install` pulls `libgata` and the environment files from here on your behalf. Everything below is the language itself: the standard library, the book, the extension and the examples.
 
 The first section of this README focuses on providing some insight as to the vision of this project. If you'd rather skip the philosophy, the tour of what's actually in here starts at [What's in This Repository](#whats-in-this-repository).
 
 ## Table of Contents
 
+- [Start Here](#start-here)
 - [Project Overview & Background](#project-overview--background)
 - [What's in This Repository](#whats-in-this-repository)
 - [What's *not* in This Repository](#whats-not-in-this-repository)
@@ -143,6 +162,8 @@ Better you hear it from me now than go looking:
 
 ## Getting Started
 
+The four-step version, editor included, is [Start Here](#start-here) at the top of this page. This is the same thing with the detail filled in.
+
 **Writing Gata requires `appa`.** Install it first, then come back:
 
 ```bash
@@ -221,13 +242,21 @@ The [VS Code extension](editors/vscode/) is maintained here, in `editors/vscode/
 | **Hovers, outline, completion** | Every keyword, annotation and primitive carries an explanation; types, methods, operators, variants, realms and threads appear in the outline. |
 | **Themes** | `Gata Canopy` (dark) and `Gata Daylight` (light), both entirely optional. The palette lands as foreground-only defaults over whatever theme you already use. |
 
-Installing the packaged build:
+**Installing it (what you want):** download the `.vsix` from the [releases page](https://github.com/ApparentlyPlus/Gata/releases/latest). No checkout of this repository is required.
+
+In VS Code, open the Extensions tab (`Ctrl + Shift + X`), click the three dots at the top right of the tab and pick **Install from VSIX**. Dragging the file onto that tab does the same thing. From a terminal, if you prefer:
 
 ```bash
-code --install-extension editors/vscode/gata-highlighting-2.2.0.vsix
+code --install-extension gata-highlighting-*.vsix
 ```
 
-Building it from a checkout needs **Node 18+**:
+**Installing it from a checkout,** if you already have one:
+
+```bash
+code --install-extension editors/vscode/gata-highlighting-*.vsix
+```
+
+**Building it from a checkout** needs **Node 18+**:
 
 ```bash
 cd editors/vscode
