@@ -13,7 +13,7 @@ import Runtime;
 union Span[T] { View(T* ptr, int len) }
 
 /*
- * FromRaw - A span over an existing buffer; a null pointer or a non-positive len both collapse
+ * FromRaw - A span over an existing buffer. A null pointer or a non-positive len both collapse
  * to the zero-length span, so a caller never has to special-case "the buffer might not exist".
  */
 Span[T] func FromRaw[T](T* ptr, int len) {
@@ -66,7 +66,7 @@ Span[T] func Slice[T](Span[T] s, int start, int len) {
 }
 
 /*
- * Equal - Element-wise == over both spans; different lengths are never equal
+ * Equal - Element-wise == over both spans. Different lengths are never equal
  */
 bool func Equal[T](Span[T] a, Span[T] b) {
     let n = Length(a);

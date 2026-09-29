@@ -168,10 +168,7 @@ export class Parser {
     if (this.at(TK.Import)) this.rejectAnns(anns, 'an import');
     if (this.at(TK.NativeContent)) { this.advance(); return; }
     if (this.at(TK.NativeTypeDecl)) { this.advance(); return; }
-    if (this.at(TK.Enum)) { this.rejectAnns(anns, 'an enum'); this.parseEnumDecl(); return; }
-    if (this.at(TK.Union)) { this.parseUnionDecl(); return; }
-    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
-    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
+    if (this.tryParseTypeDecl(anns)) return;
     if (this.at(TK.Realm)) { this.rejectAnns(anns, 'a realm'); this.parseRealmDecl(); return; }
     if (this.at(TK.Kernel)) this.requireRealmKeyword();
     if (this.atProcessStart())
@@ -216,7 +213,7 @@ export class Parser {
     this.expect(TK.Func);
     const name = this.expect(TK.Ident).value;
     this.parseGenericParamList();
-    this.expect(TK.LParen); this.parseParamList(); this.expect(TK.RParen);
+    this.parseParenParams();
     if (this.at(TK.Arrow)) this.fail(`'${name}': return type goes before 'func', not after the parameter list`, Codes.BadDeclHeader);
     this.parseMethodBody();
   }
@@ -229,6 +226,33 @@ export class Parser {
     ]);
   }
 
+  // enum, union, class or module; same at file, realm and process level
+  private tryParseTypeDecl(anns: { count: number; span: Span }): boolean {
+    switch (this.cur.kind) {
+      case TK.Enum:
+        this.rejectAnns(anns, 'an enum');
+        this.parseEnumDecl();
+        return true;
+      case TK.Union:
+        this.parseUnionDecl();
+        return true;
+      case TK.Class:
+        this.parseClassDecl();
+        return true;
+      case TK.Module:
+        this.parseModuleDecl();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private parseParenParams(): void {
+    this.expect(TK.LParen);
+    this.parseParamList();
+    this.expect(TK.RParen);
+  }
+
   private parseGenericParamList(): void {
     if (!this.at(TK.LBrack)) return;
     this.advance();
@@ -239,8 +263,8 @@ export class Parser {
 
   private parseImport(): void {
     this.expect(TK.Import);
-    if (this.at(TK.StrLit)) { this.advance(); this.expect(TK.Semi); return; }
-    this.expect(TK.Ident);
+    if (this.at(TK.StrLit)) this.advance();
+    else this.expect(TK.Ident);
     this.expect(TK.Semi);
   }
 
@@ -249,7 +273,7 @@ export class Parser {
     this.parseOptionalReturnType();
     this.expect(TK.Func);
     const name = this.expect(TK.Ident).value;
-    this.expect(TK.LParen); this.parseParamList(); this.expect(TK.RParen);
+    this.parseParenParams();
     if (this.at(TK.Arrow)) this.fail(`'${name}': return type goes before 'func', not after the parameter list`, Codes.BadDeclHeader);
     this.expect(TK.Semi);
   }
@@ -282,10 +306,7 @@ export class Parser {
     if (this.at(TK.NativeContent)) { this.advance(); return; }
     if (this.at(TK.NativeTypeDecl)) { this.advance(); return; }
     if (this.at(TK.AtExtern)) { this.parseExternDecl(); return; }
-    if (this.at(TK.Enum)) { this.rejectAnns(anns, 'an enum'); this.parseEnumDecl(); return; }
-    if (this.at(TK.Union)) { this.parseUnionDecl(); return; }
-    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
-    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
+    if (this.tryParseTypeDecl(anns)) return;
     if (this.atProcessStart()) { this.rejectAnns(anns, 'a process'); this.parseProcessDeclTop(); return; }
     this.parseFreeFuncDecl();
   }
@@ -293,12 +314,7 @@ export class Parser {
   private parseClassDecl(): void {
     this.expect(TK.Class);
     this.parseSimpleTypeName();
-    if (this.at(TK.LBrack)) {
-      this.advance();
-      this.expectBareGenericParam();
-      while (this.try_(TK.Comma)) this.expectBareGenericParam();
-      this.expect(TK.RBrack);
-    }
+    this.parseGenericParamList();
     this.expect(TK.LBrace);
     while (!this.at(TK.RBrace) && !this.at(TK.EOF)) this.parseClassMember();
     this.expect(TK.RBrace);
@@ -324,13 +340,13 @@ export class Parser {
     this.expect(TK.Ident);
     this.expect(TK.LBrace);
     if (!this.at(TK.RBrace) && !this.at(TK.EOF)) {
-      this.expect(TK.Ident);
-      if (this.try_(TK.Eq)) this.parseExpr();
-      while (this.try_(TK.Comma)) {
-        if (this.at(TK.RBrace)) this.fail('trailing comma not allowed after the last enum member; remove it', Codes.TrailingComma);
+      let first = true;
+      do {
+        if (!first && this.at(TK.RBrace)) this.fail('trailing comma not allowed after the last enum member; remove it', Codes.TrailingComma);
+        first = false;
         this.expect(TK.Ident);
         if (this.try_(TK.Eq)) this.parseExpr();
-      }
+      } while (this.try_(TK.Comma));
     }
     this.expect(TK.RBrace);
   }
@@ -338,21 +354,16 @@ export class Parser {
   private parseUnionDecl(): void {
     this.expect(TK.Union);
     this.expect(TK.Ident);
-    if (this.at(TK.LBrack)) {
-      this.advance();
-      this.expectBareGenericParam();
-      while (this.try_(TK.Comma)) this.expectBareGenericParam();
-      this.expect(TK.RBrack);
-    }
+    this.parseGenericParamList();
     this.expect(TK.LBrace);
     if (!this.at(TK.RBrace) && !this.at(TK.EOF)) {
-      this.expect(TK.Ident);
-      if (this.at(TK.LParen)) this.parseUnionFieldList();
-      while (this.try_(TK.Comma)) {
-        if (this.at(TK.RBrace)) this.fail('trailing comma not allowed after the last union variant; remove it', Codes.TrailingComma);
+      let first = true;
+      do {
+        if (!first && this.at(TK.RBrace)) this.fail('trailing comma not allowed after the last union variant; remove it', Codes.TrailingComma);
+        first = false;
         this.expect(TK.Ident);
         if (this.at(TK.LParen)) this.parseUnionFieldList();
-      }
+      } while (this.try_(TK.Comma));
     }
     this.expect(TK.RBrace);
   }
@@ -486,7 +497,7 @@ export class Parser {
       if (!(this.at(TK.Func) && this.peek().kind !== TK.LParen)) this.parseTypeSpec();
       this.expect(TK.Func);
       const op = this.parseOperatorSymbol();
-      this.expect(TK.LParen); this.parseParamList(); this.expect(TK.RParen);
+      this.parseParenParams();
       if (this.at(TK.Arrow)) this.fail(`'${op}': return type goes after 'operator', not after the parameter list`, Codes.BadDeclHeader);
       this.parseMethodBody();
       return;
@@ -498,7 +509,7 @@ export class Parser {
       this.expect(TK.Func);
       const name = this.expect(TK.Ident).value;
       this.parseGenericParamList();
-      this.expect(TK.LParen); this.parseParamList(); this.expect(TK.RParen);
+      this.parseParenParams();
       if (this.at(TK.Arrow)) this.fail(`'${name}': return type goes before 'func', not after the parameter list`, Codes.BadDeclHeader);
       this.parseMethodBody();
       return;
@@ -631,10 +642,7 @@ export class Parser {
     if (this.at(TK.NativeContent)) { this.advance(); return; }
     if (this.at(TK.NativeTypeDecl)) { this.advance(); return; }
     if (this.at(TK.AtExtern)) { this.parseExternDecl(); return; }
-    if (this.at(TK.Enum)) { this.rejectAnns(anns, 'an enum'); this.parseEnumDecl(); return; }
-    if (this.at(TK.Union)) { this.parseUnionDecl(); return; }
-    if (this.at(TK.Class)) { this.parseClassDecl(); return; }
-    if (this.at(TK.Module)) { this.parseModuleDecl(); return; }
+    if (this.tryParseTypeDecl(anns)) return;
     if (this.at(TK.Let)) { this.rejectAnns(anns, 'a process variable'); this.parseProcessVarDecl(); return; }
     this.parseFreeFuncDecl();
   }

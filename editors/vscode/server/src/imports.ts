@@ -53,15 +53,12 @@ export interface ResolveContext {
 export function resolveContext(filePath: string, settings: GataSettings): ResolveContext {
   const gconf = findGconf(path.dirname(filePath));
   const projectRoot = gconf ? path.dirname(gconf) : undefined;
-
   const candidates: string[] = [];
   if (settings.libgataPath) candidates.push(settings.libgataPath);
   if (projectRoot) candidates.push(path.join(projectRoot, 'selfhostlib'), path.join(projectRoot, 'libgata'));
   const detected = detectLibgata(projectRoot ?? path.dirname(filePath));
   if (detected) candidates.push(detected);
-
-  const stdlibDir = candidates.find(isDirectory);
-  return { projectRoot, stdlibDir };
+  return { projectRoot, stdlibDir: candidates.find(isDirectory) };
 }
 
 function isDirectory(p: string): boolean {
@@ -101,10 +98,8 @@ function readFile(file: string): CachedFile | undefined {
   try { stat = fs.statSync(file); } catch { return undefined; }
   const hit = cache.get(file);
   if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit;
-
   let text: string;
   try { text = fs.readFileSync(file, 'utf8'); } catch { return undefined; }
-
   const entry: CachedFile = {
     mtimeMs: stat.mtimeMs,
     size: stat.size,
@@ -123,7 +118,6 @@ export function forgetFile(file: string): void {
 export function indexFor(filePath: string, text: string, settings: GataSettings): ImportIndex {
   const ctx = resolveContext(filePath, settings);
   const index = emptyIndex();
-
   const visited = new Set<string>([path.resolve(filePath)]);
   const queue: Array<{ file: string; refs: ImportRef[] }> = [{ file: filePath, refs: importsOf(text) }];
 
@@ -133,17 +127,14 @@ export function indexFor(filePath: string, text: string, settings: GataSettings)
       const resolved = resolveImport(ref, ctx, file);
       if (!resolved || visited.has(resolved)) continue;
       visited.add(resolved);
-
       const entry = readFile(resolved);
       if (!entry) continue;
-
       index.files.push(resolved);
       merge(index, entry.decls, entry.symbols, isUnder(resolved, ctx.stdlibDir));
       queue.push({ file: resolved, refs: entry.imports });
       if (index.files.length >= FILE_BUDGET) break;
     }
   }
-
   return index;
 }
 

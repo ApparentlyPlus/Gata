@@ -51,7 +51,7 @@ class Stack[T] {
     }
 
     /*
-     * PopOrThrow - Remove and return the top; throws if empty
+     * PopOrThrow - Remove and return the top. Throws if empty
      */
     public throws T func PopOrThrow() {
         if (self.count <= 0) { throw; }
@@ -81,7 +81,7 @@ class Stack[T] {
     }
 
     /*
-     * Grow - Double capacity (from 8) until at least need; raw move, no retains
+     * Grow - Double capacity (from 8) until at least need. Raw move, no retains
      */
     void func Grow(int need) {
         let nc = self.cap * 2;

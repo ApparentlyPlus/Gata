@@ -43,7 +43,7 @@ module Dir {
     }
 
     /*
-     * MakeDir - Creates path as a directory; true on success (false if it already exists)
+     * MakeDir - Creates path as a directory. True on success (false if it already exists)
      */
     public bool func MakeDir(String path) {
         if (path == null) { return false; }
@@ -59,7 +59,7 @@ module Dir {
     }
 
     /*
-     * DeleteFile - Removes the file at path; true on success
+     * DeleteFile - Removes the file at path. True on success
      */
     public bool func DeleteFile(String path) {
         if (path == null) { return false; }
@@ -67,7 +67,7 @@ module Dir {
     }
 
     /*
-     * DeleteEmptyDir - Removes the directory at path; true on success (fails if not empty)
+     * DeleteEmptyDir - Removes the directory at path. True on success (fails if not empty)
      */
     public bool func DeleteEmptyDir(String path) {
         if (path == null) { return false; }

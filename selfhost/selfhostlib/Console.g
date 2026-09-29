@@ -82,7 +82,7 @@ module Console {
     public String func Fg(int fg) { return Console.Style(fg, Console.DefaultBg()); }
 
     /*
-     * NoStyle - A marker returning to the default colours. Every styled run ends with one; there is
+     * NoStyle - A marker returning to the default colours. Every styled run ends with one. There is
      * no attribute stack, so a run that forgets it leaks its colour into whatever prints next.
      */
     public String func NoStyle() { return Console.Style(Console.DefaultFg(), Console.DefaultBg()); }
@@ -274,7 +274,7 @@ module Console {
      *
      * Written as a carriage return and a run of spaces rather than an erase-to-end-of-line, because
      * spaces are the one thing every console draws the same way. Costs a full line of output where
-     * the escape cost three bytes; only in-place redraws use it, and only when there is a terminal
+     * the escape cost three bytes. Only in-place redraws use it, and only when there is a terminal
      * to redraw on.
      */
     public void func ClearLine() {
@@ -304,7 +304,7 @@ module Console {
 
     /*
      * SetColor - Set fg/bg to the 0-15 VGA palette indices the kernel uses, immediately and
-     * out of band. Style markers are the way to colour a string being built; this is for a caller
+     * out of band. Style markers are the way to colour a string being built. This is for a caller
      * that is driving the screen directly.
      */
     public void func SetColor(int fg, int bg) { _env_tty_color(fg, bg); }
@@ -321,7 +321,7 @@ module Console {
      * Vista has no way to set the table, and a terminal that only speaks the base sixteen will
      * approximate whatever it is sent - so a program that cares should ask, once, and keep a
      * sixteen-colour scheme for when the answer is no. Slots 0 and 7 are the default background and
-     * foreground; a floor is free to ignore an attempt to redefine them, and the hosted one does.
+     * foreground. A floor is free to ignore an attempt to redefine them, and the hosted one does.
      */
     public bool func SetPalette(int index, int r, int g, int b) {
         return _env_tty_palette(index, r, g, b) != 0;
@@ -344,7 +344,7 @@ module Console {
     public void func ResetColor() { _env_tty_color(Console.DefaultFg(), Console.DefaultBg()); }
 
     /*
-     * InputLine - Read a line without the newline; throws at end of input.
+     * InputLine - Read a line without the newline. Throws at end of input.
      *
      * env.selfhost.g has no stdin: a compiler takes its input as paths on argv, so the floor
      * answers end-of-input and this always throws. A floor that wants a keyboard binds _env_read.

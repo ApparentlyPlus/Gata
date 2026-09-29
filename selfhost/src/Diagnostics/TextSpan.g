@@ -9,7 +9,7 @@ union TextSpan { Span(int start, int length) }
 module TS {
 
     /*
-     * NoneSpan - The absence of a span; TS.IsNone(TS.NoneSpan()) is true
+     * NoneSpan - The absence of a span. TS.IsNone(TS.NoneSpan()) is true
      */
     public TextSpan func NoneSpan() { return TextSpan.Span(-1, 0); }
 
@@ -40,7 +40,7 @@ module TS {
     public bool func IsNone(TextSpan s) { return TS.Start(s) < 0; }
 
     /*
-     * Merge - The smallest span containing both a and b; either side alone if the other is IsNone
+     * Merge - The smallest span containing both a and b. Either side alone if the other is IsNone
      */
     public TextSpan func Merge(TextSpan a, TextSpan b) {
         if (TS.IsNone(a)) { return b; }

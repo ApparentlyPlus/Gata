@@ -54,21 +54,21 @@ module Sys {
     }
 
     /*
-     * Exit - Terminate the current userspace process; a no-op in the kernel
+     * Exit - Terminate the current userspace process. A no-op in the kernel
      */
     public void func Exit() {
         _env_exit();
     }
 
     /*
-     * Shutdown - Power the machine off; does not return on success (hosted: exits)
+     * Shutdown - Power the machine off. Does not return on success (hosted: exits)
      */
     public void func Shutdown() {
         _env_shutdown();
     }
 
     /*
-     * Reboot - Reboot the machine; does not return on success (hosted: exits)
+     * Reboot - Reboot the machine. Does not return on success (hosted: exits)
      */
     public void func Reboot() {
         _env_reboot();

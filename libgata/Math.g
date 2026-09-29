@@ -270,7 +270,7 @@ module Math {
             k = -27;
         }
         let ex = (((i >> 52) & 0x7FFULL) as int) - 1023;
-        k = k + (ex >> 1);                        // floor(ex / 2); the odd bit stays in f
+        k = k + (ex >> 1);                        // floor(ex / 2), and the odd bit stays in f
         let f = frombits((i & 0x000FFFFFFFFFFFFFULL) |
                          (((1023 + (ex & 1)) as uint64) << 52));
 
@@ -1793,12 +1793,12 @@ module Math {
     }
 
     /*
-     * Min - The smaller of a and b; delegates to Algorithms' generic Min
+     * Min - The smaller of a and b. Delegates to Algorithms' generic Min
      */
     public double func Min(double a, double b) { return Algorithms.Min(a, b); }
 
     /*
-     * Max - The larger of a and b; delegates to Algorithms' generic Max
+     * Max - The larger of a and b. Delegates to Algorithms' generic Max
      */
     public double func Max(double a, double b) { return Algorithms.Max(a, b); }
 

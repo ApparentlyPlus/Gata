@@ -206,7 +206,7 @@ class Desugar {
     /*
      * LowerInterp - An interpolated string becomes concatenation.
      *
-     * One part passes through; two fold into a single '+'; three or more go through ONE
+     * One part passes through. Two fold into a single '+'. Three or more go through ONE
      * StringBuilder rather than a chain of '+' that would copy the whole accumulated string at
      * every fold. The builder comes from @builtin(StringBuilder), with '+' as the fallback when
      * the build has no builder bound.

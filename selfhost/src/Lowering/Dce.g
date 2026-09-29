@@ -39,7 +39,7 @@ class Dce {
     }
 
     /*
-     * UnitKey - A unit token. C# uses a (name, isFunction) record; one string with a kind prefix
+     * UnitKey - A unit token. C# uses a (name, isFunction) record. One string with a kind prefix
      * says the same thing and can key a StringSet directly.
      */
     String func UnitKey(String name, bool isFunction) {

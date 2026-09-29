@@ -176,14 +176,27 @@ module AppaCli {
         let int i = 0;
         while (i < args.Length()) {
             let String a = args.Get(i);
-            if (a == "--env" && i + 1 < args.Length())         { i = i + 1; envOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--entry" && i + 1 < args.Length())  { i = i + 1; entryOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--stdlib" && i + 1 < args.Length()) { i = i + 1; stdlibOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--werror")          { warnAsError = true; }
-            else { if (a == "--pure-transpile")  { pureTranspile = true; }
-            else { if (a == "--emit-sourcemap")  { emitSourcemap = true; }
-            else { if (a.StartsWith("--")) { Cli.Fail("unknown option '" + a + "'"); }
-            else { manifestArg = Optional.Some(a); } } } } } } }
+            let bool hasValue = i + 1 < args.Length();
+            if (a == "--env" && hasValue) {
+                i = i + 1;
+                envOverride = Optional.Some(args.Get(i));
+            } else if (a == "--entry" && hasValue) {
+                i = i + 1;
+                entryOverride = Optional.Some(args.Get(i));
+            } else if (a == "--stdlib" && hasValue) {
+                i = i + 1;
+                stdlibOverride = Optional.Some(args.Get(i));
+            } else if (a == "--werror") {
+                warnAsError = true;
+            } else if (a == "--pure-transpile") {
+                pureTranspile = true;
+            } else if (a == "--emit-sourcemap") {
+                emitSourcemap = true;
+            } else if (a.StartsWith("--")) {
+                Cli.Fail("unknown option '" + a + "'");
+            } else {
+                manifestArg = Optional.Some(a);
+            }
             i = i + 1;
         }
 
@@ -258,12 +271,23 @@ module AppaCli {
         let int i = 0;
         while (i < args.Length()) {
             let String a = args.Get(i);
-            if (a == "--env" && i + 1 < args.Length())          { i = i + 1; envOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--entry" && i + 1 < args.Length())  { i = i + 1; entryOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--stdlib" && i + 1 < args.Length()) { i = i + 1; stdlibOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--werror") { warnAsError = true; }
-            else { if (a.StartsWith("--")) { Cli.Fail("unknown option '" + a + "'"); }
-            else { manifestArg = Optional.Some(a); } } } } }
+            let bool hasValue = i + 1 < args.Length();
+            if (a == "--env" && hasValue) {
+                i = i + 1;
+                envOverride = Optional.Some(args.Get(i));
+            } else if (a == "--entry" && hasValue) {
+                i = i + 1;
+                entryOverride = Optional.Some(args.Get(i));
+            } else if (a == "--stdlib" && hasValue) {
+                i = i + 1;
+                stdlibOverride = Optional.Some(args.Get(i));
+            } else if (a == "--werror") {
+                warnAsError = true;
+            } else if (a.StartsWith("--")) {
+                Cli.Fail("unknown option '" + a + "'");
+            } else {
+                manifestArg = Optional.Some(a);
+            }
             i = i + 1;
         }
 

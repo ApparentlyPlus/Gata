@@ -40,7 +40,7 @@ class CollectionResult {
 }
 
 /*
- * Walks every parsed program and fills a SymbolTable. One instance per build; call Collect once.
+ * Walks every parsed program and fills a SymbolTable. One instance per build. Call Collect once.
  */
 class SymbolCollector {
     DiagnosticBag diag;

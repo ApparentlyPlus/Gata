@@ -69,7 +69,7 @@ module Console {
     public void func SetColor(int fg, int bg) { _env_tty_color(fg, bg); }
 
     /*
-     * InputLine - Read a line without the newline; throws at end of input
+     * InputLine - Read a line without the newline. Throws at end of input
      */
     public throws String func InputLine() {
         unsafe {

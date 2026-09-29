@@ -11,7 +11,7 @@ import "src/Diagnostics/TextSpan.g";
 import "src/Backend/Mangler.g";
 
 /*
- * Which execution environment a declaration belongs to. Lives in Ir.cs on the C# side; it is
+ * Which execution environment a declaration belongs to. Lives in Ir.cs on the C# side. It is
  * declared here because ContextDecl needs it and a Gata type name is global to the build, so
  * Ir.g must import this rather than redeclare it (ERROR G003).
  */
@@ -19,7 +19,7 @@ enum Realm { None, Kernel, User }
 
 /*
  * The access/storage modifiers accepted before a function, method, or field declaration.
- * Combinable, eg. 'public static'. C#'s [Flags] enum; Gata enums carry no bitwise operators of
+ * Combinable, eg. 'public static'. C#'s [Flags] enum. Gata enums carry no bitwise operators of
  * their own, so the set operations live in Mods below and go through `as int`.
  */
 enum Modifiers { None = 0, Static = 1, Public = 2, Private = 4 }
@@ -67,7 +67,7 @@ enum UnOp { Not, BitNot, Neg }
 enum PostfixOp { Inc, Dec }
 
 /*
- * The kind of an assignment operator. Assign is plain '='; the rest are compound forms that
+ * The kind of an assignment operator. Assign is plain '=', and the rest are compound forms that
  * combine a BinOp with the store, eg. AddAssign for '+='.
  */
 enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, AndAssign, OrAssign, XorAssign, ShlAssign, ShrAssign }
@@ -227,7 +227,7 @@ module Ops {
 
 
 /*
- * Structured type specifier. The parser builds it once; every later pass walks it structurally.
+ * Structured type specifier. The parser builds it once. Every later pass walks it structurally.
  */
 union TypeSpec {
     NamedSpec(NamedSpec s),
@@ -1097,7 +1097,7 @@ class TryCatchStmt {
 }
 
 /*
- * A switch statement. cases is the list of arms; otherwise is the optional fallback block.
+ * A switch statement. cases is the list of arms. Otherwise is the optional fallback block.
  */
 class SwitchStmt {
     public Expr scrutinee;
@@ -1143,7 +1143,7 @@ class MatchStmt {
 }
 
 /*
- * One arm of a match statement. variant is the union variant name; bindings are the local names
+ * One arm of a match statement. variant is the union variant name. Bindings are the local names
  * bound to the variant's fields in source order.
  */
 class MatchCase {
@@ -1652,7 +1652,7 @@ class EnumMember {
 }
 
 /*
- * A tagged union; each variant carries named fields or no payload, lowered to a tag enum plus a C union.
+ * A tagged union. Each variant carries named fields or no payload, lowered to a tag enum plus a C union.
  */
 class UnionDecl {
     public String name;

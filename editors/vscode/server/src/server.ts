@@ -2,13 +2,11 @@ import {
   createConnection,
   TextDocuments,
   ProposedFeatures,
-  InitializeParams,
   TextDocumentSyncKind,
   Diagnostic,
   DiagnosticSeverity,
   DidChangeConfigurationNotification,
   SemanticTokens,
-  SemanticTokensParams,
   DocumentSymbol,
   SymbolKind,
   CompletionItem,
@@ -32,10 +30,12 @@ const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 
 let settings: GataSettings = defaultSettings;
-let hasConfigurationCapability = false;
+let canConfigure = false;
 
-connection.onInitialize((params: InitializeParams) => {
-  hasConfigurationCapability = !!params.capabilities.workspace?.configuration;
+const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+connection.onInitialize((params) => {
+  canConfigure = !!params.capabilities.workspace?.configuration;
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -51,22 +51,20 @@ connection.onInitialize((params: InitializeParams) => {
 });
 
 connection.onInitialized(() => {
-  if (hasConfigurationCapability) {
-    connection.client.register(DidChangeConfigurationNotification.type, undefined);
-  }
+  if (canConfigure) connection.client.register(DidChangeConfigurationNotification.type, undefined);
 });
 
 connection.onDidChangeConfiguration(async () => {
   try {
     await refreshSettings();
   } catch (e) {
-    connection.console.warn(`gata: could not refresh settings: ${e instanceof Error ? e.message : String(e)}`);
+    connection.console.warn(`gata: could not refresh settings: ${why(e)}`);
   }
   documents.all().forEach(validateSyntax);
 });
 
 async function refreshSettings(): Promise<void> {
-  if (!hasConfigurationCapability) return;
+  if (!canConfigure) return;
   const config = await connection.workspace.getConfiguration('gata');
   settings = {
     appaPath: config?.appaPath || undefined,
@@ -75,11 +73,12 @@ async function refreshSettings(): Promise<void> {
   };
 }
 
-const syntaxDiagnostics = new Map<string, Diagnostic[]>();
-const semanticDiagnostics = new Map<string, Diagnostic[]>();
+// syntax comes from our own parser on every keystroke, semantic from 'appa check' on save
+const syntaxDiags = new Map<string, Diagnostic[]>();
+const semanticDiags = new Map<string, Diagnostic[]>();
 
 function publish(uri: string): void {
-  const all = [...(syntaxDiagnostics.get(uri) ?? []), ...(semanticDiagnostics.get(uri) ?? [])];
+  const all = [...(syntaxDiags.get(uri) ?? []), ...(semanticDiags.get(uri) ?? [])];
   connection.sendDiagnostics({ uri, diagnostics: all });
 }
 
@@ -89,72 +88,68 @@ function spanToRange(doc: TextDocument, span: Span) {
   return { start, end };
 }
 
+// a crash in our own checker shows up as a warning on the first character, not a dead server
+function internalError(source: string, what: string, e: unknown): Diagnostic {
+  return {
+    severity: DiagnosticSeverity.Warning,
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+    message: `${source}: internal ${what} error: ${why(e)}`,
+    source,
+  };
+}
+
 function validateSyntax(doc: TextDocument): void {
+  let diags: Diagnostic[] = [];
   if (doc.languageId === 'gconf') {
-    let diags: Diagnostic[];
     try {
       diags = validateGconf(doc);
     } catch (e) {
-      diags = [{
-        severity: DiagnosticSeverity.Warning,
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
-        message: `gconf: internal validator error: ${e instanceof Error ? e.message : String(e)}`,
-        source: 'gconf',
-      }];
+      diags = [internalError('gconf', 'validator', e)];
     }
-    syntaxDiagnostics.set(doc.uri, diags);
-    publish(doc.uri);
-    return;
-  }
-
-  const text = doc.getText();
-  const diags: Diagnostic[] = [];
-  try {
-    const tokens = new Lexer(text).tokenize();
-    new Parser(tokens).parseProgram();
-  } catch (e) {
-    if (e instanceof ParseError) {
-      const summary = CODE_SUMMARIES[e.code];
-      const lines = [e.message];
-      for (const hint of e.hints) lines.push(`help: ${hint}`);
-      if (summary) lines.push(`${e.code}: ${summary}`);
-      diags.push({
-        severity: DiagnosticSeverity.Error,
-        range: spanToRange(doc, e.span),
-        message: lines.join('\n'),
-        code: e.code,
-        source: 'gata-syntax',
-      });
-    } else {
-      diags.push({
-        severity: DiagnosticSeverity.Warning,
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
-        message: `gata-syntax: internal parser error: ${e instanceof Error ? e.message : String(e)}`,
-        source: 'gata-syntax',
-      });
+  } else {
+    try {
+      new Parser(new Lexer(doc.getText()).tokenize()).parseProgram();
+    } catch (e) {
+      if (e instanceof ParseError) diags.push(parseErrorDiag(doc, e));
+      else diags.push(internalError('gata-syntax', 'parser', e));
     }
   }
-  syntaxDiagnostics.set(doc.uri, diags);
+  syntaxDiags.set(doc.uri, diags);
   publish(doc.uri);
 }
 
-const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function parseErrorDiag(doc: TextDocument, e: ParseError): Diagnostic {
+  const summary = CODE_SUMMARIES[e.code];
+  const lines = [e.message];
+  for (const hint of e.hints) lines.push(`help: ${hint}`);
+  if (summary) lines.push(`${e.code}: ${summary}`);
+  return {
+    severity: DiagnosticSeverity.Error,
+    range: spanToRange(doc, e.span),
+    message: lines.join('\n'),
+    code: e.code,
+    source: 'gata-syntax',
+  };
+}
+
+// reparse at most every 150ms while typing
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
 documents.onDidChangeContent((change) => {
   const uri = change.document.uri;
-  const pending = debounceTimers.get(uri);
-  if (pending) clearTimeout(pending);
-  debounceTimers.set(uri, setTimeout(() => {
-    debounceTimers.delete(uri);
+  clearTimeout(timers.get(uri));
+  timers.set(uri, setTimeout(() => {
+    timers.delete(uri);
     validateSyntax(change.document);
   }, 150));
 });
 
 documents.onDidClose((change) => {
   const uri = change.document.uri;
-  const pending = debounceTimers.get(uri);
-  if (pending) { clearTimeout(pending); debounceTimers.delete(uri); }
-  syntaxDiagnostics.delete(uri);
-  semanticDiagnostics.delete(uri);
+  clearTimeout(timers.get(uri));
+  timers.delete(uri);
+  syntaxDiags.delete(uri);
+  semanticDiags.delete(uri);
   connection.sendDiagnostics({ uri, diagnostics: [] });
 });
 
@@ -184,15 +179,18 @@ async function runSemanticCheck(doc: TextDocument): Promise<void> {
   try {
     const byFile = await checkProject(filePath, settings);
     if (!byFile) return;
-    for (const uri of [...semanticDiagnostics.keys()]) {
-      if (!byFile.has(uri)) { semanticDiagnostics.delete(uri); publish(uri); }
+    // files that were reported last time and are clean now need their old squiggles cleared
+    for (const uri of [...semanticDiags.keys()]) {
+      if (byFile.has(uri)) continue;
+      semanticDiags.delete(uri);
+      publish(uri);
     }
     for (const [uri, diags] of byFile) {
-      semanticDiagnostics.set(uri, diags);
+      semanticDiags.set(uri, diags);
       publish(uri);
     }
   } catch (e) {
-    connection.console.warn(`gata: semantic check failed: ${e instanceof Error ? e.message : String(e)}`);
+    connection.console.warn(`gata: semantic check failed: ${why(e)}`);
   }
 }
 
@@ -202,7 +200,7 @@ function importIndex(doc: TextDocument): ImportIndex {
   try {
     return indexFor(filePath, doc.getText(), settings);
   } catch (e) {
-    connection.console.warn(`gata: could not resolve imports: ${e instanceof Error ? e.message : String(e)}`);
+    connection.console.warn(`gata: could not resolve imports: ${why(e)}`);
     return emptyIndex();
   }
 }
@@ -219,40 +217,43 @@ function uriToPath(uri: string): string | undefined {
   }
 }
 
-connection.languages.semanticTokens.on((params: SemanticTokensParams): SemanticTokens => {
-  const doc = documents.get(params.textDocument.uri);
-  if (!doc || doc.languageId !== 'gata') return { data: [] };
+function gataDoc(uri: string): TextDocument | undefined {
+  const doc = documents.get(uri);
+  return doc?.languageId === 'gata' ? doc : undefined;
+}
+
+connection.languages.semanticTokens.on((params): SemanticTokens => {
+  const doc = gataDoc(params.textDocument.uri);
+  if (!doc) return { data: [] };
   try {
     return { data: encode(doc, classify(doc.getText(), importIndex(doc).external)) };
   } catch (e) {
-    connection.console.warn(`gata: semantic tokens failed: ${e instanceof Error ? e.message : String(e)}`);
+    connection.console.warn(`gata: semantic tokens failed: ${why(e)}`);
     return { data: [] };
   }
 });
 
+// LSP wants each token relative to the one before it
 function encode(doc: TextDocument, tokens: ReturnType<typeof classify>): number[] {
-  const data: number[] = [];
-  let lastLine = 0;
-  let lastChar = 0;
+  const out: number[] = [];
+  let line = 0;
+  let char = 0;
   for (const t of tokens) {
     const pos = doc.positionAt(t.start);
-    const end = doc.positionAt(t.start + t.length);
-    if (end.line !== pos.line) continue;   // a multi-line token cannot be encoded this way
-    const deltaLine = pos.line - lastLine;
-    const deltaChar = deltaLine === 0 ? pos.character - lastChar : pos.character;
-    data.push(deltaLine, deltaChar, t.length, t.type, t.modifiers);
-    lastLine = pos.line;
-    lastChar = pos.character;
+    if (doc.positionAt(t.start + t.length).line !== pos.line) continue;   // a multi-line token cannot be encoded this way
+    const dl = pos.line - line;
+    out.push(dl, dl === 0 ? pos.character - char : pos.character, t.length, t.type, t.modifiers);
+    line = pos.line;
+    char = pos.character;
   }
-  return data;
+  return out;
 }
 
 connection.onHover((params): Hover | null => {
-  const doc = documents.get(params.textDocument.uri);
-  if (!doc || doc.languageId !== 'gata') return null;
-  const markdown = hoverFor(doc.getText(), doc.offsetAt(params.position), importIndex(doc).symbols);
-  if (!markdown) return null;
-  return { contents: { kind: MarkupKind.Markdown, value: markdown } };
+  const doc = gataDoc(params.textDocument.uri);
+  if (!doc) return null;
+  const md = hoverFor(doc.getText(), doc.offsetAt(params.position), importIndex(doc).symbols);
+  return md ? { contents: { kind: MarkupKind.Markdown, value: md } } : null;
 });
 
 const SYMBOL_KINDS: Readonly<Record<GataSymbol['kind'], SymbolKind>> = {
@@ -272,17 +273,11 @@ const SYMBOL_KINDS: Readonly<Record<GataSymbol['kind'], SymbolKind>> = {
 };
 
 connection.onDocumentSymbol((params): DocumentSymbol[] => {
-  const doc = documents.get(params.textDocument.uri);
-  if (!doc || doc.languageId !== 'gata') return [];
+  const doc = gataDoc(params.textDocument.uri);
+  if (!doc) return [];
   return symbolsOf(doc.getText()).map((sym) => {
     const range = spanToRange(doc, { start: sym.start, length: sym.length });
-    return {
-      name: sym.name,
-      detail: sym.detail,
-      kind: SYMBOL_KINDS[sym.kind],
-      range,
-      selectionRange: range,
-    };
+    return { name: sym.name, detail: sym.detail, kind: SYMBOL_KINDS[sym.kind], range, selectionRange: range };
   });
 });
 
@@ -299,8 +294,8 @@ const COMPLETION_KINDS: Readonly<Record<CompletionEntry['kind'], CompletionItemK
 };
 
 connection.onCompletion((params): CompletionItem[] => {
-  const doc = documents.get(params.textDocument.uri);
-  if (!doc || doc.languageId !== 'gata') return [];
+  const doc = gataDoc(params.textDocument.uri);
+  if (!doc) return [];
   return completionsFor(doc.getText(), importIndex(doc).symbols).map((entry) => ({
     label: entry.label,
     kind: COMPLETION_KINDS[entry.kind],
@@ -315,4 +310,4 @@ documents.listen(connection);
 connection.listen();
 
 void refreshSettings().catch((e) =>
-  connection.console.warn(`gata: initial settings load failed: ${e instanceof Error ? e.message : String(e)}`));
+  connection.console.warn(`gata: initial settings load failed: ${why(e)}`));

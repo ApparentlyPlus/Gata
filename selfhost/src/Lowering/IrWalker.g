@@ -20,7 +20,7 @@
  * selectively by calling WalkStmt/WalkExpr on whichever children it chooses, which is what an
  * override that recurses in a custom order does in C#.
  *
- * Gata has no closures, so the state cannot be captured; it is reached through the walker as
+ * Gata has no closures, so the state cannot be captured. It is reached through the walker as
  * w.state. That is the only real difference in how an analysis is written.
  */
 

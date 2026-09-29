@@ -45,7 +45,7 @@ class Manifest {
 module ManifestReader {
 
     /*
-     * Discover - The single *.gconf in a directory. None returns nothing; more than one is an
+     * Discover - The single *.gconf in a directory. None returns nothing. More than one is an
      * error, because which one was meant is not appa's guess to make.
      */
     public Result[Optional[String], String] func Discover(String dir) {

@@ -55,7 +55,7 @@ class List[T] {
     }
 
     /*
-     * Set - Store v at i; a no-op if i is out of range
+     * Set - Store v at i. A no-op if i is out of range
      */
     public void func Set(int i, T v) {
         if (i >= 0 && i < self.length) {
@@ -101,12 +101,12 @@ class List[T] {
     }
 
     /*
-     * << - Operator spelling of Add; returns self so appends chain
+     * << - Operator spelling of Add. Returns self so appends chain
      */
     public operator List[T] func <<(T v) { self.Add(v); return self; }
 
     /*
-     * AddRange - Append every element of other (retained); reserves once up front
+     * AddRange - Append every element of other (retained), reserving once up front
      */
     public void func AddRange(List[T] other) {
         if (other == null) { return; }
@@ -223,7 +223,7 @@ class List[T] {
     public bool func Contains(T v) { return self.IndexOf(v) >= 0; }
 
     /*
-     * Grow - Double capacity (from 8) until at least need; raw move, no retains
+     * Grow - Double capacity (from 8) until at least need. Raw move, no retains
      */
     void func Grow(int need) {
         let nc = self.cap * 2;

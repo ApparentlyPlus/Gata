@@ -84,7 +84,7 @@ module Int {
 
     /*
      * Parse - Lenient decimal parse: skips whitespace, optional sign, stops at first
-     * non-digit; returns 0 for null/empty/invalid
+     * non-digit. Returns 0 for null/empty/invalid
      */
     public int func Parse(String s) {
         if (s == null) { return 0; }

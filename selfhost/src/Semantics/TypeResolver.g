@@ -469,7 +469,7 @@ class GenericJob {
 }
 
 /*
- * One queued stamping of a generic method, which additionally remembers what it hangs off
+ * One queued stamping of a generic method, which also remembers what it hangs off
  */
 class GenericMethodJob {
     public MethodDecl decl;
@@ -492,7 +492,7 @@ class GenericMethodJob {
 }
 
 /*
- * The pass itself. One instance per build; call Resolve once.
+ * The pass itself. One instance per build. Call Resolve once.
  */
 class TypeResolver {
     SymbolTable sym;
@@ -3102,7 +3102,7 @@ class TypeResolver {
 
     /*
      * ResolvePostfix - 'x++' and 'x--'. On a class they dispatch to a zero-parameter overload that
-     * mutates in place and returns void; on anything else they need an lvalue.
+     * mutates in place and returns void. On anything else they need an lvalue.
      */
     IrExpr func ResolvePostfix(PostfixExpr pf, ResolveCtx ctx) {
         let IrExpr opnd = self.ResolveExpr(pf.operand, ctx);
@@ -3447,7 +3447,7 @@ class TypeResolver {
             }
             self.CheckShiftCount(be.op, lt, right, ctx, Exprs.Span(be.right));
 
-            // A shift resolves at the LEFT operand's type; the count keeps its own
+            // A shift resolves at the LEFT operand's type. The count keeps its own
             if (be.op == BinOp.Shl || be.op == BinOp.Shr) {
                 return IrExpr.IrBinOp(new IrBinOp(be.op, self.InType(left, lt), right, lt));
             }
@@ -3494,7 +3494,7 @@ class TypeResolver {
     }
 
     /*
-     * WarnOnCharAddition - '+' on two chars adds codepoints; it does not join text, and that is
+     * WarnOnCharAddition - '+' on two chars adds codepoints. It does not join text, and that is
      * almost never what was meant
      */
     void func WarnOnCharAddition(BinOp op, IrType l, IrType r, ResolveCtx ctx, TextSpan span) {
@@ -4158,7 +4158,7 @@ class TypeResolver {
     }
 
     /*
-     * ResolveArrayLit - '[1, 2, 3]'. The element type is the FIRST element's; the rest must be
+     * ResolveArrayLit - '[1, 2, 3]'. The element type is the FIRST element's. The rest must be
      * assignable to it, which is what makes '[]' with no elements an error rather than a guess.
      */
     IrExpr func ResolveArrayLit(ArrayLitExpr al, ResolveCtx ctx) {
@@ -7415,7 +7415,7 @@ class ThrowsPlacement {
     public void func Check(IrBlock body) { self.WalkStmt(IrStmt.IrBlock(body)); }
 
     /*
-     * WalkStmt - Routes the three root-position slots through WalkRoot; everything else recurses
+     * WalkStmt - Routes the three root-position slots through WalkRoot. Everything else recurses
      * through the shared traversal, whose expression side is this class's WalkExpr
      */
     void func WalkStmt(IrStmt s) {

@@ -10,7 +10,7 @@
 module Time {
     
     /*
-     * Nanos - Nanoseconds since boot (hosted: since the Unix epoch); monotonic on GatOS
+     * Nanos - Nanoseconds since boot (hosted: since the Unix epoch). Monotonic on GatOS
      */
     public int64 func Nanos() {
         return _env_time_ns();

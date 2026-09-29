@@ -4,9 +4,9 @@
 // Please DO NOT MODIFY THIS FILE unless you really know what you are doing.
 //
 // The realms a build emits are inferred from the @preamble targets present here:
-//   @preamble(kernel) — kernel translation unit, before #include "shared.h"
-//   @preamble(user)   — user translation unit, before #include "shared.h"
-//   @preamble(boot)   — kernel translation unit, after all functions (kernel_main)
+//   @preamble(kernel): kernel translation unit, before #include "shared.h"
+//   @preamble(user):   user translation unit, before #include "shared.h"
+//   @preamble(boot):   kernel translation unit, after all functions (kernel_main)
 @environment
 
 @preamble(kernel) native {

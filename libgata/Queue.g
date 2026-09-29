@@ -57,7 +57,7 @@ class Queue[T] {
     }
 
     /*
-     * DequeueOrThrow - Remove and return the front; throws if empty
+     * DequeueOrThrow - Remove and return the front. Throws if empty
      */
     public throws T func DequeueOrThrow() {
         if (self.count <= 0) { throw; }

@@ -10,7 +10,7 @@
  *   ARC      every managed local is registered as an OWNER of its frame, and every exit from that
  *            frame - falling off the end, return, break, continue, throw - releases the owners it
  *            accumulated, innermost frame outward. A producer (new, a literal string, a call
- *            returning a managed value) hands back +1; a borrow gets retained on the way into
+ *            returning a managed value) hands back +1. A borrow gets retained on the way into
  *            storage that will outlive the expression.
  *   defer    the action is kept UNLOWERED on its frame and re-lowered at every splice site, so
  *            each occurrence gets its own hoisted temp names. Defers run before the frame's
@@ -20,7 +20,7 @@
  *
  * PORTING NOTES
  *
- * C# rebuilds with `record with`; the port's IR nodes are mutable classes, so the equivalent is an
+ * C# rebuilds with `record with`. The port's IR nodes are mutable classes, so the equivalent is an
  * in-place field write and a return of the same reference. That is the same divergence IrRewriter
  * already makes, and it is safe here for the same reason: nothing holds a second reference to a
  * body while this pass is walking it.
@@ -34,7 +34,7 @@
  * TruncatePre/TruncateCl pair. Every use is 'drop everything added after this mark', which is what
  * those two do.
  *
- * `IrType.Bool` and friends are static in C#; here they are interned through the IrTypeTable the
+ * `IrType.Bool` and friends are static in C#. Here they are interned through the IrTypeTable the
  * pipeline threads, so the same shape stays one object. Mangler is an instance for the same reason
  * it is one in TypeResolver.
  */
@@ -72,7 +72,7 @@ class OwnFrame {
 }
 
 /*
- * A (name, type) pair. C# uses a tuple; a union payload or a list element needs a real type here.
+ * A (name, type) pair. C# uses a tuple. A union payload or a list element needs a real type here.
  */
 class OwnedLocal {
     public String name;
@@ -81,7 +81,7 @@ class OwnedLocal {
 }
 
 /*
- * The frame predicates the exit paths stop on. C# passes lambdas; Gata has function pointers and no
+ * The frame predicates the exit paths stop on. C# passes lambdas. Gata has function pointers and no
  * closures, so they are three free functions and ReleaseForExit takes one.
  */
 bool func FrameIsLoop(OwnFrame f) { return f.loop; }
@@ -189,7 +189,7 @@ class Ownership {
 
     /*
      * TruncatePre / TruncateCl - Drop everything added to a scratch list after a mark. Stands in
-     * for C#'s List.RemoveRange, which List.g does not have; every call site in the original is
+     * for C#'s List.RemoveRange, which List.g does not have. Every call site in the original is
      * this shape.
      */
     void func TruncatePre(int mark) {
@@ -310,7 +310,7 @@ class Ownership {
     }
 
     /*
-     * The per-try error flag. One is declared at the top of each try block; nested throwing calls
+     * The per-try error flag. One is declared at the top of each try block. Nested throwing calls
      * inside that block set it, and the block's tail tests it to reach the catch label.
      */
     String func HasErrorFlag() { return "__has_error"; }
@@ -493,7 +493,7 @@ class Ownership {
     }
 
     /*
-     * ReleaseForExit - Release frames innermost outward until stopAfter says to stop; used by
+     * ReleaseForExit - Release frames innermost outward until stopAfter says to stop. Used by
      * return, break, continue and throw.
      *
      * C# snapshots the stack first because ReleaseFrame re-lowers defers and a block-bodied one
@@ -600,7 +600,7 @@ class Ownership {
             case IrForIn(fi)      { self.LowerForIn(fi, outs); }
             case IrTryCatch(tc)   { self.LowerTryCatch(tc, outs); }
             case IrDefer(d)       { self.LowerDefer(d); }
-            // Desugar removed match and switch before this pass ran; anything left is a bug there.
+            // Desugar removed match and switch before this pass ran. Anything left is a bug there.
             default { outs.Add(s); }
         }
     }
@@ -748,7 +748,7 @@ class Ownership {
     /*
      * LowerCatchExprStmt - 'f() catch { ... };' in statement position, where the result is
      * discarded. No variable, so the resolver already rejected 'assign' here. The success arm still
-     * releases the +1 nothing else will own; the failure arm must not, since value was never set.
+     * releases the +1 nothing else will own. The failure arm must not, since value was never set.
      */
     void func LowerCatchExprStmt(IrCatchCall cc, List[IrStmt] outs) {
         let int preStart = self.pre.Length();
@@ -910,7 +910,7 @@ class Ownership {
         let IrExpr e = self.Flatten(es.expr, false);
         self.FlushPre(p2, outs);
 
-        // A hoisted producer is already a temp this pass will release; emitting the statement too
+        // A hoisted producer is already a temp this pass will release. Emitting the statement too
         // would evaluate it twice.
         if (!(self.IsProducer(es.expr) && self.IsManaged(Exprs2.TypeOf(es.expr)))) {
             let IrExprStmt st = new IrExprStmt(e);
@@ -972,7 +972,7 @@ class Ownership {
 
         if (pCount == 0 && cCount == 0) {
             // 'then' first, then 'else'. C# lowers both as arguments to the IrIf constructor, which
-            // it evaluates left to right; the temp counter is a sequence, so doing the else first
+            // it evaluates left to right. The temp counter is a sequence, so doing the else first
             // here would number every temp inside the two arms the other way round.
             let IrBlock thenBlk = self.LowerBlock(ifs.then);
             let Optional[IrBlock] els = Optional[IrBlock].None();
@@ -996,7 +996,7 @@ class Ownership {
 
     /*
      * LowerWhile - Same problem as LowerIf, but the condition is re-evaluated every turn, so the
-     * hoisted form becomes 'while (true) { <cond side effects>; if (!c) break; <body> }'.
+     * hoisted form becomes 'while (true) { <cond side effects>. If (!c) break; <body> }'.
      */
     void func LowerWhile(IrWhile ws, List[IrStmt] outs) {
         let int pStart = self.pre.Length();
@@ -1149,7 +1149,7 @@ class Ownership {
     }
 
     /*
-     * LowerForIn - Two shapes. A fixed array counts to a known size and indexes directly; a
+     * LowerForIn - Two shapes. A fixed array counts to a known size and indexes directly. A
      * collection class counts to Length() and reads through Get(). The element is retained when the
      * element type is managed, because the binding outlives the call that produced it.
      */
@@ -1219,7 +1219,7 @@ class Ownership {
 
     /*
      * LowerTryCatch - There is no C 'try', so this becomes a flag, a label and two gotos. Throwing
-     * calls inside the try body set __has_error and jump straight to the catch label; the body's
+     * calls inside the try body set __has_error and jump straight to the catch label. The body's
      * tail tests the flag for the ones that fell through.
      */
     void func LowerTryCatch(IrTryCatch tc, List[IrStmt] outs) {
@@ -1265,7 +1265,7 @@ class Ownership {
 
     /*
      * ThrowsCheck - The error branch after a throwing call's Result is bound. Inside a try it routes
-     * to the catch label; otherwise it propagates upward as an error Result.
+     * to the catch label. Otherwise it propagates upward as an error Result.
      */
     void func ThrowsCheck(String res, IrType rt, List[IrStmt] outs) {
         let List[IrStmt] branch = new List[IrStmt]();
@@ -1369,7 +1369,7 @@ class Ownership {
     /*
      * FlattenTernary - A ternary evaluates ONE arm, so an arm's hoists must never spill into the
      * unconditional pre list - they would run whichever way the branch went. Arms with nothing to
-     * sequence stay inline as a real C conditional; otherwise both arms materialise into a temp
+     * sequence stay inline as a real C conditional. Otherwise both arms materialise into a temp
      * through an if/else, owned at +1 and released by the caller's frame.
      */
     IrExpr func FlattenTernary(IrTernary t, bool owned) {

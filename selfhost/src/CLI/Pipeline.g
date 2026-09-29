@@ -93,7 +93,7 @@ module Pipeline {
 
     /*
      * DiscoverEnv - The project file marked @environment. Parses the top-level *.g files in
-     * ordinal order and returns the first one carrying the marker; a file that will not parse is
+     * ordinal order and returns the first one carrying the marker. A file that will not parse is
      * recorded rather than reported, because the real diagnostic belongs to the build.
      */
     public Optional[String] func DiscoverEnv(String projectRoot, List[String] unreadable) {
@@ -647,9 +647,9 @@ module Pipeline {
                 let IrThread t = proc.threads.Get(th);
                 match (t.entryFunc) {
                     case Some(ef) {
-                        let String r2 = ef.vis == Visibility.Kernel ? "kernel" : "userspace";
+                        let String threadRealm = ef.vis == Visibility.Kernel ? "kernel" : "userspace";
                         Pipeline.Claim(seen, diag, ef.cName,
-                                       "thread '" + r2 + "." + proc.name + "." + t.name + "'");
+                                       "thread '" + threadRealm + "." + proc.name + "." + t.name + "'");
                     }
                     case None { }
                 }

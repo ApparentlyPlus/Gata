@@ -196,7 +196,7 @@ class String {
     public bool func Contains(String sub) { return self.IndexOf(sub) >= 0; }
 
     /*
-     * Substring - len characters starting at start; indices are clamped, never out of bounds
+     * Substring - len characters starting at start. Indices are clamped, never out of bounds
      */
     public String func Substring(int start, int len) {
         if (start < 0) { start = 0; }
@@ -269,7 +269,7 @@ class String {
     }
 
     /*
-     * Split - Split on every occurrence of sep; a null/empty sep returns [self]
+     * Split - Split on every occurrence of sep. A null/empty sep returns [self]
      */
     public List[String] func Split(String sep) {
         let result = new List[String]();

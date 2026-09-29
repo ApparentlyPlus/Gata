@@ -90,7 +90,7 @@ private usize func _mem_diff_word(void* a, void* b, usize words) native {
  * The loops below move/compare 8 bytes per iteration once both cursors reach a
  * common 8-byte alignment, with byte loops for the head, the tail, and the rare
  * case where the pointers can never align - an ~8x iteration cut on every buffer
- * op. The word step itself is _mem_*_words above; everything else is pure Gata.
+ * op. The word step itself is _mem_*_words above. Everything else is pure Gata.
  */
 module Mem {
     /*
@@ -174,7 +174,7 @@ module Mem {
     /*
      * Compare - Byte-wise compare of the first n bytes: <0, 0, or >0
      *
-     * Words are only used to find the first differing 8-byte chunk; the byte tail
+     * Words are only used to find the first differing 8-byte chunk. The byte tail
      * then pins down the exact differing byte, so the result matches a plain scan.
      */
     public int func Compare(void* a, void* b, usize n) {

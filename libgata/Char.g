@@ -55,7 +55,7 @@ module Char {
     }
 
     /*
-     * ToUpper - Uppercase a lowercase letter; other characters pass through unchanged
+     * ToUpper - Uppercase a lowercase letter. Other characters pass through unchanged
      */
     public char func ToUpper(char c) {
         if (Char.IsLower(c)) { return (c - 32) as char; }
@@ -63,7 +63,7 @@ module Char {
     }
 
     /*
-     * ToLower - Lowercase an uppercase letter; other characters pass through unchanged
+     * ToLower - Lowercase an uppercase letter. Other characters pass through unchanged
      */
     public char func ToLower(char c) {
         if (Char.IsUpper(c)) { return (c + 32) as char; }

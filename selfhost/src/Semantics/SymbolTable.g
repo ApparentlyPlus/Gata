@@ -18,7 +18,7 @@ enum SymKind { Class, Field, Method, FreeFunc, Operator }
 
 /*
  * The closed vocabulary of compiler runtime roles. A libgata symbol annotated @intrinsic(<role>)
- * fills the role; the compiler emits the bound C name. This module IS the compiler-runtime
+ * fills the role. The compiler emits the bound C name. This module IS the compiler-runtime
  * contract surface.
  */
 module Roles {
@@ -156,7 +156,7 @@ class Symbol {
     }
 
     /*
-     * Signature - The symbol's signature; every symbol this is asked of has one
+     * Signature - The symbol's signature. Every symbol this is asked of has one
      */
     public MethodSig func Signature() {
         match (self.sig) { case Some(s) { return s; } case None { return null; } }

@@ -940,7 +940,7 @@ class ScopeBinder {
             }
         }
 
-        // Every segment but the last may still be a scope; the last can only be the name
+        // Every segment but the last may still be a scope. The last can only be the name
         let int i = 0;
         let bool walking = true;
         while (walking && i < sn.path.Length() - 1) {

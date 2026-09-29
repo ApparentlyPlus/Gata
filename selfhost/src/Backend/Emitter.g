@@ -60,7 +60,7 @@ class EmitOutput {
 }
 
 /*
- * A named writer. C# keys its per-unit dedup set on the CodeWriter reference itself; Gata cannot
+ * A named writer. C# keys its per-unit dedup set on the CodeWriter reference itself. Gata cannot
  * hash object identity, so each writer carries the name that stands in for it.
  */
 class NamedWriter {
@@ -100,7 +100,7 @@ class Emitter {
 
     ManagedTypes managed;
 
-    // Roles with no @intrinsic binding anywhere; each is reported once.
+    // Roles with no @intrinsic binding anywhere. Each is reported once.
     StringSet missingRoles;
 
     // The C struct behind a String value, named by every string literal in the program.
@@ -1842,7 +1842,7 @@ class Emitter {
 
     /*
      * WriteCond - A bool-typed binary operator in condition position needs no narrowing cast and no
-     * parentheses of its own; anything else writes normally
+     * parentheses of its own. Anything else writes normally
      */
     void func WriteCond(IrExpr e, CodeWriter w) {
         match (e) {

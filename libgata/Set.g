@@ -55,7 +55,7 @@ class Set[T] {
     public void func Add(T item) { self.AddNew(item); }
 
     /*
-     * AddNew - Insert item, returning false if it was already there; one probe, not Has then Add
+     * AddNew - Insert item, returning false if it was already there. One probe, not Has then Add
      */
     public bool func AddNew(T item) {
         if (self.cap == 0) { self.Grow(1); }
@@ -163,7 +163,7 @@ class Set[T] {
     }
 
     /*
-     * Union - A new set with every element of self and other; walks live buckets directly
+     * Union - A new set with every element of self and other. Walks live buckets directly
      */
     public Set[T] func Union(Set[T] other) {
         let result = new Set[T]();
@@ -280,12 +280,12 @@ class StringSet {
     }
 
     /*
-     * Add - Insert item if absent; a null item is ignored
+     * Add - Insert item if absent. A null item is ignored
      */
     public void func Add(String item) { self.AddNew(item); }
 
     /*
-     * AddNew - Insert item, returning false if it was already there (or null); one probe
+     * AddNew - Insert item, returning false if it was already there (or null). One probe
      */
     public bool func AddNew(String item) {
         if (item == null) { return false; }

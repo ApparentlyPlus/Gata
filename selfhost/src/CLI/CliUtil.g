@@ -19,7 +19,7 @@ import "selfhostlib/Paths.g";
 import "src/CLI/Pipeline.g";
 
 /*
- * What ResolveInputs worked out. C# returns a five-tuple; this is the same thing with names.
+ * What ResolveInputs worked out. C# returns a five-tuple. This is the same thing with names.
  */
 class ResolvedInputs {
     public Optional[Manifest] manifest;

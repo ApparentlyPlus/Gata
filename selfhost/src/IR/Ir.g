@@ -55,7 +55,7 @@ module PrimTypes {
     }
 
     /*
-     * ToC - The fixed-width C type for a primitive spelling; an unknown name is its own answer
+     * ToC - The fixed-width C type for a primitive spelling. An unknown name is its own answer
      */
     public String func ToC(String s) {
         match (PrimTypes.Lookup(s)) {
@@ -161,7 +161,7 @@ class IrVoidType { func _init() { } }
 class IrErrorType { func _init() { } }
 
 /*
- * A primitive scalar type. cName is the canonical token; ComposeCType lowers it to the
+ * A primitive scalar type. cName is the canonical token. ComposeCType lowers it to the
  * corresponding fixed-width C type.
  */
 class IrPrimType {
@@ -268,7 +268,7 @@ module Types {
     /*
      * Tag - A one-letter discriminator for the type's kind. MangledName alone is not a safe
      * identity key: a class, an enum and a union named 'Foo' all mangle to "Foo". C# never had to
-     * care because it interned on the record's own type-aware equality; the tag restores that.
+     * care because it interned on the record's own type-aware equality. The tag restores that.
      */
     public String func Tag(IrType t) {
         match (t) {
@@ -292,7 +292,7 @@ module Types {
 
     /*
      * TypeEq - Structural type equality. C# gets this from record equality plus interning, where
-     * reference equality then answers it outright; here it is the key comparison, which is the
+     * reference equality then answers it outright. Here it is the key comparison, which is the
      * same question asked directly.
      */
     public bool func TypeEq(IrType a, IrType b) { return Types.Key(a) == Types.Key(b); }
@@ -468,7 +468,7 @@ union IrExpr {
 }
 
 /*
- * An integer literal. value is the 64-bit bit pattern; cText overrides the emitted text when set.
+ * An integer literal. value is the 64-bit bit pattern. CText overrides the emitted text when set.
  */
 class IrLitInt {
     public int64 value;
@@ -1021,7 +1021,7 @@ module Exprs2 {
     /*
      * SetSpan - Stamps a source span onto an IR expression that has none yet.
      *
-     * C# gets this from a record 'with' expression; here every node owns a mutable span field, so
+     * C# gets this from a record 'with' expression. Here every node owns a mutable span field, so
      * the assignment is written out per variant. Mirrors SpanOf arm for arm, and the two are meant
      * to be edited together.
      */
@@ -1348,7 +1348,7 @@ class IrSwitchCase {
 }
 
 /*
- * A switch statement. Lowered to an if/else-if chain by Desugar; never reaches the backend.
+ * A switch statement. Lowered to an if/else-if chain by Desugar. Never reaches the backend.
  */
 class IrSwitch {
     public IrExpr scrutinee;
@@ -1392,7 +1392,7 @@ class IrMatchCase {
 }
 
 /*
- * A match statement over a union type. Lowered to an if/else-if chain by Desugar; never reaches
+ * A match statement over a union type. Lowered to an if/else-if chain by Desugar. Never reaches
  * the backend.
  */
 class IrMatch {
@@ -1420,7 +1420,7 @@ class IrUnsafeBlock {
 }
 
 /*
- * A defer statement. Lowered by the Ownership pass; never reaches the backend.
+ * A defer statement. Lowered by the Ownership pass. Never reaches the backend.
  */
 class IrDefer {
     public IrStmt action;
@@ -1429,7 +1429,7 @@ class IrDefer {
 }
 
 /*
- * A throw statement. Lowered by the Ownership pass; never reaches the backend.
+ * A throw statement. Lowered by the Ownership pass. Never reaches the backend.
  */
 class IrThrow {
     public TextSpan span;
@@ -1524,7 +1524,7 @@ module Stmts2 {
 }
 
 /*
- * Which translation unit a declaration is emitted into. The visibility axis; the name axis is
+ * Which translation unit a declaration is emitted into. The visibility axis. The name axis is
  * ScopeId's, kept separate so a process can contribute to a name's scope while inheriting its
  * realm's visibility.
  */
@@ -1604,7 +1604,7 @@ class RawFieldBlock {
 }
 
 /*
- * An operator overload on a class; body is None for native ones, which carry C text. isStatic is
+ * An operator overload on a class. Body is None for native ones, which carry C text. isStatic is
  * true only for one-parameter 'as', a factory converting its parameter to self - every other
  * operator, zero-parameter 'as' included, is an instance operator.
  */
@@ -1685,7 +1685,7 @@ class IrProcessVar {
 
 /*
  * A single thread within a process, with a fully-qualified name and optional entry function.
- * Deployment mode lives on the owning process; threads have none of their own.
+ * Deployment mode lives on the owning process. Threads have none of their own.
  */
 class IrThread {
     public String name;
