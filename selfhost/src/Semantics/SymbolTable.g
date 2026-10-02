@@ -268,8 +268,7 @@ class SymbolTable {
      * RegisterField - Registers a field on the named class
      */
     public void func RegisterField(String cls, String field, TypeSpec type) {
-        let Symbol s = new Symbol(field, SymKind.Field, Optional.Some(type), Optional.Some(cls),
-                                  Optional[MethodSig].None());
+        let Symbol s = new Symbol(field, SymKind.Field, Optional.Some(type), Optional.Some(cls), Optional[MethodSig].None());
         self.fieldMap.Put(MemberKey(cls, field), s);
     }
 
@@ -277,8 +276,7 @@ class SymbolTable {
      * RegisterMethod - Registers a method overload on the named class
      */
     public void func RegisterMethod(String cls, String name, MethodSig sig) {
-        let Symbol s = new Symbol(name, SymKind.Method, sig.returnType, Optional.Some(cls),
-                                  Optional.Some(sig));
+        let Symbol s = new Symbol(name, SymKind.Method, sig.returnType, Optional.Some(cls), Optional.Some(sig));
         Bucket(self.methods, MemberKey(cls, name)).Add(s);
     }
 
@@ -286,8 +284,7 @@ class SymbolTable {
      * RegisterFreeFunc - Registers a free function overload from the given source file
      */
     public void func RegisterFreeFunc(String name, MethodSig sig, String declFile) {
-        let Symbol s = new Symbol(name, SymKind.FreeFunc, sig.returnType, Optional[String].None(),
-                                  Optional.Some(sig));
+        let Symbol s = new Symbol(name, SymKind.FreeFunc, sig.returnType, Optional[String].None(), Optional.Some(sig));
         s.declFile = declFile;
         Bucket(self.funcs, name).Add(s);
     }
@@ -296,8 +293,7 @@ class SymbolTable {
      * RegisterPrivateFunc - Registers a file-local (private) free function from the given file
      */
     public void func RegisterPrivateFunc(String file, String name, MethodSig sig) {
-        let Symbol s = new Symbol(name, SymKind.FreeFunc, sig.returnType, Optional[String].None(),
-                                  Optional.Some(sig));
+        let Symbol s = new Symbol(name, SymKind.FreeFunc, sig.returnType, Optional[String].None(), Optional.Some(sig));
         s.declFile = file;
         Bucket(self.privateFuncs, MemberKey(file, name)).Add(s);
     }
@@ -313,7 +309,7 @@ class SymbolTable {
     }
 
     /*
-     * RegisterThrows - Records that a throws function returns the given type, ensuring a Result typedef is emitted.
+     * RegisterThrows - Records that a throws function returns the given type, so a Result typedef gets emitted.
      */
     public void func RegisterThrows(Optional[TypeSpec] returnType) {
         let String inner = ResultInnerName(returnType);
@@ -532,9 +528,6 @@ class SymbolTable {
         }
     }
 
-    /*
-     * OperatorOverloads - All overloads of the named operator on the given class
-     */
     public List[Symbol] func OperatorOverloads(String cls, String op) {
         return All(self.operators, MemberKey(cls, op));
     }
@@ -543,9 +536,6 @@ class SymbolTable {
         return self.OperatorOverloads(cls, op).Length() > 1;
     }
 
-    /*
-     * MethodOverloads - All overloads of the named method on the given class
-     */
     public List[Symbol] func MethodOverloads(String cls, String method) {
         return All(self.methods, MemberKey(cls, method));
     }

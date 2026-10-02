@@ -296,7 +296,7 @@ class Dce {
     public void func MarkType(IrType ty) {
         match (ty) {
             case IrClassRef(cr) { self.Root(self.UnitKey(cr.className, false)); }
-            case IrPtrType(p)   { self.MarkType(p.inner); }
+            case IrPtrType(p) { self.MarkType(p.inner); }
             case IrArrayType(a) {
                 self.liveComposites.AddNew(Types.MangledName(ty));
                 self.MarkType(a.elem);
@@ -352,22 +352,22 @@ bool func DceStmt(IrWalk[Dce] w, IrStmt s) {
  */
 bool func DceExpr(IrWalk[Dce] w, IrExpr e) {
     match (e) {
-        case IrStaticCall(sc)         { w.state.Ref(sc.cName); }
-        case IrInstanceCall(ic)       { w.state.Ref(ic.cName); }
-        case IrThrowsCall(tc)         { w.state.Ref(tc.cName); }
+        case IrStaticCall(sc) { w.state.Ref(sc.cName); }
+        case IrInstanceCall(ic) { w.state.Ref(ic.cName); }
+        case IrThrowsCall(tc) { w.state.Ref(tc.cName); }
         case IrThrowsInstanceCall(ti) { w.state.Ref(ti.cName); }
-        case IrNew(n)                 { w.state.RootClass(n.className); }
+        case IrNew(n) { w.state.RootClass(n.className); }
         case IrNewInit(ni) {
             w.state.RootClass(ni.className);
             w.state.Ref(ni.addCName);
         }
-        case IrCast(c)      { w.state.MarkType(c.to); }
+        case IrCast(c) { w.state.MarkType(c.to); }
         case IrArrayLit(al) { w.state.MarkType(al.arrType); }
-        case IrSizeof(so)   { w.state.MarkType(so.of); }
-        case IrDefault(df)  { w.state.MarkType(df.of); }
+        case IrSizeof(so) { w.state.MarkType(so.of); }
+        case IrDefault(df) { w.state.MarkType(df.of); }
         // A function used only as a value must still be kept, or a callback registration hands
         // out a pointer to a symbol that was dropped
-        case IrFuncRef(fr)  { w.state.Ref(fr.cName); }
+        case IrFuncRef(fr) { w.state.Ref(fr.cName); }
         default { }
     }
     return true;

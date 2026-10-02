@@ -69,7 +69,7 @@ class Random {
     }
 
     /*
-     * NextRange - Uniform in [lo, hi); returns lo for an empty range
+     * NextRange - Uniform in [lo, hi), lo for an empty range
      */
     public int func NextRange(int lo, int hi) {
         if (hi <= lo) { return lo; }

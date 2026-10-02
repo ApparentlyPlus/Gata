@@ -39,16 +39,16 @@ class Finesse {
         if (self.random.Next(1000) == 0) { return self.LegendaryHeader(fileName); }
         let int which = self.random.Next(16);
         switch (which) {
-            case 0  { return self.Card(fileName); }
-            case 1  { return self.Terminal(fileName); }
-            case 2  { return self.AiAwakening(fileName); }
-            case 3  { return self.AncientArtifact(fileName); }
-            case 4  { return self.LoadingScreen(fileName); }
-            case 5  { return self.Demoscene(fileName); }
-            case 6  { return self.Propaganda(fileName); }
-            case 7  { return self.SpaceMission(fileName); }
-            case 8  { return self.ProgrammerThoughts(fileName); }
-            case 9  { return self.Mythological(fileName); }
+            case 0 { return self.Card(fileName); }
+            case 1 { return self.Terminal(fileName); }
+            case 2 { return self.AiAwakening(fileName); }
+            case 3 { return self.AncientArtifact(fileName); }
+            case 4 { return self.LoadingScreen(fileName); }
+            case 5 { return self.Demoscene(fileName); }
+            case 6 { return self.Propaganda(fileName); }
+            case 7 { return self.SpaceMission(fileName); }
+            case 8 { return self.ProgrammerThoughts(fileName); }
+            case 9 { return self.Mythological(fileName); }
             case 10 { return self.Bureaucratic(fileName); }
             case 11 { return self.WeatherReport(fileName); }
             case 12 { return self.GameOver(fileName); }
@@ -1030,8 +1030,8 @@ class Finesse {
      * Card - A boxed identity card whose width adapts to the longest content line.
      */
     String func Card(String fileName) {
-        let String tagline     = self.Pick(self.Taglines());
-        let String fact        = self.Pick(self.Facts());
+        let String tagline = self.Pick(self.Taglines());
+        let String fact = self.Pick(self.Facts());
         let String observation = self.Pick(self.Observations());
 
         let List[String] rows = new List[String]();
@@ -1048,7 +1048,7 @@ class Finesse {
             i = i + 1;
         }
 
-        let String bar   = Finesse.Sep("═", w + 2);
+        let String bar = Finesse.Sep("═", w + 2);
         let String blank = "║" + Finesse.Sep(" ", w + 2) + "║";
 
         let StringBuilder sb = new StringBuilder();

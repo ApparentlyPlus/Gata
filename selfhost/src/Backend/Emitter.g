@@ -480,9 +480,9 @@ class Emitter {
                 self.pending.Remove(cname);
 
                 match (item) {
-                    case ArrayAgg(at)   { self.EmitArrayType(at); }
+                    case ArrayAgg(at) { self.EmitArrayType(at); }
                     case FuncPtrAgg(ft) { self.EmitFuncPtrType(ft); }
-                    case UnionAgg(un)   { self.EmitUnion(un); }
+                    case UnionAgg(un) { self.EmitUnion(un); }
                 }
                 self.FirstInto(self.sharedH, "S", cname);
                 return true;
@@ -539,10 +539,8 @@ class Emitter {
         let int j = 0;
         while (j < managedUnions.Length()) {
             let IrUnion u = managedUnions.Get(j);
-            self.sharedH.w.Line("static inline " + u.cName + " " + self.mangler.UnionRetain(u.name) +
-                                "(" + u.cName + " _v);");
-            self.sharedH.w.Line("static inline void " + self.mangler.UnionRelease(u.name) +
-                                "(" + u.cName + " _v);");
+            self.sharedH.w.Line("static inline " + u.cName + " " + self.mangler.UnionRetain(u.name) + "(" + u.cName + " _v);");
+            self.sharedH.w.Line("static inline void " + self.mangler.UnionRelease(u.name) + "(" + u.cName + " _v);");
             j = j + 1;
         }
         self.sharedH.w.Line("");
@@ -620,7 +618,7 @@ class Emitter {
         while (j < self.m.unions.Length()) {
             let IrUnion u = self.m.unions.Get(j);
             if (self.EqEmittableIn(u, Visibility.Kernel)) { self.EmitUnionEqBody(u, self.kFuncs.w); }
-            if (self.EqEmittableIn(u, Visibility.User))   { self.EmitUnionEqBody(u, self.uFunc.w); }
+            if (self.EqEmittableIn(u, Visibility.User)) { self.EmitUnionEqBody(u, self.uFunc.w); }
             j = j + 1;
         }
     }
@@ -678,8 +676,7 @@ class Emitter {
      * EmitUnionEqBody - One union's equality body, into the given writer
      */
     void func EmitUnionEqBody(IrUnion u, CodeWriter w) {
-        w.Block("static inline bool " + self.mangler.UnionEq(u.name) +
-                "(" + u.cName + " _a, " + u.cName + " _b) {");
+        w.Block("static inline bool " + self.mangler.UnionEq(u.name) + "(" + u.cName + " _a, " + u.cName + " _b) {");
         w.Line("if (_a.__tag != _b.__tag) return false;");
         w.Block("switch (_a.__tag) {");
         let int i = 0;
@@ -812,7 +809,7 @@ class Emitter {
      */
     void func EmitNativeType(IrNativeType nt) {
         if (nt.vis == Visibility.Kernel) { self.EmitNativeTypeTo(self.kTypes, nt); return; }
-        if (nt.vis == Visibility.User)   { self.EmitNativeTypeTo(self.uTypes, nt); return; }
+        if (nt.vis == Visibility.User) { self.EmitNativeTypeTo(self.uTypes, nt); return; }
         self.EmitNativeTypeTo(self.sharedH, nt);
     }
 
@@ -835,7 +832,7 @@ class Emitter {
         if (!cls.isLib) {
             let bool isKernel = cls.vis == Visibility.Kernel;
             self.EmitConcreteClass(cls, isKernel ? self.kTypes : self.uTypes,
-                                        isKernel ? self.kFwd   : self.uFwd,
+                                        isKernel ? self.kFwd : self.uFwd,
                                         isKernel ? self.kFuncs : self.uFunc, false);
             return;
         }
@@ -857,9 +854,9 @@ class Emitter {
      */
     void func EmitModule(IrClass cls) {
         let bool toKernel = cls.vis != Visibility.User;
-        let bool toUser   = cls.vis != Visibility.Kernel;
+        let bool toUser = cls.vis != Visibility.Kernel;
         if (toKernel) { self.EmitModuleInto(cls, self.kTypes.w, self.kFuncs.w); }
-        if (toUser)   { self.EmitModuleInto(cls, self.uTypes.w, self.uFunc.w); }
+        if (toUser) { self.EmitModuleInto(cls, self.uTypes.w, self.uFunc.w); }
     }
 
     void func EmitModuleInto(IrClass cls, CodeWriter types, CodeWriter funcs) {
@@ -1033,7 +1030,7 @@ class Emitter {
     public static bool func ReferencesRuntime(IrType ty) {
         match (ty) {
             case IrClassRef(x) { return true; }
-            case IrPtrType(p)  { return Emitter.ReferencesRuntime(p.inner); }
+            case IrPtrType(p) { return Emitter.ReferencesRuntime(p.inner); }
             default { return false; }
         }
     }
@@ -1055,8 +1052,7 @@ class Emitter {
         let String prefix = isLib ? "static inline " : "";
         let String dtorArg = self.NeedsDtor(cls) ? self.mangler.Dtor(cls.name) : "0";
         w.Block(prefix + self.AllocatorSig(cls) + " {");
-        w.Line(cls.cName + "* __o = (" + cls.cName + "*)" + self.Intrinsic(Roles.Alloc()) +
-               "(sizeof(" + cls.cName + "));");
+        w.Line(cls.cName + "* __o = (" + cls.cName + "*)" + self.Intrinsic(Roles.Alloc()) + "(sizeof(" + cls.cName + "));");
         w.Line("*__o = (" + cls.cName + "){0};");
         w.Line(self.Intrinsic(Roles.ObjInit()) + "(__o, " + dtorArg + ");");
 
@@ -1289,7 +1285,7 @@ class Emitter {
      */
     void func EmitFreeFunc(IrFunction fn) {
         if (fn.isEntry) {
-            let CodeWriter entryFwd   = fn.vis == Visibility.User ? self.uFwd.w  : self.kFwd.w;
+            let CodeWriter entryFwd = fn.vis == Visibility.User ? self.uFwd.w : self.kFwd.w;
             let CodeWriter entryFuncs = fn.vis == Visibility.User ? self.uFunc.w : self.kFuncs.w;
             entryFwd.Line("void " + fn.cName + "(void);");
             entryFuncs.Line("void " + fn.cName + "(void)");
@@ -1319,7 +1315,7 @@ class Emitter {
         }
 
         let bool isKernel = fn.vis == Visibility.Kernel;
-        let CodeWriter fwd   = isKernel ? self.kFwd.w   : self.uFwd.w;
+        let CodeWriter fwd = isKernel ? self.kFwd.w : self.uFwd.w;
         let CodeWriter funcs = isKernel ? self.kFuncs.w : self.uFunc.w;
         fwd.Line(self.FuncSig(fn) + ";");
         match (fn.body) {
@@ -1620,9 +1616,9 @@ class Emitter {
         match (fr.init) {
             case Some(istmt) {
                 match (istmt) {
-                    case IrDeclVar(dv)  { self.WriteDecl(dv, w, false); }
-                    case IrAssign(aa)   { self.WriteAssign(aa, w); }
-                    case IrExprStmt(e)  { self.Write(e.expr, w); }
+                    case IrDeclVar(dv) { self.WriteDecl(dv, w, false); }
+                    case IrAssign(aa) { self.WriteAssign(aa, w); }
+                    case IrExprStmt(e) { self.Write(e.expr, w); }
                     default { }
                 }
             }
@@ -1634,7 +1630,7 @@ class Emitter {
         match (fr.step) {
             case Some(sstmt) {
                 match (sstmt) {
-                    case IrAssign(sa)  { self.WriteAssign(sa, w); }
+                    case IrAssign(sa) { self.WriteAssign(sa, w); }
                     case IrExprStmt(e) { self.Write(e.expr, w); }
                     default { }
                 }
@@ -1657,9 +1653,9 @@ class Emitter {
                     case None { w.Put(Long.ToString(li.value)); }
                 }
             }
-            case IrLitChar(lc)  { w.Put(Int.ToString(lc.codepoint)); }
+            case IrLitChar(lc) { w.Put(Int.ToString(lc.codepoint)); }
             case IrLitFloat(lf) { w.Put(lf.raw); }
-            case IrLitBool(lb)  { w.Put(lb.value ? "true" : "false"); }
+            case IrLitBool(lb) { w.Put(lb.value ? "true" : "false"); }
             case IrLitString(ls) {
                 w.Put("GATA_STRLIT(");
                 w.Put(self.stringStruct);
@@ -1667,20 +1663,20 @@ class Emitter {
                 w.Put(Emitter.NoTrigraphs(ls.raw));
                 w.Put(")");
             }
-            case IrLitNull(x)   { w.Put("NULL"); }
+            case IrLitNull(x) { w.Put("NULL"); }
             case IrEnumConst(ec){ w.Put(self.mangler.EnumMember(ec.enumName, ec.member)); }
             case IrVar(v) {
                 if (v.isRef) { w.Put("(*"); w.Put(Mangle.Local(v.name)); w.Put(")"); }
                 else { w.Put(Mangle.Local(v.name)); }
             }
-            case IrGlobal(g)    { w.Put(g.cName); }
-            case IrSelfExpr(x)  { w.Put("self"); }
+            case IrGlobal(g) { w.Put(g.cName); }
+            case IrSelfExpr(x) { w.Put("self"); }
 
             case IrFieldLoad(fl) {
                 self.Write(fl.obj, w);
                 let bool byValue = false;
                 match (Exprs2.TypeOf(fl.obj)) {
-                    case IrUnionType(x)  { byValue = true; }
+                    case IrUnionType(x) { byValue = true; }
                     case IrResultType(x) { byValue = true; }
                     default { }
                 }
@@ -2061,8 +2057,8 @@ class Emitter {
      */
     public static bool func IsAggregate(IrType ty) {
         match (ty) {
-            case IrArrayType(x)  { return true; }
-            case IrUnionType(x)  { return true; }
+            case IrArrayType(x) { return true; }
+            case IrUnionType(x) { return true; }
             case IrResultType(x) { return true; }
             default { return false; }
         }

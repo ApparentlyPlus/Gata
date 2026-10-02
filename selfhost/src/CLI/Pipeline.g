@@ -169,8 +169,7 @@ module Pipeline {
                                       DiagnosticBag diag, TextSpan span) {
         let String candidate = Paths.Join(libgataDir, name + ".g");
         if (File.Exists(candidate)) { return candidate; }
-        diag.Error(Codes.File(), fromFile, span,
-                   "cannot find library module '" + name + "' (" + name + ".g) in " + libgataDir);
+        diag.Error(Codes.File(), fromFile, span, "cannot find library module '" + name + "' (" + name + ".g) in " + libgataDir);
         return "";
     }
 
@@ -192,8 +191,7 @@ module Pipeline {
 
         let int i = 0;
         while (i < work.Length()) {
-            Pipeline.ResolveOne(work.Get(i), projectRoot, libgataDir, sources, diag, ordered,
-                                attempted, imports, visited);
+            Pipeline.ResolveOne(work.Get(i), projectRoot, libgataDir, sources, diag, ordered, attempted, imports, visited);
             i = i + 1;
         }
         return new TranspileResult(ordered, attempted, imports, diag, sources);
@@ -366,8 +364,7 @@ module Pipeline {
 
         Pipeline.ValidateCNames(mod, mangler, diag);
         if (diag.HasErrors()) {
-            return new BuiltModule(mod, new StringMap[String](), new CapabilityScan(mod),
-                                   typeTable, mangler);
+            return new BuiltModule(mod, new StringMap[String](), new CapabilityScan(mod), typeTable, mangler);
         }
 
         let Desugar dg = new Desugar(collected.sym, diag, mangler, typeTable);
@@ -411,14 +408,12 @@ module Pipeline {
         if (envFiles.Length() == 0) {
             let List[String] hints = new List[String]();
             hints.Add("exactly one .g file in the build must be marked '@environment'; pass it with --env, or put it in the project directory");
-            diag.Error(Codes.File(), Pipeline.ProjectWide(), TS.NoneSpan(),
-                            "no @environment file in the build", hints);
+            diag.Error(Codes.File(), Pipeline.ProjectWide(), TS.NoneSpan(), "no @environment file in the build", hints);
             return;
         }
         let int j = 1;
         while (j < envFiles.Length()) {
-            diag.Error(Codes.File(), envFiles.Get(j), envSpans.Get(j),
-                       "multiple @environment files; exactly one is allowed");
+            diag.Error(Codes.File(), envFiles.Get(j), envSpans.Get(j), "multiple @environment files; exactly one is allowed");
             j = j + 1;
         }
     }
@@ -541,8 +536,7 @@ module Pipeline {
             Pipeline.Claim(seen, diag, cls.cName, "type '" + owner + "'");
             let int m = 0;
             while (m < cls.methods.Length()) {
-                Pipeline.Claim(seen, diag, cls.methods.Get(m).cName,
-                               "method '" + owner + "." + cls.methods.Get(m).name + "'");
+                Pipeline.Claim(seen, diag, cls.methods.Get(m).cName, "method '" + owner + "." + cls.methods.Get(m).name + "'");
                 m = m + 1;
             }
             let int o = 0;
@@ -570,8 +564,7 @@ module Pipeline {
 
         let int u = 0;
         while (u < mod.unions.Length()) {
-            Pipeline.Claim(seen, diag, mod.unions.Get(u).cName,
-                           "union '" + mangler.DisplayName(mod.unions.Get(u).name) + "'");
+            Pipeline.Claim(seen, diag, mod.unions.Get(u).cName, "union '" + mangler.DisplayName(mod.unions.Get(u).name) + "'");
             u = u + 1;
         }
         let int nt = 0;
@@ -633,8 +626,7 @@ module Pipeline {
             }
             match (proc.stateInit) {
                 case Some(si) {
-                    Pipeline.Claim(seen, diag, si.cName,
-                                   "the initialiser generated for '" + inRealm + "." + proc.name + "'");
+                    Pipeline.Claim(seen, diag, si.cName, "the initialiser generated for '" + inRealm + "." + proc.name + "'");
                     Pipeline.Claim(seen, diag, si.cName + "_gate",
                                    "the state gate generated for '" + inRealm + "." + proc.name + "'");
                     Pipeline.Claim(seen, diag, si.cName + "_enter",
@@ -648,8 +640,7 @@ module Pipeline {
                 match (t.entryFunc) {
                     case Some(ef) {
                         let String threadRealm = ef.vis == Visibility.Kernel ? "kernel" : "userspace";
-                        Pipeline.Claim(seen, diag, ef.cName,
-                                       "thread '" + threadRealm + "." + proc.name + "." + t.name + "'");
+                        Pipeline.Claim(seen, diag, ef.cName, "thread '" + threadRealm + "." + proc.name + "." + t.name + "'");
                     }
                     case None { }
                 }
@@ -687,8 +678,7 @@ module Pipeline {
             let int at = text.IndexOf(name, from);
             if (at < 0) { return false; }
             let bool beforeOk = at == 0 || !Pipeline.IsIdentChar(text.CharAt(at - 1));
-            let bool afterOk = at + name.Length() >= text.Length()
-                               || !Pipeline.IsIdentChar(text.CharAt(at + name.Length()));
+            let bool afterOk = at + name.Length() >= text.Length() || !Pipeline.IsIdentChar(text.CharAt(at + name.Length()));
             if (beforeOk && afterOk) { return true; }
             from = at + 1;
         }
@@ -900,8 +890,7 @@ module Pipeline {
         while (i < diag.Count()) {
             let Diagnostic d = diag.All().Get(i);
             if (Diags.Severity(d) == Severity.Error
-                && TS.Start(Locs.Span(Diags.Loc(d))) == TS.Start(span)
-                && TS.Length(Locs.Span(Diags.Loc(d))) == TS.Length(span)
+                && TS.Start(Locs.Span(Diags.Loc(d))) == TS.Start(span) && TS.Length(Locs.Span(Diags.Loc(d))) == TS.Length(span)
                 && Locs.File(Diags.Loc(d)).ToLower() == file.ToLower()) {
                 return true;
             }

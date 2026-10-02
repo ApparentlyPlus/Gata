@@ -301,13 +301,12 @@ class Parser {
             let bool ok = false;
             match (a) {
                 case ShadowsAnnotation(x) { ok = allowShadows; }
-                case KeepAnnotation(x)    { ok = allowKeep; }
+                case KeepAnnotation(x) { ok = allowKeep; }
                 case BuiltinAnnotation(x) { ok = allowBuiltin; }
                 default { ok = false; }
             }
             if (!ok) {
-                self.FailAt(Anns.Span(a), "annotations have no effect on " + what,
-                            Codes.BadAnnotation(), new List[String]());
+                self.FailAt(Anns.Span(a), "annotations have no effect on " + what, Codes.BadAnnotation(), new List[String]());
             }
             i = i + 1;
         }
@@ -468,8 +467,7 @@ class Parser {
         let String hint = mod == "private"
             ? "a top-level type is visible to every file that imports this one; there is no file-local type"
             : "remove '" + mod + "'; only a free function takes 'private' here";
-        self.FailAt(Toks.Span(self.Cur()), "'" + mod + "' has no meaning on " + what,
-                    Codes.BadDeclHeader(), HintList.Of1(hint));
+        self.FailAt(Toks.Span(self.Cur()), "'" + mod + "' has no meaning on " + what, Codes.BadDeclHeader(), HintList.Of1(hint));
     }
 
     /*
@@ -489,9 +487,6 @@ class Parser {
         return TopLevel.ImportDecl(new ImportDecl(name, false, self.To(s)));
     }
 
-    /*
-     * ParseNativeType - Parses a native type declaration.
-     */
     throws TopLevel func ParseNativeType(List[Annotation] anns, int s) {
         let Token t = self.Advance();
         let String raw = Toks.Value(t);
@@ -513,8 +508,7 @@ class Parser {
         let List[Param] parms = self.ParseParamList();
         self.Expect(TK.RParen);
         if (self.At(TK.Arrow)) {
-            self.Fail("'" + name + "': return type goes before 'func', not after the parameter list",
-                      Codes.BadDeclHeader());
+            self.Fail("'" + name + "': return type goes before 'func', not after the parameter list", Codes.BadDeclHeader());
         }
         self.Expect(TK.Semi);
         return TopLevel.ExternFuncDecl(new ExternFuncDecl(ret, name, parms, self.To(s), anns));
@@ -551,8 +545,7 @@ class Parser {
      * RequireRealmKeyword - Reports a bare 'kernel' that is missing its 'realm' prefix.
      */
     throws void func RequireRealmKeyword() {
-        self.Fail("expected 'realm' before 'kernel'", Codes.MissingRealmKeyword(),
-                  HintList.Of1("write 'realm kernel { ... }'"));
+        self.Fail("expected 'realm' before 'kernel'", Codes.MissingRealmKeyword(), HintList.Of1("write 'realm kernel { ... }'"));
     }
 
     /*
@@ -666,8 +659,7 @@ class Parser {
             members.Add(m0);
             while (self.Try(TK.Comma)) {
                 if (self.At(TK.RBrace)) {
-                    self.Fail("trailing comma not allowed after the last enum member; remove it",
-                              Codes.TrailingComma());
+                    self.Fail("trailing comma not allowed after the last enum member; remove it", Codes.TrailingComma());
                 }
                 ms = self.CurStart();
                 let EnumMember mn = self.ParseEnumMember(ms);
@@ -940,8 +932,7 @@ class Parser {
         let TypeSpec ret = self.ParseTypeSpec();
         let TypeSpec spec = TypeSpec.FuncSpec(new FuncSpec(ps, ret, self.To(s)));
         if (self.AtP("*")) {
-            self.Fail("pointer to a function type is not supported; use the function type directly",
-                      Codes.BadDeclHeader());
+            self.Fail("pointer to a function type is not supported; use the function type directly", Codes.BadDeclHeader());
         }
         return spec;
     }
@@ -982,8 +973,7 @@ class Parser {
             let List[Param] parms = self.ParseParamList();
             self.Expect(TK.RParen);
             if (self.At(TK.Arrow)) {
-                self.Fail("'" + name + "': return type goes before 'func', not after the parameter list",
-                          Codes.BadDeclHeader());
+                self.Fail("'" + name + "': return type goes before 'func', not after the parameter list", Codes.BadDeclHeader());
             }
             let MethodBody body = self.ParseMethodBody();
             return ClassMember.MethodDecl(new MethodDecl(mods, anns, ret, name, generics, parms, isEntry, isThrow, body, self.To(s)));
@@ -1292,9 +1282,6 @@ class Parser {
         return new ThreadDecl(name, mode, entryFn, self.To(s));
     }
 
-    /*
-     * ParseThreadEntry - Parses the entry function of a thread.
-     */
     throws EntryFuncDecl func ParseThreadEntry() {
         let int s = self.CurStart();
         if (self.AtValue("thread")) { self.Fail("threads cannot be nested", Codes.InvalidNesting()); }
@@ -2448,16 +2435,16 @@ bool func IsAssignTk(TK k) {
  * AssignOpOf - Maps an assignment-operator token kind to its AssignOp value.
  */
 AssignOp func AssignOpOf(TK k) {
-    if (k == TK.PlusEq)    { return AssignOp.AddAssign; }
-    if (k == TK.MinusEq)   { return AssignOp.SubAssign; }
-    if (k == TK.StarEq)    { return AssignOp.MulAssign; }
-    if (k == TK.SlashEq)   { return AssignOp.DivAssign; }
+    if (k == TK.PlusEq) { return AssignOp.AddAssign; }
+    if (k == TK.MinusEq) { return AssignOp.SubAssign; }
+    if (k == TK.StarEq) { return AssignOp.MulAssign; }
+    if (k == TK.SlashEq) { return AssignOp.DivAssign; }
     if (k == TK.PercentEq) { return AssignOp.ModAssign; }
-    if (k == TK.AmpEq)     { return AssignOp.AndAssign; }
-    if (k == TK.PipeEq)    { return AssignOp.OrAssign; }
-    if (k == TK.CaretEq)   { return AssignOp.XorAssign; }
-    if (k == TK.ShlEq)     { return AssignOp.ShlAssign; }
-    if (k == TK.ShrEq)     { return AssignOp.ShrAssign; }
+    if (k == TK.AmpEq) { return AssignOp.AndAssign; }
+    if (k == TK.PipeEq) { return AssignOp.OrAssign; }
+    if (k == TK.CaretEq) { return AssignOp.XorAssign; }
+    if (k == TK.ShlEq) { return AssignOp.ShlAssign; }
+    if (k == TK.ShrEq) { return AssignOp.ShrAssign; }
     return AssignOp.Assign;
 }
 
@@ -2483,13 +2470,13 @@ bool func IsTypeKeyword(TK k) {
  */
 String func PrimName(Token t) {
     let TK k = Toks.Kind(t);
-    if (k == TK.TBool)   { return "bool"; }
-    if (k == TK.TInt)    { return "int"; }
-    if (k == TK.TChar)   { return "char"; }
-    if (k == TK.TFloat)  { return "float"; }
+    if (k == TK.TBool) { return "bool"; }
+    if (k == TK.TInt) { return "int"; }
+    if (k == TK.TChar) { return "char"; }
+    if (k == TK.TFloat) { return "float"; }
     if (k == TK.TDouble) { return "double"; }
-    if (k == TK.TShort)  { return "short"; }
-    if (k == TK.TVoid)   { return "void"; }
+    if (k == TK.TShort) { return "short"; }
+    if (k == TK.TVoid) { return "void"; }
     return Toks.Value(t);
 }
 

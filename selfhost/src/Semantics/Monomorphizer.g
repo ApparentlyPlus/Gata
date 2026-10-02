@@ -63,7 +63,7 @@ class SubstitutionContext {
     public StringMap[String] nameMap;
 
     /*
-     * Also rewrite bare identifiers naming a substituted type, not just type positions.
+     * Also rewrite bare identifiers naming a substituted type, beyond type positions.
      */
     public bool rewriteTypeNames;
 
@@ -180,8 +180,7 @@ class SubstitutionContext {
                 let bool qualified = false;
                 match (n.scope) { case Some(sc) { qualified = true; } case None { } }
                 if (qualified && self.HasScopedResolver()) {
-                    let NamedSpec resolved = self.binder.ResolveScopedType(n, self.tree, self.index,
-                                                                          self.from, self.file);
+                    let NamedSpec resolved = self.binder.ResolveScopedType(n, self.tree, self.index, self.from, self.file);
                     let List[NamedSpec] qArgs = self.SubArgs(resolved.args);
                     if (qArgs == null) { return TypeSpec.NamedSpec(resolved); }
                     let NamedSpec copy = new NamedSpec(resolved.name, qArgs, resolved.span);
@@ -658,8 +657,7 @@ class Monomorphizer {
         match (tmpl.decl) {
             case UnionDecl(utd) {
                 let List[UnionVariant] variants = SubVariants(utd.variants, ctx);
-                let UnionDecl fresh = new UnionDecl(mangled, new List[String](), variants,
-                                                    utd.span, utd.annotations);
+                let UnionDecl fresh = new UnionDecl(mangled, new List[String](), variants, utd.span, utd.annotations);
                 return TopLevel.UnionDecl(fresh);
             }
             case ClassDecl(classTmpl) {
@@ -782,8 +780,7 @@ ClassMember func SubOperatorDecl(OperatorDecl od, SubstitutionContext ctx) {
     if (newParams == od.params && SameOptSpec(newRet, od.returnType) && SameBody(newBody, od.body)) {
         return ClassMember.OperatorDecl(od);
     }
-    return ClassMember.OperatorDecl(new OperatorDecl(od.modifiers, od.op, newParams, newRet,
-                                                     newBody, od.span));
+    return ClassMember.OperatorDecl(new OperatorDecl(od.modifiers, od.op, newParams, newRet, newBody, od.span));
 }
 
 /*
@@ -1013,9 +1010,7 @@ Stmt func SubStmt(Stmt s, SubstitutionContext ctx) {
                     while (k < i) { newCases.Add(sw.cases.Get(k)); k = k + 1; }
                 }
                 if (newCases != null) {
-                    newCases.Add(caseChanged
-                        ? new SwitchCase(newLabels == null ? c.labels : newLabels, newBody, c.span)
-                        : c);
+                    newCases.Add(caseChanged ? new SwitchCase(newLabels == null ? c.labels : newLabels, newBody, c.span) : c);
                 }
                 i = i + 1;
             }
@@ -1023,8 +1018,7 @@ Stmt func SubStmt(Stmt s, SubstitutionContext ctx) {
             if (SameExpr(nscrut, sw.scrutinee) && newCases == null && SameOptBlock(newDef, sw.otherwise)) {
                 return s;
             }
-            return Stmt.SwitchStmt(new SwitchStmt(nscrut, newCases == null ? sw.cases : newCases,
-                                                  newDef, sw.span));
+            return Stmt.SwitchStmt(new SwitchStmt(nscrut, newCases == null ? sw.cases : newCases, newDef, sw.span));
         }
         case MatchStmt(ms) {
             let Expr nscrut = SubExpr(ms.scrutinee, ctx);
@@ -1042,9 +1036,7 @@ Stmt func SubStmt(Stmt s, SubstitutionContext ctx) {
                     while (k < i) { newCases.Add(ms.cases.Get(k)); k = k + 1; }
                 }
                 if (newCases != null) {
-                    newCases.Add(newBody != c.body
-                        ? new MatchCase(c.variant, c.bindings, newBody, c.span)
-                        : c);
+                    newCases.Add(newBody != c.body ? new MatchCase(c.variant, c.bindings, newBody, c.span) : c);
                 }
                 i = i + 1;
             }
@@ -1052,8 +1044,7 @@ Stmt func SubStmt(Stmt s, SubstitutionContext ctx) {
             if (SameExpr(nscrut, ms.scrutinee) && newCases == null && SameOptBlock(newDef, ms.otherwise)) {
                 return s;
             }
-            return Stmt.MatchStmt(new MatchStmt(nscrut, newCases == null ? ms.cases : newCases,
-                                                newDef, ms.span));
+            return Stmt.MatchStmt(new MatchStmt(nscrut, newCases == null ? ms.cases : newCases, newDef, ms.span));
         }
 
         // Nothing to substitute in any of these.
@@ -1302,12 +1293,12 @@ bool func BindParam(String param, TypeSpec spec, StringMap[TypeSpec] binds) {
  */
 TypeSpec func SpecOf(IrType t) {
     match (t) {
-        case IrPrimType(p)  { return Specs.Named(p.cName); }
-        case IrClassRef(c)  { return Specs.Named(c.className); }
+        case IrPrimType(p) { return Specs.Named(p.cName); }
+        case IrClassRef(c) { return Specs.Named(c.className); }
         case IrEnumType(en) { return Specs.Named(en.name); }
         case IrUnionType(u) { return Specs.Named(u.name); }
-        case IrVoidType(v)  { return Specs.Named("void"); }
-        case IrPtrType(pt)  { return TypeSpec.PtrSpec(new PtrSpec(SpecOf(pt.inner), TS.NoneSpan())); }
+        case IrVoidType(v) { return Specs.Named("void"); }
+        case IrPtrType(pt) { return TypeSpec.PtrSpec(new PtrSpec(SpecOf(pt.inner), TS.NoneSpan())); }
         case IrArrayType(a) {
             return TypeSpec.ArraySpec(new ArraySpec(Int.ToString(a.size), SpecOf(a.elem), TS.NoneSpan()));
         }
@@ -1402,9 +1393,6 @@ List[String] func GenericParamsOf(TopLevel item) {
     }
 }
 
-/*
- * TemplateBaseName - The written base name of a generic template
- */
 String func TemplateBaseName(TopLevel item) {
     match (item) {
         case ClassDecl(cd) { return cd.baseName; }

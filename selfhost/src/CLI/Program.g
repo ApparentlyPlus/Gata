@@ -543,7 +543,7 @@ module AppaCli {
         cl.Add("appa check [project]"); cr.Add("Lex, parse, and type-check only - reports errors, emits nothing");
         cl.Add("appa build [project]"); cr.Add("Transpile the project described by its .gconf to C");
         cl.Add("appa clean [project]"); cr.Add("Remove " + String.Join(Cli.GeneratedDirs(), "/, ") + "/");
-        cl.Add("appa --version / -v");  cr.Add("Print the Appa version");
+        cl.Add("appa --version / -v"); cr.Add("Print the Appa version");
         Fmt.Table(cl, cr, Fmt.Indent());
         Console.PrintLine("");
         Fmt.Para(C.DIM() + "A project argument is a directory or a path to its .gconf; the default is the current directory." + C.NC(), Fmt.Indent());
@@ -551,9 +551,9 @@ module AppaCli {
         Fmt.SectionNote("Build options", "(also accepted by check)");
         let List[String] bl = new List[String]();
         let List[String] br = new List[String]();
-        bl.Add("--stdlib <dir>");   br.Add("Override the libgata directory");
-        bl.Add("--werror");         br.Add("Treat warnings as errors");
-        bl.Add("--env <env.g>");    br.Add("Environment file, overriding discovery");
+        bl.Add("--stdlib <dir>"); br.Add("Override the libgata directory");
+        bl.Add("--werror"); br.Add("Treat warnings as errors");
+        bl.Add("--env <env.g>"); br.Add("Environment file, overriding discovery");
         bl.Add("--entry <file.g>"); br.Add("Entry source, overriding discovery");
         bl.Add("--emit-sourcemap"); br.Add("Write sourcemap.json (dense name -> readable name)");
         bl.Add("--pure-transpile"); br.Add("Emit C and stop, with no .gconf at all - needs --env and --entry (build only; check never emits, so it takes --env/--entry on their own)");

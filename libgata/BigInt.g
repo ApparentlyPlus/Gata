@@ -64,9 +64,9 @@ private int func _bi_clz32(uint v) {
     if (v == (0 as uint)) { return 32; }
     let n = 0;
     if ((v & (0xFFFF0000 as uint)) == (0 as uint)) { n = n + 16; v = v << 16; }
-    if ((v & (0xFF000000 as uint)) == (0 as uint)) { n = n + 8;  v = v << 8;  }
-    if ((v & (0xF0000000 as uint)) == (0 as uint)) { n = n + 4;  v = v << 4;  }
-    if ((v & (0xC0000000 as uint)) == (0 as uint)) { n = n + 2;  v = v << 2;  }
+    if ((v & (0xFF000000 as uint)) == (0 as uint)) { n = n + 8; v = v << 8; }
+    if ((v & (0xF0000000 as uint)) == (0 as uint)) { n = n + 4; v = v << 4; }
+    if ((v & (0xC0000000 as uint)) == (0 as uint)) { n = n + 2; v = v << 2; }
     if ((v & (0x80000000 as uint)) == (0 as uint)) { n = n + 1; }
     return n;
 }
@@ -506,7 +506,7 @@ private void func _bi_divrem(uint* a, int an, uint* b, int bn, uint* q, int qn) 
  * has no address the language can hand out.
  */
 private int func _bi_op_and() { return 0; }
-private int func _bi_op_or()  { return 1; }
+private int func _bi_op_or() { return 1; }
 private int func _bi_op_xor() { return 2; }
 
 /*
@@ -522,9 +522,9 @@ private int func _bi_digit(char c, int radix) {
 }
 
 class BigInt {
-    int   sign;   // -1, 0 or +1; 0 exactly when the value is zero
+    int   sign;   // -1, 0 or +1, 0 exactly when the value is zero
     uint* mag;    // |value| in little-endian 32-bit limbs. Null when sign is 0
-    int   len;    // significant limbs, so mag[len-1] is never 0; 0 when sign is 0
+    int   len;    // significant limbs, so mag[len-1] is never 0 (len is 0 when sign is 0)
     int   cap;    // limbs actually allocated, which len may be shorter than
 
     func _init() {
@@ -577,8 +577,8 @@ class BigInt {
         return BigInt.Adopt(-1, buf, n);
     }
 
-    public static BigInt func Zero()     { return new BigInt(); }
-    public static BigInt func One()      { return BigInt.FromInt(1); }
+    public static BigInt func Zero() { return new BigInt(); }
+    public static BigInt func One() { return BigInt.FromInt(1); }
     public static BigInt func MinusOne() { return BigInt.FromInt(-1); }
 
     /*
@@ -640,8 +640,8 @@ class BigInt {
      */
     public int func Sign() { return self.sign; }
 
-    public bool func IsZero()     { return self.sign == 0; }
-    public bool func IsOne()      { return self.sign > 0 && self.len == 1 && _bi_get(self.mag, 0) == (1 as uint); }
+    public bool func IsZero() { return self.sign == 0; }
+    public bool func IsOne() { return self.sign > 0 && self.len == 1 && _bi_get(self.mag, 0) == (1 as uint); }
     public bool func IsMinusOne() { return self.sign < 0 && self.len == 1 && _bi_get(self.mag, 0) == (1 as uint); }
     public bool func IsNegative() { return self.sign < 0; }
 
@@ -715,8 +715,8 @@ class BigInt {
         return self.CompareTo(o) == 0;
     }
 
-    public operator bool func < (BigInt o) { return self.CompareTo(o) <  0; }
-    public operator bool func > (BigInt o) { return self.CompareTo(o) >  0; }
+    public operator bool func < (BigInt o) { return self.CompareTo(o) < 0; }
+    public operator bool func > (BigInt o) { return self.CompareTo(o) > 0; }
     public operator bool func <=(BigInt o) { return self.CompareTo(o) <= 0; }
     public operator bool func >=(BigInt o) { return self.CompareTo(o) >= 0; }
 

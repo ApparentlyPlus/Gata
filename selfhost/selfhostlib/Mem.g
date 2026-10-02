@@ -37,9 +37,6 @@ native {
     #define GATA_WORD_STRIDE (sizeof(gata_word) == 8 ? 1u : 8u)
 }
 
-/*
- * _mem_copy_words - copy `words` 8-byte words from s to d
- */
 private void func _mem_copy_words(void* d, void* s, usize words) native {
     gata_word* dw = (gata_word*)d;
     const gata_word* sw = (const gata_word*)s;

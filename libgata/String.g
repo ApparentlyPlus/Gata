@@ -170,9 +170,6 @@ class String {
 
     public int func IndexOf(String sub) { return self.IndexOf(sub, 0); }
 
-    /*
-     * LastIndexOf - Last index of sub, or -1 if absent
-     */
     public int func LastIndexOf(String sub) {
         if (sub == null) { return -1; }
         let n = self.Length();
@@ -366,7 +363,7 @@ class String {
         unsafe {
             let la = 0;
             let lb = 0;
-            if (self != null)  { la = self.length as int; }
+            if (self != null) { la = self.length as int; }
             if (other != null) { lb = other.length as int; }
             let total = la + lb;
             r.length = total as usize;
@@ -434,10 +431,10 @@ class String {
 
     public operator String func as(char c) { return String.FromChar(c); }
     public operator String func as(char* raw) { return String.FromRaw(raw); }
-    public operator String func as(int n)    { return Int.ToString(n); }
-    public operator String func as(int64 n)  { return Long.ToString(n); }
+    public operator String func as(int n) { return Int.ToString(n); }
+    public operator String func as(int64 n) { return Long.ToString(n); }
     public operator String func as(double v) { return Format.Double(v); }
-    public operator String func as(bool b)   { return b ? "true" : "false"; }
+    public operator String func as(bool b) { return b ? "true" : "false"; }
 }
 
 

@@ -26,21 +26,21 @@ module PrimTypes {
      * Lookup - The row for a primitive spelling, or Unknown
      */
     public PrimInfo func Lookup(String s) {
-        if (s == "bool")    { return PrimInfo.Info("bool",      true,  false, 1, false); }
-        if (s == "char")    { return PrimInfo.Info("char",      true,  false, 2, false); }
-        if (s == "sbyte")   { return PrimInfo.Info("int8_t",    true,  false, 2, false); }
-        if (s == "byte")    { return PrimInfo.Info("uint8_t",   true,  false, 2, true);  }
-        if (s == "short")   { return PrimInfo.Info("int16_t",   true,  false, 3, false); }
-        if (s == "ushort")  { return PrimInfo.Info("uint16_t",  true,  false, 3, true);  }
-        if (s == "int")     { return PrimInfo.Info("int32_t",   true,  false, 4, false); }
-        if (s == "uint")    { return PrimInfo.Info("uint32_t",  true,  false, 4, true);  }
-        if (s == "int64")   { return PrimInfo.Info("int64_t",   true,  false, 5, false); }
-        if (s == "uint64")  { return PrimInfo.Info("uint64_t",  true,  false, 5, true);  }
-        if (s == "usize")   { return PrimInfo.Info("size_t",    true,  false, 5, true);  }
-        if (s == "uintptr") { return PrimInfo.Info("uintptr_t", true,  false, 5, true);  }
-        if (s == "float")   { return PrimInfo.Info("float",     false, true,  6, false); }
-        if (s == "double")  { return PrimInfo.Info("double",    false, true,  7, false); }
-        if (s == "void")    { return PrimInfo.Info("void",      false, false, 0, false); }
+        if (s == "bool") { return PrimInfo.Info("bool", true, false, 1, false); }
+        if (s == "char") { return PrimInfo.Info("char", true, false, 2, false); }
+        if (s == "sbyte") { return PrimInfo.Info("int8_t", true, false, 2, false); }
+        if (s == "byte") { return PrimInfo.Info("uint8_t", true, false, 2, true); }
+        if (s == "short") { return PrimInfo.Info("int16_t", true, false, 3, false); }
+        if (s == "ushort") { return PrimInfo.Info("uint16_t", true, false, 3, true); }
+        if (s == "int") { return PrimInfo.Info("int32_t", true, false, 4, false); }
+        if (s == "uint") { return PrimInfo.Info("uint32_t", true, false, 4, true); }
+        if (s == "int64") { return PrimInfo.Info("int64_t", true, false, 5, false); }
+        if (s == "uint64") { return PrimInfo.Info("uint64_t", true, false, 5, true); }
+        if (s == "usize") { return PrimInfo.Info("size_t", true, false, 5, true); }
+        if (s == "uintptr") { return PrimInfo.Info("uintptr_t", true, false, 5, true); }
+        if (s == "float") { return PrimInfo.Info("float", false, true, 6, false); }
+        if (s == "double") { return PrimInfo.Info("double", false, true, 7, false); }
+        if (s == "void") { return PrimInfo.Info("void", false, false, 0, false); }
         return PrimInfo.Unknown();
     }
 
@@ -242,15 +242,15 @@ module Types {
      */
     public String func MangledName(IrType t) {
         match (t) {
-            case IrVoidType(x)    { return "void"; }
-            case IrErrorType(x)   { return "error"; }
-            case IrPrimType(x)    { return x.cName; }
-            case IrClassRef(x)    { return x.className; }
-            case IrEnumType(x)    { return x.name; }
-            case IrUnionType(x)   { return x.name; }
-            case IrPtrType(x)     { return Types.MangledName(x.inner) + "_p"; }
-            case IrArrayType(x)   { return "Arr_" + Types.MangledName(x.elem) + "_" + Int.ToString(x.size); }
-            case IrResultType(x)  { return "Result_" + Types.MangledName(x.inner); }
+            case IrVoidType(x) { return "void"; }
+            case IrErrorType(x) { return "error"; }
+            case IrPrimType(x) { return x.cName; }
+            case IrClassRef(x) { return x.className; }
+            case IrEnumType(x) { return x.name; }
+            case IrUnionType(x) { return x.name; }
+            case IrPtrType(x) { return Types.MangledName(x.inner) + "_p"; }
+            case IrArrayType(x) { return "Arr_" + Types.MangledName(x.elem) + "_" + Int.ToString(x.size); }
+            case IrResultType(x) { return "Result_" + Types.MangledName(x.inner); }
             case IrFuncPtrType(x) {
                 let StringBuilder sb = new StringBuilder();
                 sb.Put("Fn_").Put(Types.MangledName(x.ret)).Put("__");
@@ -272,15 +272,15 @@ module Types {
      */
     public String func Tag(IrType t) {
         match (t) {
-            case IrVoidType(x)    { return "v"; }
-            case IrErrorType(x)   { return "!"; }
-            case IrPrimType(x)    { return "p"; }
-            case IrClassRef(x)    { return "c"; }
-            case IrEnumType(x)    { return "e"; }
-            case IrUnionType(x)   { return "u"; }
-            case IrPtrType(x)     { return "*"; }
-            case IrArrayType(x)   { return "a"; }
-            case IrResultType(x)  { return "r"; }
+            case IrVoidType(x) { return "v"; }
+            case IrErrorType(x) { return "!"; }
+            case IrPrimType(x) { return "p"; }
+            case IrClassRef(x) { return "c"; }
+            case IrEnumType(x) { return "e"; }
+            case IrUnionType(x) { return "u"; }
+            case IrPtrType(x) { return "*"; }
+            case IrArrayType(x) { return "a"; }
+            case IrResultType(x) { return "r"; }
             case IrFuncPtrType(x) { return "f"; }
         }
     }
@@ -387,7 +387,7 @@ class IrTypeTable {
         }
     }
 
-    public IrType func Void()  { return self.Intern(IrType.IrVoidType(new IrVoidType())); }
+    public IrType func Void() { return self.Intern(IrType.IrVoidType(new IrVoidType())); }
     public IrType func Error() { return self.Intern(IrType.IrErrorType(new IrErrorType())); }
 
     public IrType func Prim(String canon) { return self.Intern(IrType.IrPrimType(new IrPrimType(canon))); }
@@ -415,15 +415,15 @@ class IrTypeTable {
     }
 
     // The singletons C# exposes as static readonly fields on IrType.
-    public IrType func Bool()   { return self.Prim("bool"); }
-    public IrType func Int()    { return self.Prim("int"); }
-    public IrType func Char()   { return self.Prim("char"); }
-    public IrType func Short()  { return self.Prim("short"); }
-    public IrType func Long()   { return self.Prim("int64"); }
-    public IrType func Float()  { return self.Prim("float"); }
+    public IrType func Bool() { return self.Prim("bool"); }
+    public IrType func Int() { return self.Prim("int"); }
+    public IrType func Char() { return self.Prim("char"); }
+    public IrType func Short() { return self.Prim("short"); }
+    public IrType func Long() { return self.Prim("int64"); }
+    public IrType func Float() { return self.Prim("float"); }
     public IrType func Double() { return self.Prim("double"); }
-    public IrType func SizeT()  { return self.Prim("usize"); }
-    public IrType func Str()    { return self.ClassRef("String"); }
+    public IrType func SizeT() { return self.Prim("usize"); }
+    public IrType func Str() { return self.ClassRef("String"); }
 }
 
 /*
@@ -980,41 +980,41 @@ module Exprs2 {
      */
     public IrType func TypeOf(IrExpr e) {
         match (e) {
-            case IrLitInt(x)              { return x.type; }
-            case IrLitChar(x)             { return x.type; }
-            case IrLitFloat(x)            { return x.type; }
-            case IrLitBool(x)             { return x.type; }
-            case IrLitString(x)           { return x.type; }
-            case IrLitNull(x)             { return x.type; }
-            case IrEnumConst(x)           { return x.type; }
-            case IrVar(x)                 { return x.type; }
-            case IrGlobal(x)              { return x.type; }
-            case IrSelfExpr(x)            { return x.type; }
-            case IrFieldLoad(x)           { return x.type; }
-            case IrIndex(x)               { return x.type; }
-            case IrStaticCall(x)          { return x.type; }
-            case IrInstanceCall(x)        { return x.type; }
-            case IrThrowsCall(x)          { return x.type; }
-            case IrThrowsInstanceCall(x)  { return x.type; }
-            case IrCatchCall(x)           { return x.type; }
-            case IrFuncRef(x)             { return x.type; }
-            case IrIndirectCall(x)        { return x.type; }
-            case IrUnionConstruct(x)      { return x.type; }
-            case IrUnionField(x)          { return x.type; }
-            case IrBinOp(x)               { return x.type; }
-            case IrTernary(x)             { return x.type; }
-            case IrUnaryOp(x)             { return x.type; }
-            case IrPostfix(x)             { return x.type; }
-            case IrCast(x)                { return x.to; }
-            case IrNew(x)                 { return x.type; }
-            case IrNewInit(x)             { return x.type; }
-            case IrArrayLit(x)            { return x.arrType; }
-            case IrInterp(x)              { return x.type; }
-            case IrAddrOf(x)              { return x.type; }
-            case IrDeref(x)               { return x.type; }
-            case IrSizeof(x)              { return x.type; }
-            case IrDefault(x)             { return x.of; }
-            case IrStructLit(x)           { return x.structType; }
+            case IrLitInt(x) { return x.type; }
+            case IrLitChar(x) { return x.type; }
+            case IrLitFloat(x) { return x.type; }
+            case IrLitBool(x) { return x.type; }
+            case IrLitString(x) { return x.type; }
+            case IrLitNull(x) { return x.type; }
+            case IrEnumConst(x) { return x.type; }
+            case IrVar(x) { return x.type; }
+            case IrGlobal(x) { return x.type; }
+            case IrSelfExpr(x) { return x.type; }
+            case IrFieldLoad(x) { return x.type; }
+            case IrIndex(x) { return x.type; }
+            case IrStaticCall(x) { return x.type; }
+            case IrInstanceCall(x) { return x.type; }
+            case IrThrowsCall(x) { return x.type; }
+            case IrThrowsInstanceCall(x) { return x.type; }
+            case IrCatchCall(x) { return x.type; }
+            case IrFuncRef(x) { return x.type; }
+            case IrIndirectCall(x) { return x.type; }
+            case IrUnionConstruct(x) { return x.type; }
+            case IrUnionField(x) { return x.type; }
+            case IrBinOp(x) { return x.type; }
+            case IrTernary(x) { return x.type; }
+            case IrUnaryOp(x) { return x.type; }
+            case IrPostfix(x) { return x.type; }
+            case IrCast(x) { return x.to; }
+            case IrNew(x) { return x.type; }
+            case IrNewInit(x) { return x.type; }
+            case IrArrayLit(x) { return x.arrType; }
+            case IrInterp(x) { return x.type; }
+            case IrAddrOf(x) { return x.type; }
+            case IrDeref(x) { return x.type; }
+            case IrSizeof(x) { return x.type; }
+            case IrDefault(x) { return x.of; }
+            case IrStructLit(x) { return x.structType; }
         }
     }
 
@@ -1070,41 +1070,41 @@ module Exprs2 {
      */
     public TextSpan func SpanOf(IrExpr e) {
         match (e) {
-            case IrLitInt(x)              { return x.span; }
-            case IrLitChar(x)             { return x.span; }
-            case IrLitFloat(x)            { return x.span; }
-            case IrLitBool(x)             { return x.span; }
-            case IrLitString(x)           { return x.span; }
-            case IrLitNull(x)             { return x.span; }
-            case IrEnumConst(x)           { return x.span; }
-            case IrVar(x)                 { return x.span; }
-            case IrGlobal(x)              { return x.span; }
-            case IrSelfExpr(x)            { return x.span; }
-            case IrFieldLoad(x)           { return x.span; }
-            case IrIndex(x)               { return x.span; }
-            case IrStaticCall(x)          { return x.span; }
-            case IrInstanceCall(x)        { return x.span; }
-            case IrThrowsCall(x)          { return x.span; }
-            case IrThrowsInstanceCall(x)  { return x.span; }
-            case IrCatchCall(x)           { return x.span; }
-            case IrFuncRef(x)             { return x.span; }
-            case IrIndirectCall(x)        { return x.span; }
-            case IrUnionConstruct(x)      { return x.span; }
-            case IrUnionField(x)          { return x.span; }
-            case IrBinOp(x)               { return x.span; }
-            case IrTernary(x)             { return x.span; }
-            case IrUnaryOp(x)             { return x.span; }
-            case IrPostfix(x)             { return x.span; }
-            case IrCast(x)                { return x.span; }
-            case IrNew(x)                 { return x.span; }
-            case IrNewInit(x)             { return x.span; }
-            case IrArrayLit(x)            { return x.span; }
-            case IrInterp(x)              { return x.span; }
-            case IrAddrOf(x)              { return x.span; }
-            case IrDeref(x)               { return x.span; }
-            case IrSizeof(x)              { return x.span; }
-            case IrDefault(x)             { return x.span; }
-            case IrStructLit(x)           { return x.span; }
+            case IrLitInt(x) { return x.span; }
+            case IrLitChar(x) { return x.span; }
+            case IrLitFloat(x) { return x.span; }
+            case IrLitBool(x) { return x.span; }
+            case IrLitString(x) { return x.span; }
+            case IrLitNull(x) { return x.span; }
+            case IrEnumConst(x) { return x.span; }
+            case IrVar(x) { return x.span; }
+            case IrGlobal(x) { return x.span; }
+            case IrSelfExpr(x) { return x.span; }
+            case IrFieldLoad(x) { return x.span; }
+            case IrIndex(x) { return x.span; }
+            case IrStaticCall(x) { return x.span; }
+            case IrInstanceCall(x) { return x.span; }
+            case IrThrowsCall(x) { return x.span; }
+            case IrThrowsInstanceCall(x) { return x.span; }
+            case IrCatchCall(x) { return x.span; }
+            case IrFuncRef(x) { return x.span; }
+            case IrIndirectCall(x) { return x.span; }
+            case IrUnionConstruct(x) { return x.span; }
+            case IrUnionField(x) { return x.span; }
+            case IrBinOp(x) { return x.span; }
+            case IrTernary(x) { return x.span; }
+            case IrUnaryOp(x) { return x.span; }
+            case IrPostfix(x) { return x.span; }
+            case IrCast(x) { return x.span; }
+            case IrNew(x) { return x.span; }
+            case IrNewInit(x) { return x.span; }
+            case IrArrayLit(x) { return x.span; }
+            case IrInterp(x) { return x.span; }
+            case IrAddrOf(x) { return x.span; }
+            case IrDeref(x) { return x.span; }
+            case IrSizeof(x) { return x.span; }
+            case IrDefault(x) { return x.span; }
+            case IrStructLit(x) { return x.span; }
         }
     }
 }
@@ -1496,29 +1496,29 @@ module Stmts2 {
      */
     public TextSpan func SpanOf(IrStmt s) {
         match (s) {
-            case IrBlock(x)       { return x.span; }
-            case IrNativeStmt(x)  { return x.span; }
+            case IrBlock(x) { return x.span; }
+            case IrNativeStmt(x) { return x.span; }
             case IrAssignValue(x) { return x.span; }
-            case IrGoto(x)        { return x.span; }
-            case IrLabel(x)       { return x.span; }
-            case IrDeclVar(x)     { return x.span; }
-            case IrAssign(x)      { return x.span; }
-            case IrExprStmt(x)    { return x.span; }
-            case IrReturn(x)      { return x.span; }
-            case IrBreak(x)       { return x.span; }
-            case IrContinue(x)    { return x.span; }
-            case IrIf(x)          { return x.span; }
-            case IrWhile(x)       { return x.span; }
-            case IrFor(x)         { return x.span; }
-            case IrForIn(x)       { return x.span; }
-            case IrTryCatch(x)    { return x.span; }
-            case IrSwitch(x)      { return x.span; }
-            case IrMatch(x)       { return x.span; }
+            case IrGoto(x) { return x.span; }
+            case IrLabel(x) { return x.span; }
+            case IrDeclVar(x) { return x.span; }
+            case IrAssign(x) { return x.span; }
+            case IrExprStmt(x) { return x.span; }
+            case IrReturn(x) { return x.span; }
+            case IrBreak(x) { return x.span; }
+            case IrContinue(x) { return x.span; }
+            case IrIf(x) { return x.span; }
+            case IrWhile(x) { return x.span; }
+            case IrFor(x) { return x.span; }
+            case IrForIn(x) { return x.span; }
+            case IrTryCatch(x) { return x.span; }
+            case IrSwitch(x) { return x.span; }
+            case IrMatch(x) { return x.span; }
             case IrUnsafeBlock(x) { return x.span; }
-            case IrDefer(x)       { return x.span; }
-            case IrThrow(x)       { return x.span; }
-            case IrDebug(x)       { return x.span; }
-            case IrPanic(x)       { return x.span; }
+            case IrDefer(x) { return x.span; }
+            case IrThrow(x) { return x.span; }
+            case IrDebug(x) { return x.span; }
+            case IrPanic(x) { return x.span; }
         }
     }
 }

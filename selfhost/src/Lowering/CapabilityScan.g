@@ -117,8 +117,7 @@ class CapabilityScan {
             dc = dc + 1;
         }
 
-        let IrWalk[CapabilityScan] w =
-            new IrWalk[CapabilityScan](self, CapStmt, CapExpr);
+        let IrWalk[CapabilityScan] w = new IrWalk[CapabilityScan](self, CapStmt, CapExpr);
         while (self.work.Length() > 0) {
             let IrStmt s = self.work.Get(0);
             self.work.RemoveAt(0);
@@ -143,9 +142,9 @@ class CapabilityScan {
      * has one
      */
     public void func Call(String cname) {
-        if (cname == self.readName)  { self.input = true; }
+        if (cname == self.readName) { self.input = true; }
         if (cname == self.allocName) { self.mem = true; }
-        if (cname == self.timeName)  { self.time = true; }
+        if (cname == self.timeName) { self.time = true; }
 
         match (self.funcs.Find(cname)) {
             case Some(f) { self.Enter(cname, f.body); return; }
@@ -185,11 +184,11 @@ bool func CapExpr(IrWalk[CapabilityScan] w, IrExpr e) {
             w.state.NeedMem();
             w.state.Call(ni.addCName);
         }
-        case IrStaticCall(sc)         { w.state.Call(sc.cName); }
-        case IrInstanceCall(ic)       { w.state.Call(ic.cName); }
-        case IrThrowsCall(tc)         { w.state.Call(tc.cName); }
+        case IrStaticCall(sc) { w.state.Call(sc.cName); }
+        case IrInstanceCall(ic) { w.state.Call(ic.cName); }
+        case IrThrowsCall(tc) { w.state.Call(tc.cName); }
         case IrThrowsInstanceCall(ti) { w.state.Call(ti.cName); }
-        case IrFuncRef(fr)            { w.state.Call(fr.cName); }
+        case IrFuncRef(fr) { w.state.Call(fr.cName); }
         default { }
     }
     return true;

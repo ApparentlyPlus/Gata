@@ -2,17 +2,12 @@
  * Desugar.g - the three constructs the backend never sees
  *
  * Ports Appa/src/Lowering/Desugar.cs.
- *
- * Switch, match and string interpolation all lower here, into shapes the emitter already knows how
- * to write. Everything downstream - ownership, dead-code elimination, the emitter itself - is
- * spared three node kinds it would otherwise have to reason about.
- *
- *   switch      -> a scrutinee temp, then an if/else-if chain of equality tests
- *   match       -> the same, discriminating on the union's __tag field, with payload bindings
- *   $"a{b}c"    -> one '+' for two parts, a StringBuilder for three or more
- *
- * All three run bottom-up, so a match nested in a switch arm is already lowered by the time the
- * arm itself is.
+ * Switch, match and string interpolation lower here into shapes the emitter already knows, so nothing
+ * downstream (ownership, DCE, the emitter) has to reason about them.
+ *   switch    -> a scrutinee temp, then an if/else-if chain of equality tests
+ *   match     -> the same, on the union's __tag field, with payload bindings
+ *   $"a{b}c"  -> one '+' for two parts, a StringBuilder for three or more
+ * All three run bottom-up, so a match nested in a switch arm is already lowered by the time the arm is.
  */
 
 import "selfhostlib/String.g";
@@ -116,8 +111,7 @@ class Desugar {
             }
 
             let IrExpr tag = IrExpr.IrFieldLoad(new IrFieldLoad(vr, "__tag", self.t.Int()));
-            let IrExpr want = IrExpr.IrLitInt(
-                new IrLitInt(c.variantIndex as int64, self.t.Int(), Optional[String].None()));
+            let IrExpr want = IrExpr.IrLitInt(new IrLitInt(c.variantIndex as int64, self.t.Int(), Optional[String].None()));
             let IrExpr cond = IrExpr.IrBinOp(new IrBinOp(BinOp.Eq, tag, want, self.t.Bool()));
 
             let Optional[IrBlock] elseBlk = Optional[IrBlock].None();
@@ -181,12 +175,10 @@ class Desugar {
             let IrSwitchCase c = sw.cases.Get(i);
 
             // Several labels on one arm fold into a chain of '||'
-            let IrExpr cond = IrExpr.IrBinOp(
-                new IrBinOp(BinOp.Eq, vr, c.labels.Get(0), self.t.Bool()));
+            let IrExpr cond = IrExpr.IrBinOp(new IrBinOp(BinOp.Eq, vr, c.labels.Get(0), self.t.Bool()));
             let int j = 1;
             while (j < c.labels.Length()) {
-                let IrExpr next = IrExpr.IrBinOp(
-                    new IrBinOp(BinOp.Eq, vr, c.labels.Get(j), self.t.Bool()));
+                let IrExpr next = IrExpr.IrBinOp(new IrBinOp(BinOp.Eq, vr, c.labels.Get(j), self.t.Bool()));
                 cond = IrExpr.IrBinOp(new IrBinOp(BinOp.Or, cond, next, self.t.Bool()));
                 j = j + 1;
             }
@@ -254,8 +246,7 @@ class Desugar {
                         match (self.sym.LookupMethod(sbClass, "ToString")) {
                             case None { return Optional[InterpBuilder].None(); }
                             case Some(toStr) {
-                                return Optional.Some(
-                                    new InterpBuilder(sbClass, put.cName, toStr.cName));
+                                return Optional.Some(new InterpBuilder(sbClass, put.cName, toStr.cName));
                             }
                         }
                     }
@@ -276,15 +267,13 @@ class Desugar {
 
         let int i = 0;
         while (i < ip.parts.Length()) {
-            let IrInstanceCall put = new IrInstanceCall(sb, bp.putCName, cls,
-                                                        self.OneArg(ip.parts.Get(i)));
+            let IrInstanceCall put = new IrInstanceCall(sb, bp.putCName, cls, self.OneArg(ip.parts.Get(i)));
             put.span = ip.span;
             sb = IrExpr.IrInstanceCall(put);
             i = i + 1;
         }
 
-        let IrInstanceCall fin = new IrInstanceCall(sb, bp.toStringCName, self.t.Str(),
-                                                    new List[IrExpr]());
+        let IrInstanceCall fin = new IrInstanceCall(sb, bp.toStringCName, self.t.Str(), new List[IrExpr]());
         fin.span = ip.span;
         return IrExpr.IrInstanceCall(fin);
     }
@@ -312,8 +301,7 @@ class Desugar {
         match (self.sym.LookupOperator(stringClass, "+")) {
             case Some(op) { return op.cName; }
             case None {
-                self.diag.Error(Codes.MissingIntrinsic(), "<runtime>", span,
-                    "String defines no '+' operator for concatenation");
+                self.diag.Error(Codes.MissingIntrinsic(), "<runtime>", span, "String defines no '+' operator for concatenation");
                 return "gata_MISSING_String_concat";
             }
         }
@@ -340,7 +328,7 @@ class InterpBuilder {
 IrStmt func DesugarStmt(IrRewrite[Desugar] r, IrStmt s) {
     match (s) {
         case IrSwitch(sw) { return r.state.LowerSwitch(sw); }
-        case IrMatch(ms)  { return r.state.LowerMatch(ms); }
+        case IrMatch(ms) { return r.state.LowerMatch(ms); }
         default { return s; }
     }
 }

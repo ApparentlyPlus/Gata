@@ -104,8 +104,5 @@ class CodeWriter {
      */
     public void func EndBrace() { self.End("}"); }
 
-    /*
-     * Text - The accumulated C text
-     */
     public String func Text() { return self.sb.ToString(); }
 }

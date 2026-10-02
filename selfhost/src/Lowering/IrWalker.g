@@ -2,26 +2,17 @@
  * IrWalker.g - the one IR traversal, written once and reused by every analysis
  *
  * Ports Appa/src/Lowering/IrWalker.cs.
- *
- * C# spells this as an abstract class whose WalkStmt/WalkExpr are virtual, and every analysis is a
- * subclass overriding the cases it cares about. Gata has neither inheritance nor virtual dispatch,
- * so the same factoring is expressed the other way round: the traversal is a generic class, and an
- * analysis supplies two function pointers plus the state they work on.
- *
+ * C# makes this an abstract class with virtual WalkStmt/WalkExpr and an analysis subclasses it. Gata has no
+ * inheritance or virtual dispatch, so it's flipped: the traversal is a generic class and an analysis supplies
+ * two function pointers plus its state.
  *   class Walk[S]                   S is the analysis's own state class
- *   func(IrWalk[S], IrStmt) -> bool a hook, returning whether to recurse into that node
- *
- * A hook may be null, which means "recurse, look at nothing" - what an analysis that only cares
- * about one of the two node kinds passes for the other. A generic no-op function cannot serve
- * here: taking its address would need explicit type arguments, which a call site cannot write.
- *
- * A hook that returns true is C#'s "do something, then call base". A hook that returns false is
- * "intercept, and do not descend" - and because the hook is handed the walker, it can also descend
- * selectively by calling WalkStmt/WalkExpr on whichever children it chooses, which is what an
- * override that recurses in a custom order does in C#.
- *
- * Gata has no closures, so the state cannot be captured. It is reached through the walker as
- * w.state. That is the only real difference in how an analysis is written.
+ *   func(IrWalk[S], IrStmt) -> bool a hook, returns whether to recurse into that node
+ * A hook may be null, meaning "recurse, look at nothing". A generic no-op function can't stand in for it,
+ * taking its address would need explicit type arguments a call site can't write. Returning true is C#'s
+ * "do something, then call base", false is "intercept and do not descend", and since the hook gets the walker
+ * it can descend selectively with WalkStmt/WalkExpr on the children it picks.
+ * No closures, so state is reached through the walker as w.state. That is the only real difference in how
+ * an analysis is written.
  */
 
 import "selfhostlib/String.g";
@@ -62,10 +53,10 @@ class IrWalk[S] {
                 while (i < b.stmts.Length()) { self.WalkStmt(b.stmts.Get(i)); i = i + 1; }
             }
             case IrUnsafeBlock(u) { self.WalkStmt(IrStmt.IrBlock(u.body)); }
-            case IrDeclVar(d)     { self.WalkOptExpr(d.init); }
-            case IrAssign(a)      { self.WalkExpr(a.target); self.WalkExpr(a.value); }
-            case IrExprStmt(e)    { self.WalkExpr(e.expr); }
-            case IrReturn(r)      { self.WalkOptExpr(r.value); }
+            case IrDeclVar(d) { self.WalkOptExpr(d.init); }
+            case IrAssign(a) { self.WalkExpr(a.target); self.WalkExpr(a.value); }
+            case IrExprStmt(e) { self.WalkExpr(e.expr); }
+            case IrReturn(r) { self.WalkOptExpr(r.value); }
             case IrIf(i) {
                 self.WalkExpr(i.cond);
                 self.WalkStmt(IrStmt.IrBlock(i.then));
@@ -107,7 +98,7 @@ class IrWalk[S] {
                 }
                 self.WalkOptBlock(ms.otherwise);
             }
-            case IrDefer(d2)      { self.WalkStmt(d2.action); }
+            case IrDefer(d2) { self.WalkStmt(d2.action); }
             case IrAssignValue(av) { self.WalkExpr(av.value); }
             default { }
         }
@@ -129,7 +120,7 @@ class IrWalk[S] {
     public void func WalkExprChildren(IrExpr e) {
         match (e) {
             case IrFieldLoad(fl) { self.WalkExpr(fl.obj); }
-            case IrIndex(ix)     { self.WalkExpr(ix.obj); self.WalkExpr(ix.idx); }
+            case IrIndex(ix) { self.WalkExpr(ix.obj); self.WalkExpr(ix.idx); }
             case IrStaticCall(sc) { self.WalkArgs(sc.args); }
             case IrInstanceCall(ic) { self.WalkExpr(ic.recv); self.WalkArgs(ic.args); }
             case IrThrowsCall(tc) { self.WalkArgs(tc.args); }

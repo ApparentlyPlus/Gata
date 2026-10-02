@@ -503,9 +503,6 @@ module Algorithms {
         return true;
     }
 
-    /*
-     * ReverseSpan - Reverse the span in place
-     */
     public func ReverseSpan[T](Span[T] s) {
         match (s) {
             case View(d, n) {

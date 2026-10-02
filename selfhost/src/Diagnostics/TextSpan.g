@@ -20,9 +20,6 @@ module TS {
         match (s) { case Span(start, length) { return start; } }
     }
 
-    /*
-     * Length - The span's length in characters
-     */
     public int func Length(TextSpan s) {
         match (s) { case Span(start, length) { return length; } }
     }

@@ -158,7 +158,7 @@ module Cli {
             Cli.Fail("cannot find libgata - pass --stdlib <dir>");
         }
 
-        if (!File.Exists(env))       { Cli.Fail("file not found: " + env); }
+        if (!File.Exists(env)) { Cli.Fail("file not found: " + env); }
         if (!File.Exists(entryFile)) { Cli.Fail("file not found: " + entryFile); }
 
         return new ResolvedInputs(manifest, env, entryFile, projectRoot, OrEmptyStr(stdlibDir));

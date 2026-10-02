@@ -28,22 +28,22 @@ import "selfhostlib/Int.g";
  * Vga - The sixteen palette indices SetColor takes, named.
  */
 module Vga {
-    public int func Black()        { return 0; }
-    public int func Blue()         { return 1; }
-    public int func Green()        { return 2; }
-    public int func Cyan()         { return 3; }
-    public int func Red()          { return 4; }
-    public int func Magenta()      { return 5; }
-    public int func Brown()        { return 6; }
-    public int func LightGray()    { return 7; }
-    public int func DarkGray()     { return 8; }
-    public int func LightBlue()    { return 9; }
-    public int func LightGreen()   { return 10; }
-    public int func LightCyan()    { return 11; }
-    public int func LightRed()     { return 12; }
+    public int func Black() { return 0; }
+    public int func Blue() { return 1; }
+    public int func Green() { return 2; }
+    public int func Cyan() { return 3; }
+    public int func Red() { return 4; }
+    public int func Magenta() { return 5; }
+    public int func Brown() { return 6; }
+    public int func LightGray() { return 7; }
+    public int func DarkGray() { return 8; }
+    public int func LightBlue() { return 9; }
+    public int func LightGreen() { return 10; }
+    public int func LightCyan() { return 11; }
+    public int func LightRed() { return 12; }
     public int func LightMagenta() { return 13; }
-    public int func Yellow()       { return 14; }
-    public int func White()        { return 15; }
+    public int func Yellow() { return 14; }
+    public int func White() { return 15; }
 }
 
 module Console {
@@ -69,9 +69,7 @@ module Console {
      */
     public String func Style(int fg, int bg) {
         unsafe {
-            let [3]char m = [Console.MarkChar(),
-                             ((65 + (fg & 15)) as char),
-                             ((65 + (bg & 15)) as char)];
+            let [3]char m = [Console.MarkChar(), ((65 + (fg & 15)) as char), ((65 + (bg & 15)) as char)];
             return String.FromBuffer(&m[0], 3);
         }
     }

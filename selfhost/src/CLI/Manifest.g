@@ -171,7 +171,7 @@ module ManifestReader {
         if (v.Length() == 0) { return Result.Ok(Target.GatOS); }
         if (!ManifestReader.LeadingDigit(v)) {
             let String lo = v.ToLower();
-            if (lo == "gatos")  { return Result.Ok(Target.GatOS); }
+            if (lo == "gatos") { return Result.Ok(Target.GatOS); }
             if (lo == "hosted") { return Result.Ok(Target.Hosted); }
         }
         return Result[Target, String].Err(ManifestReader.EnumError(v, "TargetBackend", "GatOS, Hosted"));
@@ -182,7 +182,7 @@ module ManifestReader {
         if (v.Length() == 0) { return Result.Ok(Mode.Debug); }
         if (!ManifestReader.LeadingDigit(v)) {
             let String lo = v.ToLower();
-            if (lo == "debug")   { return Result.Ok(Mode.Debug); }
+            if (lo == "debug") { return Result.Ok(Mode.Debug); }
             if (lo == "release") { return Result.Ok(Mode.Release); }
         }
         return Result[Mode, String].Err(ManifestReader.EnumError(v, "BuildMode", "Debug, Release"));
@@ -194,7 +194,7 @@ module ManifestReader {
         if (!ManifestReader.LeadingDigit(v)) {
             let String lo = v.ToLower();
             if (lo == "framebuffer") { return Result.Ok(OutputKind.Framebuffer); }
-            if (lo == "serial")      { return Result.Ok(OutputKind.Serial); }
+            if (lo == "serial") { return Result.Ok(OutputKind.Serial); }
         }
         return Result[OutputKind, String].Err(ManifestReader.EnumError(v, "OutputType", "Framebuffer, Serial"));
     }
@@ -204,9 +204,9 @@ module ManifestReader {
         if (v.Length() == 0) { return Result.Ok(Keyboard.Default); }
         if (!ManifestReader.LeadingDigit(v)) {
             let String lo = v.ToLower();
-            if (lo == "default")  { return Result.Ok(Keyboard.Default); }
+            if (lo == "default") { return Result.Ok(Keyboard.Default); }
             if (lo == "external") { return Result.Ok(Keyboard.External); }
-            if (lo == "hotplug")  { return Result.Ok(Keyboard.Hotplug); }
+            if (lo == "hotplug") { return Result.Ok(Keyboard.Hotplug); }
         }
         return Result[Keyboard, String].Err(ManifestReader.EnumError(v, "KeyboardSupport", "Default, External, Hotplug"));
     }
@@ -216,11 +216,10 @@ module ManifestReader {
         if (v.Length() == 0) { return Result.Ok(CapabilityDiscovery.On); }
         if (!ManifestReader.LeadingDigit(v)) {
             let String lo = v.ToLower();
-            if (lo == "on")  { return Result.Ok(CapabilityDiscovery.On); }
+            if (lo == "on") { return Result.Ok(CapabilityDiscovery.On); }
             if (lo == "off") { return Result.Ok(CapabilityDiscovery.Off); }
         }
-        return Result[CapabilityDiscovery, String].Err(
-            ManifestReader.EnumError(v, "CapabilityDiscovery", "On, Off"));
+        return Result[CapabilityDiscovery, String].Err(ManifestReader.EnumError(v, "CapabilityDiscovery", "On, Off"));
     }
 
     /*

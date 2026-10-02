@@ -91,9 +91,6 @@ class List[T] {
     public T func First() { return self.Get(0); }
     public T func Last() { return self.Get(self.Length() - 1); }
 
-    /*
-     * Add - Append v to the end
-     */
     public void func Add(T v) {
         if (self.length >= self.cap) { self.Grow(self.length + 1); }
         unsafe { self.data[self.length] = retain(v); }
@@ -168,9 +165,6 @@ class List[T] {
         self.length = self.length - 1;
     }
 
-    /*
-     * RemoveLast - Drop the last element
-     */
     public void func RemoveLast() {
         if (self.length > 0) {
             unsafe { release(self.data[self.length - 1]); }
@@ -178,9 +172,6 @@ class List[T] {
         }
     }
 
-    /*
-     * Reverse - Reverse the list in place
-     */
     public void func Reverse() {
         let a = 0;
         let b = self.length - 1;
