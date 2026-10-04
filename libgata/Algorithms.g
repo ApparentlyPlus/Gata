@@ -117,7 +117,7 @@ module Algorithms {
     }
 
     /*
-     * PartitionRange - Median-of-three Lomuto partition of list[lo..hi]; returns pivot index
+     * PartitionRange - Median-of-three Lomuto partition of list[lo..hi]. Returns pivot index
      */
     int func PartitionRange[T](List[T] list, int lo, int hi) {
         let mid = lo + (hi - lo) / 2;
@@ -327,7 +327,7 @@ module Algorithms {
     }
 
     /*
-     * PartitionRangePtr - Median-of-three Lomuto partition of d[lo..hi]; returns pivot index
+     * PartitionRangePtr - Median-of-three Lomuto partition of d[lo..hi]. Returns pivot index
      */
     int func PartitionRangePtr[T](T* d, int lo, int hi) {
         let mid = lo + (hi - lo) / 2;
@@ -503,9 +503,6 @@ module Algorithms {
         return true;
     }
 
-    /*
-     * ReverseSpan - Reverse the span in place
-     */
     public func ReverseSpan[T](Span[T] s) {
         match (s) {
             case View(d, n) {

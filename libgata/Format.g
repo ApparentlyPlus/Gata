@@ -19,7 +19,7 @@ module Format {
     public String func Double(double v) { return Double(v, "%g"); }
 
     /*
-     * Double - Format a double with a printf float spec ("%.2f", "%e", "%12.4g"); null -> "%g"
+     * Double - Format a double with a printf float spec ("%.2f", "%e", "%12.4g"), and null means "%g"
      */
     public String func Double(double v, String spec) {
         let s = spec;
@@ -28,7 +28,7 @@ module Format {
     }
 
     /*
-     * Int - Format a signed integer; pass the spec WITHOUT a length modifier; null -> "%d"
+     * Int - Format a signed integer. Pass the spec WITHOUT a length modifier. Null -> "%d"
      */
     public String func Int(int64 v, String spec) {
         let s = spec;
@@ -37,7 +37,7 @@ module Format {
     }
 
     /*
-     * UInt - Format an unsigned integer ("%u", "%x", "%08X"); null -> "%u"
+     * UInt - Format an unsigned integer ("%u", "%x", "%08X"), and null means "%u"
      */
     public String func UInt(uint64 v, String spec) {
         let s = spec;
@@ -46,7 +46,7 @@ module Format {
     }
 
     /*
-     * Str - Format a string with a width/precision spec; null spec -> "%s", null value -> ""
+     * Str - Format a string with a width/precision spec. Null spec -> "%s", null value -> ""
      */
     public String func Str(String v, String spec) {
         let s = spec;

@@ -1,6 +1,6 @@
 # Libgata Reference
 
-Manual pages for `libgata`, the Gata standard library. Section 3 is library calls; section 7 is the overview.
+Manual pages for `libgata`, the Gata standard library. Section 3 covers library calls and section 7 is the overview.
 
 The language itself is documented in [The Gata Programming Language](The%20Gata%20Programming%20Language.md).
 
@@ -41,7 +41,7 @@ The language itself is documented in [The Gata Programming Language](The%20Gata%
 
 ### NAME
 
-libgata — the Gata standard library
+libgata: the Gata standard library
 
 ### DESCRIPTION
 
@@ -58,11 +58,11 @@ Imports are transitive for visibility only. Import what you use.
 
 ### CONVENTIONS
 
-**Lenient and strict.** The plain name returns a zero value on failure; the `Strict` or `OrThrow` twin is `throws` and refuses. Use the strict form only when a real zero and a failure differ for you.
+**Lenient and strict.** The plain name returns a zero value on failure. Its `Strict` or `OrThrow` twin is `throws` and refuses instead. Use the strict form only when a real zero and a failure differ for you.
 
 **Zero value.** `default(T)`: `0`, `false`, or `null` for a class. Gata has no runtime null checks.
 
-**Ownership.** Containers own their elements. `Pop` and `Dequeue` transfer ownership to the caller; every other accessor returns a borrowed reference. `List.Raw()` is a borrow-only view with no bounds checks.
+**Ownership.** Containers own their elements. `Pop` and `Dequeue` transfer ownership to the caller. Every other accessor returns a borrowed reference. `List.Raw()` is a borrow-only view with no bounds checks.
 
 **Null arguments.** Generally treated as empty or absent, not faulted. Exceptions are noted per page.
 
@@ -86,7 +86,7 @@ Reaching these links the matching GatOS subsystem into the image. Everything els
 
 ### FILES
 
-`Runtime.g` and `Mem.g` are the base; any program declaring a class needs both bound. Importing any higher-level module pulls them in.
+`Runtime.g` and `Mem.g` are the base, and any program that declares a class needs both bound. Importing any higher-level module pulls them in.
 
 | File | Imports |
 |---|---|
@@ -111,7 +111,7 @@ Reaching these links the matching GatOS subsystem into the image. Everything els
 
 ### NAME
 
-Algorithms — generic sorting, searching and comparison
+Algorithms: generic sorting, searching and comparison
 
 ### LIBRARY
 
@@ -144,31 +144,31 @@ public      func ReverseSpan[T](Span[T] s)
 
 ### DESCRIPTION
 
-Duck-typed generics over `<` and `==`. Nothing is constrained; a `T` lacking the operator fails at the instantiation that needed it.
+Duck-typed generics over `<` and `==`. Nothing is constrained. A `T` without the operator fails at whichever instantiation needed it.
 
 These are generic methods, not members of a generic class, so each is stamped only for the types actually used.
 
-**`Min()`**, **`Max()`** — Smaller and larger of *a* and *b* by `<`.
+**`Min()`**, **`Max()`**: Smaller and larger of *a* and *b* by `<`.
 
-**`Swap()`** — Exchange two variables. Both parameters are `ref`; the call site must write `ref` too.
+**`Swap()`**: Exchange two variables. Both parameters are `ref`, so the call site writes `ref` too.
 
-**`SwapElems()`** — Exchange `list[i]` and `list[j]` in place.
+**`SwapElems()`**: Exchange `list[i]` and `list[j]` in place.
 
-**`IsSorted()`** — True when *list* is non-decreasing by `<`.
+**`IsSorted()`**: True when *list* is non-decreasing by `<`.
 
-**`Sort()`** — Sort in place by `<`. Median-of-three introsort.
+**`Sort()`**: Sort in place by `<`. Median-of-three introsort.
 
-**`SortBy()`** — As `Sort()`, driven by *less* instead of `<`. `less(a, b)` is true when *a* precedes *b*. *less* must be a free function; Gata has no closures.
+**`SortBy()`**: As `Sort()`, driven by *less* instead of `<`. `less(a, b)` is true when *a* precedes *b*. *less* has to be a free function, since Gata has no closures.
 
-**`BinarySearch()`** — Index of *target* in an already-sorted list.
+**`BinarySearch()`**: Index of *target* in an already-sorted list.
 
-**`MinBy()`**, **`MaxBy()`** — Extreme element of *list* by *less*.
+**`MinBy()`**, **`MaxBy()`**: Extreme element of *list* by *less*.
 
-**`SortSpan()`**, **`SortSpanBy()`**, **`BinarySearchSpan()`**, **`IsSortedSpan()`**, **`ReverseSpan()`** — The same five, over a [span(3)](#span3) instead of a `List[T]`. Kept as their own engine rather than routed through `List`, since building a temporary list just to sort a buffer that already has one is exactly the allocation `Span` exists to avoid.
+**`SortSpan()`**, **`SortSpanBy()`**, **`BinarySearchSpan()`**, **`IsSortedSpan()`**, **`ReverseSpan()`**: The same five, over a [span(3)](#span3) instead of a `List[T]`. Kept as their own engine rather than routed through `List`, since building a temporary list just to sort a buffer that already has one is exactly the allocation `Span` exists to avoid.
 
 ### RETURN VALUE
 
-`Min()` returns *b* on a tie; `Max()` returns *a*. Only `<` is consulted.
+On a tie `Min()` returns *b* and `Max()` returns *a*. Only `<` is consulted.
 
 `BinarySearch()` and `BinarySearchSpan()` return the index, or -1 if absent.
 
@@ -190,7 +190,7 @@ These are generic methods, not members of a generic class, so each is stamped on
 
 ### NAME
 
-Args, Argc, Arg — command-line argument access
+Args, Argc, Arg: command-line argument access
 
 ### LIBRARY
 
@@ -209,11 +209,11 @@ public String func Arg(int i)
 
 ### DESCRIPTION
 
-**`Argc()`** — The process's argument count, `argv[0]` (the program name) included.
+**`Argc()`**: The process's argument count, `argv[0]` (the program name) included.
 
-**`Arg()`** — Argument *i*, or an empty string if *i* is out of range.
+**`Arg()`**: Argument *i*, or an empty string if *i* is out of range.
 
-Hosted only, and deliberately its own file rather than folded into [sys(3)](#sys3): floor validation walks every declared method body in every *imported* file looking for `_env_*` references, and it runs before dead-code elimination decides what's actually reachable - so it does not matter whether `Argc()`/`Arg()` are ever called, only whether they are declared anywhere the build imports. `Sys.g` is imported by nearly every GatOS project too (for `Yield`/`Sleep`/`Exit`), and `env.GatOS.g` correctly has no `_env_argc`/`_env_argv` bind - a kernel has no argv. Had `Argc`/`Arg` lived in `Sys.g`, importing `Sys.g` at all - not calling `Argc()`/`Arg()`, merely importing the file - would fail every such GatOS build. Keeping this as a separate, explicit import means only a program that actually wants argv pulls in the requirement for it.
+Hosted only. It gets its own file on purpose instead of living in [sys(3)](#sys3). Floor validation walks every declared method body in every *imported* file looking for `_env_*` references, and it runs before dead-code elimination has worked out what is reachable. So what counts is whether `Argc()`/`Arg()` are declared anywhere the build imports, called or not. Nearly every GatOS project imports `Sys.g` for `Yield`/`Sleep`/`Exit`, and `env.GatOS.g` has no `_env_argc`/`_env_argv` bind, correctly, because a kernel has no argv. If `Argc`/`Arg` lived in `Sys.g`, merely importing that file would break every one of those GatOS builds, without a single call to either function. As a separate, explicit import, the argv requirement only lands on a program that asked for argv.
 
 Calling `Argc()`/`Arg()` from a `kernel` realm (having imported `Args.g` there, which nothing stops you from doing) fails at `appa check`, before it ever reaches C, naming exactly what's missing:
 
@@ -224,7 +224,7 @@ Calling `Argc()`/`Arg()` from a `kernel` realm (having imported `Args.g` there, 
 
 ### NOTES
 
-`Argc()`/`Arg()` read two globals (`gata_argc`, `gata_argv`) that a Hosted build's generated `main(int argc, char** argv)` populates before anything else runs - unconditionally, for every Hosted build, regardless of whether the program reads them back. There is nothing to gate there: `main()` with this shape is only ever emitted for a pure Hosted build in the first place, so a GatOS image never carries it regardless of what it imports.
+`Argc()`/`Arg()` read two globals (`gata_argc`, `gata_argv`) that a Hosted build's generated `main(int argc, char** argv)` populates before anything else runs. Every Hosted build does this unconditionally, whether or not the program ever reads them. Nothing needs gating: `main()` with this shape is only emitted for a pure Hosted build, so a GatOS image never carries it, whatever it imports.
 
 ### SEE ALSO
 
@@ -236,7 +236,7 @@ Calling `Argc()`/`Arg()` from a `kernel` realm (having imported `Args.g` there, 
 
 ### NAME
 
-BigInt — arbitrary-precision signed integers
+BigInt: arbitrary-precision signed integers
 
 ### LIBRARY
 
@@ -318,31 +318,31 @@ Multiplication is schoolbook below 32 limbs and Karatsuba above, with a split fo
 
 `new BigInt()` is zero. `default(BigInt)` is `null`.
 
-**`FromULong()`** — Reads the top bit as magnitude, not sign.
+**`FromULong()`**: Reads the top bit as magnitude, not sign.
 
-**`Clone()`** — A separate object with the same value. Rarely needed; values are immutable.
+**`Clone()`**: A separate object with the same value. Rarely needed, since values are immutable.
 
-**`BitLength()`** — Bits of the magnitude: 0 for zero, 1 for ±1.
+**`BitLength()`**: Bits of the magnitude: 0 for zero, 1 for ±1.
 
-**`IsPowerOfTwo()`** — True only for a positive value with one bit set.
+**`IsPowerOfTwo()`**: True only for a positive value with one bit set.
 
-**`TestBit()`** — Bit *i* of the magnitude, not of a two's-complement view.
+**`TestBit()`**: Bit *i* of the magnitude, not of a two's-complement view.
 
-**`Square()`** — `v * v`. The `*` operator detects this case and routes here anyway.
+**`Square()`**: `v * v`. The `*` operator detects this case and routes here anyway.
 
-**`Pow()`** — Square-and-multiply. `Pow(v, 0)` is 1 for every *v*, including zero.
+**`Pow()`**: Square-and-multiply. `Pow(v, 0)` is 1 for every *v*, including zero.
 
-**`ModPow()`** — Magnitude computed from `|v|`, sign applied at the end: negative exactly when *v* is negative and *e* is odd.
+**`ModPow()`**: Magnitude computed from `|v|`, sign applied at the end: negative exactly when *v* is negative and *e* is odd.
 
-**`Gcd()`** — Euclid over full-width remainders. Always non-negative.
+**`Gcd()`**: Euclid over full-width remainders. Always non-negative.
 
-**`ToStringRadix()`** — Radix 2 to 36, digits `0`-`9` then `a`-`z`.
+**`ToStringRadix()`**: Radix 2 to 36, digits `0`-`9` then `a`-`z`.
 
-**`ToHex()`** — Radix 16 with a `0x` prefix, rendering the magnitude: `-0xff`, not two's complement.
+**`ToHex()`**: Radix 16 with a `0x` prefix, rendering the magnitude: `-0xff`, not two's complement.
 
-**`Parse()`** — Skips leading whitespace, takes an optional sign, stops at the first non-digit.
+**`Parse()`**: Skips leading whitespace, takes an optional sign, stops at the first non-digit.
 
-**`ParseStrict()`** — Requires the whole string to be one clean integer: optional surrounding whitespace, optional sign, at least one digit, nothing else.
+**`ParseStrict()`**: Requires the whole string to be one clean integer: optional surrounding whitespace, optional sign, at least one digit, nothing else.
 
 Division is truncated, as in C: the quotient rounds toward zero and the remainder carries the dividend's sign, so `a == (a / b) * b + a % b` for every sign combination.
 
@@ -360,7 +360,7 @@ A null operand is treated as zero throughout, including in comparison.
 
 `ModPow()` returns zero when the modulus is zero or ±1, or the exponent is negative.
 
-`ToInt()` and `ToLong()` truncate silently when the value does not fit; test with `FitsInt()` or `FitsLong()` first.
+`ToInt()` and `ToLong()` truncate silently when the value does not fit. Test with `FitsInt()` or `FitsLong()` first.
 
 `ToStringRadix()` falls back to radix 10 for a radix outside 2 to 36.
 
@@ -401,7 +401,7 @@ let n = BigInt.ParseStrict(line) catch { assign BigInt.Zero(); };
 
 ### NAME
 
-Char — ASCII character classification and case
+Char: ASCII character classification and case
 
 ### LIBRARY
 
@@ -430,17 +430,17 @@ public int  func DigitValue(char c)
 
 ASCII only. Gata has no Unicode.
 
-**`IsDigit()`** — `'0'` to `'9'`.
+**`IsDigit()`**: `'0'` to `'9'`.
 
-**`IsLetter()`** — `'a'`-`'z'`, `'A'`-`'Z'`.
+**`IsLetter()`**: `'a'`-`'z'`, `'A'`-`'Z'`.
 
-**`IsHexDigit()`** — `'0'`-`'9'`, `'a'`-`'f'`, `'A'`-`'F'`.
+**`IsHexDigit()`**: `'0'`-`'9'`, `'a'`-`'f'`, `'A'`-`'F'`.
 
-**`IsWhitespace()`** — Space, tab, newline, carriage return, vertical tab, form feed.
+**`IsWhitespace()`**: Space, tab, newline, carriage return, vertical tab, form feed.
 
-**`ToUpper()`**, **`ToLower()`** — Map letters; other characters pass through unchanged.
+**`ToUpper()`**, **`ToLower()`**: Map letters. Other characters pass through unchanged.
 
-**`DigitValue()`** — Numeric value of a decimal digit.
+**`DigitValue()`**: Numeric value of a decimal digit.
 
 ### RETURN VALUE
 
@@ -456,7 +456,7 @@ ASCII only. Gata has no Unicode.
 
 ### NAME
 
-Console — text I/O and screen control
+Console: text I/O and screen control
 
 ### LIBRARY
 
@@ -485,19 +485,19 @@ public throws String func InputLine()
 
 Output is batched: one `Print()` is one write through the floor.
 
-**`Print()`** — Write *s* with no trailing newline.
+**`Print()`**: Write *s* with no trailing newline.
 
-**`PrintLine()`** — `Print()` then `NewLine()`. Two writes.
+**`PrintLine()`**: `Print()` then `NewLine()`. Two writes.
 
-**`Clear()`** — Blank the screen.
+**`Clear()`**: Blank the screen.
 
-**`Home()`** — Move the cursor to the top-left without blanking, for redrawing a frame in place.
+**`Home()`**: Move the cursor to the top-left without blanking, for redrawing a frame in place.
 
-**`Width()`**, **`Height()`** — Screen size in characters.
+**`Width()`**, **`Height()`**: Screen size in characters.
 
-**`SetColor()`** — Foreground and background as 0-15 VGA palette indices. Stays in effect until changed.
+**`SetColor()`**: Foreground and background as 0-15 VGA palette indices. Stays in effect until changed.
 
-**`InputLine()`** — Read one line, without the trailing newline.
+**`InputLine()`**: Read one line, without the trailing newline.
 
 ### RETURN VALUE
 
@@ -509,7 +509,7 @@ Output is batched: one `Print()` is one write through the floor.
 
 ### NOTES
 
-`InputLine()` reads through a 1024-byte buffer; a longer line is truncated rather than an error, and the remainder is queued for the next call.
+`InputLine()` reads through a 1024-byte buffer. A longer line gets truncated without an error, and the remainder is queued for the next call.
 
 Calling `InputLine()` links the keyboard driver and input stack into a GatOS image.
 
@@ -531,7 +531,7 @@ let name = Console.InputLine() catch { assign "anonymous"; };
 
 ### NAME
 
-Format — printf-style formatting
+Format: printf-style formatting
 
 ### LIBRARY
 
@@ -557,15 +557,15 @@ Gata's interpolation has no format specifiers. Formatting is a library call inst
 
 Each function runs the platform's `snprintf` into an exact-size buffer, so nothing is truncated.
 
-**`Double(v)`** — Default general form, `"%g"`. Carries the `stringify_float` role, so an interpolated `double` goes through it.
+**`Double(v)`**: Default general form, `"%g"`. Carries the `stringify_float` role, so an interpolated `double` goes through it.
 
-**`Double(v, spec)`** — Any float spec: `"%.2f"`, `"%e"`, `"%12.4g"`.
+**`Double(v, spec)`**: Any float spec: `"%.2f"`, `"%e"`, `"%12.4g"`.
 
-**`Int()`** — Any signed integer spec: `"%d"`, `"%5d"`.
+**`Int()`**: Any signed integer spec: `"%d"`, `"%5d"`.
 
-**`UInt()`** — Any unsigned spec: `"%u"`, `"%x"`, `"%08X"`.
+**`UInt()`**: Any unsigned spec: `"%u"`, `"%x"`, `"%08X"`.
 
-**`Str()`** — Any string spec: `"%s"`, `"%-20s"`, `"%.8s"`.
+**`Str()`**: Any string spec: `"%s"`, `"%-20s"`, `"%.8s"`.
 
 ### RETURN VALUE
 
@@ -573,7 +573,7 @@ A null *spec* defaults to `"%g"`, `"%d"`, `"%u"` and `"%s"` respectively. `Str()
 
 ### NOTES
 
-Write specs without a length modifier. `Int()` and `UInt()` take 64-bit values and insert `ll` themselves; writing `"%lld"` yields `"%llld"`.
+Write specs without a length modifier. `Int()` and `UInt()` take 64-bit values and insert `ll` themselves, so writing `"%lld"` yields `"%llld"`.
 
 ### EXAMPLES
 
@@ -591,7 +591,7 @@ let String s = $"pi = {Format.Double(pi, "%.4f")}";
 
 ### NAME
 
-Hash — hashing primitives for the hash containers
+Hash: hashing primitives for the hash containers
 
 ### LIBRARY
 
@@ -610,13 +610,13 @@ public usize func HashString(String key)
 
 ### DESCRIPTION
 
-**`Mix()`** — SplitMix64-style finalizer. Decorrelates structured integer keys so sequential or aligned keys do not cluster in a linear-probed table.
+**`Mix()`**: SplitMix64-style finalizer. Decorrelates structured integer keys so sequential or aligned keys do not cluster in a linear-probed table.
 
-**`HashString()`** — FNV-1a over the string's raw bytes.
+**`HashString()`**: FNV-1a over the string's raw bytes.
 
 ### NOTES
 
-These live in their own module so `Map`, `StringMap`, `Set` and `StringSet` share one copy; a static method inside a generic class is re-stamped per instantiation.
+These live in their own module so `Map`, `StringMap`, `Set` and `StringSet` share one copy. A static method inside a generic class would be re-stamped per instantiation.
 
 Rarely called directly. They are public so a custom container can hash identically.
 
@@ -630,7 +630,7 @@ Rarely called directly. They are public so a custom container can hash identical
 
 ### NAME
 
-Int — conversion and parsing for `int`
+Int: conversion and parsing for `int`
 
 ### LIBRARY
 
@@ -654,17 +654,17 @@ public throws int func ParseStrict(String s)
 
 ### DESCRIPTION
 
-**`MaxValue()`**, **`MinValue()`** — 2147483647 and -2147483648. Functions, because Gata has no global `let` or static fields.
+**`MaxValue()`**, **`MinValue()`**: 2147483647 and -2147483648. Functions, because Gata has no global `let` or static fields.
 
-**`ToString()`** — Decimal, with a leading `-` for negatives. Carries the `stringify_int` role.
+**`ToString()`**: Decimal, with a leading `-` for negatives. Carries the `stringify_int` role.
 
-**`ToUnsignedString()`** — Decimal for an unsigned value. Carries `stringify_uint`; the signed printer would read the high bit as a sign.
+**`ToUnsignedString()`**: Decimal for an unsigned value. Carries `stringify_uint`, because the signed printer would read the high bit as a sign.
 
-**`ToHex()`** — Lowercase hexadecimal with a `0x` prefix.
+**`ToHex()`**: Lowercase hexadecimal with a `0x` prefix.
 
-**`Parse()`** — Skips leading whitespace, takes an optional sign, stops at the first non-digit.
+**`Parse()`**: Skips leading whitespace, takes an optional sign, stops at the first non-digit.
 
-**`ParseStrict()`** — Requires the whole string to be one clean integer.
+**`ParseStrict()`**: Requires the whole string to be one clean integer.
 
 ### RETURN VALUE
 
@@ -676,7 +676,7 @@ public throws int func ParseStrict(String s)
 
 ### NOTES
 
-Neither parser detects overflow; a value too large wraps.
+Neither parser detects overflow. A value that is too large wraps.
 
 ### SEE ALSO
 
@@ -688,7 +688,7 @@ Neither parser detects overflow; a value too large wraps.
 
 ### NAME
 
-List — generic growable array
+List: generic growable array
 
 ### LIBRARY
 
@@ -738,31 +738,31 @@ The ordered container. Owns its elements: storing retains, removing releases, dr
 
 Growth doubles from 8.
 
-**`Get()`** — Element at *i*.
+**`Get()`**: Element at *i*.
 
-**`At()`** — Element at *i* as an `Optional[T]`, distinguishing absent from a stored zero.
+**`At()`**: Element at *i* as an `Optional[T]`, distinguishing absent from a stored zero.
 
-**`First()`**, **`Last()`** — `Get(0)` and `Get(Length() - 1)`.
+**`First()`**, **`Last()`**: `Get(0)` and `Get(Length() - 1)`.
 
-**`Raw()`** — Borrow-only view of the backing buffer: no bounds checks, no retain, elements stay owned by the list. Used by the sorts in [algorithms(3)](#algorithms3).
+**`Raw()`**: Borrow-only view of the backing buffer: no bounds checks, no retain, elements stay owned by the list. Used by the sorts in [algorithms(3)](#algorithms3).
 
-**`AsSpan()`** — A [span(3)](#span3) over the whole backing buffer. Same borrow-only deal as `Raw()`, with bounds carried alongside the pointer.
+**`AsSpan()`**: A [span(3)](#span3) over the whole backing buffer. Same borrow-only deal as `Raw()`, with bounds carried alongside the pointer.
 
-**`SubSpan()`** — A span over `[start, start + len)`, clamped the way `Substring` clamps.
+**`SubSpan()`**: A span over `[start, start + len)`, clamped the way `Substring` clamps.
 
-**`Set()`** — Store *v* at *i*. Does not grow the list.
+**`Set()`**: Store *v* at *i*. Does not grow the list.
 
-**`Add()`** — Append.
+**`Add()`**: Append.
 
-**`Insert()`** — Insert at *i*, clamped to `[0, Length()]`, shifting the tail with one move.
+**`Insert()`**: Insert at *i*, clamped to `[0, Length()]`, shifting the tail with one move.
 
-**`AddRange()`** — Append every element of *other*, reserving once up front.
+**`AddRange()`**: Append every element of *other*, reserving once up front.
 
-**`Clone()`** — A new list holding the same elements, retained, not deep-copied.
+**`Clone()`**: A new list holding the same elements, retained, not deep-copied.
 
-**`IndexOf()`** — First index of *v* by `==`, so a class-typed *T* uses its own `==` if it has one and reference identity otherwise.
+**`IndexOf()`**: First index of *v* by `==`, so a class-typed *T* uses its own `==` if it has one and reference identity otherwise.
 
-**`Clear()`** — Release every element, keep the buffer.
+**`Clear()`**: Release every element, keep the buffer.
 
 `xs << v` is `Add()` returning the list, so appends chain.
 
@@ -778,7 +778,7 @@ Growth doubles from 8.
 
 ### NOTES
 
-Use `List[T]` rather than a fixed `[N]T` whenever the elements are class-typed; a fixed array never releases its elements.
+Use `List[T]` rather than a fixed `[N]T` whenever the elements are class-typed. A fixed array never releases its elements.
 
 Do not free the pointer from `Raw()`, or keep it across a mutation that may reallocate.
 
@@ -800,7 +800,7 @@ for v in xs { Console.PrintLine($"{v}"); }
 
 ### NAME
 
-Long — conversion and parsing for `int64`
+Long: conversion and parsing for `int64`
 
 ### LIBRARY
 
@@ -822,9 +822,9 @@ public throws int64 func ParseStrict(String s)
 
 The shapes of [int(3)](#int3), one width up.
 
-**`ToString()`** — Decimal. Carries the `stringify_long` role.
+**`ToString()`**: Decimal. Carries the `stringify_long` role.
 
-**`Parse()`**, **`ParseStrict()`** — As `Int.Parse()` and `Int.ParseStrict()`.
+**`Parse()`**, **`ParseStrict()`**: As `Int.Parse()` and `Int.ParseStrict()`.
 
 ### RETURN VALUE
 
@@ -838,7 +838,7 @@ The shapes of [int(3)](#int3), one width up.
 
 Neither parser detects overflow.
 
-There is no `Long.ToHex()`; use `Format.UInt(v, "%x")`.
+There is no `Long.ToHex()`. Use `Format.UInt(v, "%x")`.
 
 ### SEE ALSO
 
@@ -850,7 +850,7 @@ There is no `Long.ToHex()`; use `Format.UInt(v, "%x")`.
 
 ### NAME
 
-Map, StringMap — hash maps
+Map, StringMap: hash maps
 
 ### LIBRARY
 
@@ -891,13 +891,13 @@ public operator   func []=(K key, V value)
 
 Open addressing with linear probing, growing to keep the load factor under 0.7. Deletion backward-shifts the displaced run rather than leaving tombstones.
 
-`Map[K, V]` hashes the key's bits through `Hash.Mix()`; `K` needs `==`. `StringMap[V]` hashes and compares string contents with `Hash.HashString()`.
+`Map[K, V]` hashes the key's bits through `Hash.Mix()`, and `K` needs `==`. `StringMap[V]` hashes and compares string contents with `Hash.HashString()`.
 
-**`Put()`** — Insert or overwrite.
+**`Put()`**: Insert or overwrite.
 
-**`Keys()`**, **`Values()`** — New lists, in unspecified but matching order.
+**`Keys()`**, **`Values()`**: New lists, in unspecified but matching order.
 
-**`Clear()`** — Empty the map, keep the buffers.
+**`Clear()`**: Empty the map, keep the buffers.
 
 The five readers differ only in how they report absence:
 
@@ -915,7 +915,7 @@ The five readers differ only in how they report absence:
 
 `Remove()` is a no-op for an absent key.
 
-`StringMap.Put()` ignores a null key; the `StringMap` readers treat a null key as absent.
+`StringMap.Put()` ignores a null key, and the `StringMap` readers treat a null key as absent.
 
 ### ERRORS
 
@@ -927,7 +927,7 @@ Use `StringMap[V]` for string keys. `Map[String, V]` hashes the reference, so tw
 
 Iteration order is unspecified and not stable across versions.
 
-`if (m.Has(k)) { m.Get(k); }` probes twice; use one of the single-probe readers.
+`if (m.Has(k)) { m.Get(k); }` probes twice. Use one of the single-probe readers.
 
 ### SEE ALSO
 
@@ -939,7 +939,7 @@ Iteration order is unspecified and not stable across versions.
 
 ### NAME
 
-Math — floating-point math
+Math: floating-point math
 
 ### LIBRARY
 
@@ -996,31 +996,31 @@ public double func Clamp(double v, double lo, double hi)
 
 A full libm written in Gata, not a wrapper around the platform's, so it runs in a kernel with no C library underneath. The kernels are fdlibm-derived.
 
-All arguments and results are `double`; there are no `float` overloads. Trigonometric arguments are in radians.
+All arguments and results are `double`. There are no `float` overloads. Trigonometric arguments are in radians.
 
-**`Round()`** — Rounds half away from zero.
+**`Round()`**: Rounds half away from zero.
 
-**`Trunc()`** — Rounds toward zero.
+**`Trunc()`**: Rounds toward zero.
 
-**`Sign()`** — -1.0, 0.0 or 1.0.
+**`Sign()`**: -1.0, 0.0 or 1.0.
 
-**`CopySign()`** — *x* with the sign of *y*. Carries a sign across zero and infinity without branching.
+**`CopySign()`**: *x* with the sign of *y*. Carries a sign across zero and infinity without branching.
 
-**`Log()`** — Natural logarithm.
+**`Log()`**: Natural logarithm.
 
-**`Log1p()`**, **`Expm1()`** — `log(1 + x)` and `exp(x) - 1`, accurate for small *x* where the naive form loses everything to cancellation.
+**`Log1p()`**, **`Expm1()`**: `log(1 + x)` and `exp(x) - 1`, accurate for small *x* where the naive form loses everything to cancellation.
 
-**`ScalbN()`** — `x * 2^n` by exponent arithmetic: exact, and without the overflow an explicit power would risk.
+**`ScalbN()`**: `x * 2^n` by exponent arithmetic: exact, and without the overflow an explicit power would risk.
 
-**`Mod()`** — Floating-point remainder, `fmod`. Gata's `%` rejects floating-point operands and points here.
+**`Mod()`**: Floating-point remainder, `fmod`. Gata's `%` rejects floating-point operands and points here.
 
-**`Atan2()`** — Takes *y* first and resolves the quadrant, which `Atan(y / x)` cannot.
+**`Atan2()`**: Takes *y* first and resolves the quadrant, which `Atan(y / x)` cannot.
 
-**`Min()`**, **`Max()`**, **`Clamp()`** — `double`-typed conveniences over [algorithms(3)](#algorithms3).
+**`Min()`**, **`Max()`**, **`Clamp()`**: `double`-typed conveniences over [algorithms(3)](#algorithms3).
 
 ### NOTES
 
-There is no `Log10()` or `Log2()`; divide by `Math.Log(10.0)`.
+There is no `Log10()` or `Log2()`. Divide by `Math.Log(10.0)`.
 
 Argument reduction for large trigonometric inputs uses the full Payne-Hanek path, so `Sin()` of a very large value stays accurate.
 
@@ -1036,7 +1036,7 @@ Everything not listed here is a private helper.
 
 ### NAME
 
-alloc, free, Mem — allocation and raw memory operations
+alloc, free, Mem: allocation and raw memory operations
 
 ### LIBRARY
 
@@ -1063,19 +1063,19 @@ public usize func StrLen(char* s)
 
 `alloc()` and `free()` are free functions, called bare.
 
-**`alloc()`** — *n* bytes of raw, uninitialised memory. Carries the `alloc` role, so `new` allocates through it.
+**`alloc()`**: *n* bytes of raw, uninitialised memory. Carries the `alloc` role, so `new` allocates through it.
 
-**`free()`** — Release memory from `alloc()`.
+**`free()`**: Release memory from `alloc()`.
 
-**`Copy()`** — Copy *n* bytes. Does not handle overlap.
+**`Copy()`**: Copy *n* bytes. Does not handle overlap.
 
-**`Move()`** — Copy *n* bytes, tolerating overlap, copying backward when needed.
+**`Move()`**: Copy *n* bytes, tolerating overlap, copying backward when needed.
 
-**`Fill()`** — Set *n* bytes to *v*.
+**`Fill()`**: Set *n* bytes to *v*.
 
-**`Compare()`** — Byte-wise compare of the first *n* bytes.
+**`Compare()`**: Byte-wise compare of the first *n* bytes.
 
-**`StrLen()`** — Length of a NUL-terminated C string.
+**`StrLen()`**: Length of a NUL-terminated C string.
 
 ### RETURN VALUE
 
@@ -1085,7 +1085,7 @@ public usize func StrLen(char* s)
 
 ### NOTES
 
-Allocation does not fail. There is no null return to check and no `throws`; a failed allocation faults at the allocation. Policy lives in the environment's allocator.
+Allocation does not fail. There is no null return to check and no `throws`. A failed allocation faults on the spot. Policy lives in the environment's allocator.
 
 The buffer routines move or compare eight bytes per iteration once both cursors reach a common alignment, with byte loops for the head, the tail, and pointers that can never align.
 
@@ -1110,7 +1110,7 @@ unsafe {
 
 ### NAME
 
-Misc — startup utilities
+Misc: startup utilities
 
 ### LIBRARY
 
@@ -1128,7 +1128,7 @@ public void func PrintBanner()
 
 ### DESCRIPTION
 
-**`PrintBanner()`** — Print the centred GatOS startup banner, sized to `Console.Width()`, finishing with a full-width horizontal rule. This is what `appa new` puts in a fresh kernel entry point.
+**`PrintBanner()`**: Print the centred GatOS startup banner, sized to `Console.Width()`, finishing with a full-width horizontal rule. This is what `appa new` puts in a fresh kernel entry point.
 
 ### NOTES
 
@@ -1144,7 +1144,7 @@ public void func PrintBanner()
 
 ### NAME
 
-Optional, IsSome, IsNone, ValueOr — a value that is either there or not
+Optional, IsSome, IsNone, ValueOr: a value that is either there or not
 
 ### LIBRARY
 
@@ -1168,7 +1168,7 @@ A tagged union, so a value type: assigning copies it, and a `Some` holding a cla
 
 The helpers are free functions, called bare: `IsSome(m)`, not `Optional.IsSome(m)`.
 
-**`ValueOr()`** — The value if present, otherwise *fallback*.
+**`ValueOr()`**: The value if present, otherwise *fallback*.
 
 The point of receiving one is the `match`, which the compiler checks for exhaustiveness.
 
@@ -1199,7 +1199,7 @@ let int n = ValueOr(map.Find("count"), 0);
 
 ### NAME
 
-PriorityQueue — binary min-heap
+PriorityQueue: binary min-heap
 
 ### LIBRARY
 
@@ -1228,13 +1228,13 @@ public void func Clear()
 
 Ordered by `<` on `T`, smallest out first. Growth doubles from 8.
 
-**`Push()`** — Insert and sift up.
+**`Push()`**: Insert and sift up.
 
-**`Pop()`** — Remove and return the minimum, sifting down. Transfers ownership to the caller.
+**`Pop()`**: Remove and return the minimum, sifting down. Transfers ownership to the caller.
 
-**`Peek()`** — The minimum without removing it. The heap keeps ownership.
+**`Peek()`**: The minimum without removing it. The heap keeps ownership.
 
-**`Clear()`** — Empty the heap, keep the buffer.
+**`Clear()`**: Empty the heap, keep the buffer.
 
 ### RETURN VALUE
 
@@ -1248,7 +1248,7 @@ Ordered by `<` on `T`, smallest out first. Growth doubles from 8.
 
 For a max-heap or any other order, give `T` a `<` that means what you want, or keep a `List` and use `Algorithms.SortBy()`.
 
-Ties come out in unspecified order; the heap is not stable.
+Ties come out in unspecified order, because the heap is not stable.
 
 ### SEE ALSO
 
@@ -1260,7 +1260,7 @@ Ties come out in unspecified order; the heap is not stable.
 
 ### NAME
 
-Queue — FIFO queue
+Queue: FIFO queue
 
 ### LIBRARY
 
@@ -1289,13 +1289,13 @@ public void func Clear()
 
 Backed by a ring buffer, so both ends are constant-time and neither shifts. Growth doubles from 8, unrolling the live window to start at index 0.
 
-**`Enqueue()`** — Add at the back.
+**`Enqueue()`**: Add at the back.
 
-**`Dequeue()`** — Remove from the front. Transfers ownership to the caller.
+**`Dequeue()`**: Remove from the front. Transfers ownership to the caller.
 
-**`Peek()`** — The front without removing it. The queue keeps ownership.
+**`Peek()`**: The front without removing it. The queue keeps ownership.
 
-**`Clear()`** — Empty the queue, keep the buffer.
+**`Clear()`**: Empty the queue, keep the buffer.
 
 ### RETURN VALUE
 
@@ -1315,7 +1315,7 @@ Backed by a ring buffer, so both ends are constant-time and neither shifts. Grow
 
 ### NAME
 
-Random — pseudo-random numbers
+Random: pseudo-random numbers
 
 ### LIBRARY
 
@@ -1342,17 +1342,17 @@ xoshiro256\*\* with a SplitMix64 seeding step.
 
 `new Random()` seeds from `Time.Nanos()`, so each run differs.
 
-**`Reseed()`** — Deterministic reset. The same seed always produces the same sequence.
+**`Reseed()`**: Deterministic reset. The same seed always produces the same sequence.
 
-**`NextU64()`** — The raw generator: 64 uniform bits.
+**`NextU64()`**: The raw generator: 64 uniform bits.
 
-**`Next()`** — Uniform in `[0, 2^31)`.
+**`Next()`**: Uniform in `[0, 2^31)`.
 
-**`NextRange()`** — Uniform in `[lo, hi)`.
+**`NextRange()`**: Uniform in `[lo, hi)`.
 
-**`NextDouble()`** — Uniform in `[0.0, 1.0)`, with the full 53 bits a `double` holds.
+**`NextDouble()`**: Uniform in `[0.0, 1.0)`, with the full 53 bits a `double` holds.
 
-**`NextBool()`** — `true` or `false`.
+**`NextBool()`**: `true` or `false`.
 
 ### RETURN VALUE
 
@@ -1360,11 +1360,11 @@ xoshiro256\*\* with a SplitMix64 seeding step.
 
 ### NOTES
 
-Not cryptographically secure. The full state is recoverable from a handful of outputs; do not generate keys, tokens or nonces.
+Not cryptographically secure. The full state is recoverable from a handful of outputs. Do not generate keys, tokens or nonces with it.
 
 Constructing a `Random` reads the clock, which links timers into a GatOS image. Reseed with a fixed value afterwards for reproducibility.
 
-Not thread-safe. Two threads drawing from one instance interleave into its state; give each thread its own.
+Not thread-safe. Two threads drawing from one instance interleave into its state. Give each thread its own.
 
 ### SEE ALSO
 
@@ -1376,7 +1376,7 @@ Not thread-safe. Two threads drawing from one instance interleave into its state
 
 ### NAME
 
-Result, IsOk, IsErr, UnwrapOr, ErrorOr — a value that succeeded with a value or failed with an error
+Result, IsOk, IsErr, UnwrapOr, ErrorOr: a value that succeeded with a value or failed with an error
 
 ### LIBRARY
 
@@ -1397,23 +1397,23 @@ E    func ErrorOr[T, E](Result[T, E] r, E fallback)
 
 ### DESCRIPTION
 
-The generic-union sibling of [optional(3)](#optional3): where `Optional` says only whether a value is there, `Result` keeps the reason for a failure instead of discarding it. A `throws` function still returns a bare pass/fail underneath everything a Gata program sees; `Result` is for the call site that wants to hold on to the detail rather than throw it away.
+The generic-union sibling of [optional(3)](#optional3): where `Optional` says only whether a value is there, `Result` keeps the reason for a failure instead of discarding it. Underneath, a `throws` function still returns a bare pass/fail. `Result` is for the call site that wants to keep the detail.
 
 A tagged union, so a value type: assigning copies it, and an `Ok`/`Err` holding a class retains its payload correctly.
 
 The helpers are free functions, called bare: `IsOk(r)`, not `Result.IsOk(r)`.
 
-**`IsOk()`**, **`IsErr()`** — Which variant *r* holds.
+**`IsOk()`**, **`IsErr()`**: Which variant *r* holds.
 
-**`UnwrapOr()`** — The value if `Ok`, otherwise *fallback*.
+**`UnwrapOr()`**: The value if `Ok`, otherwise *fallback*.
 
-**`ErrorOr()`** — The error if `Err`, otherwise *fallback*.
+**`ErrorOr()`**: The error if `Err`, otherwise *fallback*.
 
 The point of receiving one is usually the `match`, which the compiler checks for exhaustiveness.
 
 ### NOTES
 
-`Result[int, String].Err("bad")` infers its instantiation from the argument the same way `Optional.Some()` does; a variant call that leaves a type argument unsettled needs it written out, exactly as `Optional[int].None()` does.
+`Result[int, String].Err("bad")` infers its instantiation from the argument the same way `Optional.Some()` does. A variant call that leaves a type argument unsettled needs it written out, exactly as `Optional[int].None()` does.
 
 ### EXAMPLES
 
@@ -1436,7 +1436,7 @@ let int n = UnwrapOr(parse(line), 0);
 
 ### NAME
 
-retain, release, obj_init, obj — the reference-counting runtime
+retain, release, obj_init, obj: the reference-counting runtime
 
 ### LIBRARY
 
@@ -1456,15 +1456,15 @@ void  func obj_init(void* o, func(void*) -> void dtor)
 
 ### DESCRIPTION
 
-The compiler inserts every retain and release; this file defines the operations it inserts. The compiler holds no runtime C names, emitting whatever symbol carries each role.
+The compiler inserts every retain and release, and this file defines the operations it inserts. The compiler holds no runtime C names, emitting whatever symbol carries each role.
 
-**`obj`** — The ARC header: a destructor pointer and a strong count, embedded first in every managed object, so any managed pointer aliases its header at offset 0.
+**`obj`**: The ARC header: a destructor pointer and a strong count, embedded first in every managed object, so any managed pointer aliases its header at offset 0.
 
-**`retain()`** — Add a reference and return it.
+**`retain()`**: Add a reference and return it.
 
-**`release()`** — Drop a reference. At zero, run the destructor, then free the memory.
+**`release()`**: Drop a reference. At zero, run the destructor, then free the memory.
 
-**`obj_init()`** — Stamp a fresh object's header: refcount 1, destructor *dtor*.
+**`obj_init()`**: Stamp a fresh object's header: refcount 1, destructor *dtor*.
 
 ### RETURN VALUE
 
@@ -1501,7 +1501,7 @@ public void func Set(int i, T v) {
 
 ### NAME
 
-Set, StringSet — hash sets
+Set, StringSet: hash sets
 
 ### LIBRARY
 
@@ -1539,17 +1539,17 @@ public operator Set[T] func &(Set[T] other)
 
 Same table design as [map(3)](#map3): open addressing, linear probing, load factor under 0.7, backward-shift delete.
 
-**`Add()`** — Insert if absent. Duplicates are ignored.
+**`Add()`**: Insert if absent. Duplicates are ignored.
 
-**`AddNew()`** — As `Add()`, reporting whether the item was new. One probe.
+**`AddNew()`**: As `Add()`, reporting whether the item was new. One probe.
 
-**`Remove()`** — Delete if present.
+**`Remove()`**: Delete if present.
 
-**`Clear()`** — Empty the set, keep the buffers.
+**`Clear()`**: Empty the set, keep the buffers.
 
-**`ToList()`** — Collect the elements into a new list, in unspecified order.
+**`ToList()`**: Collect the elements into a new list, in unspecified order.
 
-**`Union()`**, **`Intersect()`** — Build a new set, leaving both operands alone. Walk live buckets directly rather than probing. `+` and `&` are their operator spellings.
+**`Union()`**, **`Intersect()`**: Build a new set, leaving both operands alone. Walk live buckets directly rather than probing. `+` and `&` are their operator spellings.
 
 ### RETURN VALUE
 
@@ -1563,11 +1563,11 @@ Use `StringSet` for strings. `Set[String]` hashes the reference, not the content
 
 Iteration order is unspecified and not stable across versions.
 
-`if (!s.Has(x)) { s.Add(x); }` probes twice; use `AddNew()`.
+`if (!s.Has(x)) { s.Add(x); }` probes twice. Use `AddNew()`.
 
-There is no difference operator; filter with `Has()`.
+There is no difference operator. Filter with `Has()`.
 
-`StringSet` has no `Union()` or `Intersect()`; build them from `ToList()` and `Add()`.
+`StringSet` has no `Union()` or `Intersect()`. Build them from `ToList()` and `Add()`.
 
 ### SEE ALSO
 
@@ -1579,7 +1579,7 @@ There is no difference operator; filter with `Has()`.
 
 ### NAME
 
-Span, FromRaw, Length, IsEmpty, Raw, At, Slice, Equal, StartsWith — a non-owning, bounds-carrying view over a contiguous buffer
+Span, FromRaw, Length, IsEmpty, Raw, At, Slice, Equal, StartsWith: a non-owning, bounds-carrying view over a contiguous buffer
 
 ### LIBRARY
 
@@ -1608,31 +1608,31 @@ bool    func StartsWith[T](Span[T] s, Span[T] prefix)
 
 A Span borrows memory it does not own: copying one is a plain (pointer, length) copy, the same cost `sizeof(T*) + sizeof(int)` always is, and it never retains or releases anything by holding it. Build one from [string(3)](#string3)'s `AsSpan()`/`SubSpan()`, [list(3)](#list3)'s `AsSpan()`/`SubSpan()`, or `FromRaw()` over your own buffer.
 
-`T` works for both unmanaged element types (`int`, `char`, an enum) and managed class types: a `Span[String]` never retains or releases its elements either way, so it borrows a class element exactly like it borrows a primitive one — the underlying `List`/`String` still owns it.
+`T` works for both unmanaged element types (`int`, `char`, an enum) and managed class types: a `Span[String]` never retains or releases its elements either way, so it borrows a class element exactly like a primitive one. The underlying `List`/`String` still owns it.
 
 A Span is only as long-lived as what it borrows from. Nothing checks that for you, the same deal every raw pointer in Gata already makes.
 
 The helpers are free functions, called bare: `Length(s)`, not `Span.Length(s)`.
 
-**`FromRaw()`** — A span over an existing buffer. A null pointer or a non-positive *len* both collapse to the zero-length span, so a caller never has to special-case "the buffer might not exist".
+**`FromRaw()`**: A span over an existing buffer. A null pointer or a non-positive *len* both collapse to the zero-length span, so a caller never has to special-case "the buffer might not exist".
 
-**`Length()`**, **`IsEmpty()`** — Element count, and whether it's zero.
+**`Length()`**, **`IsEmpty()`**: Element count, and whether it's zero.
 
-**`Raw()`** — The raw pointer, for library code that wants to walk the buffer itself, inside `unsafe`.
+**`Raw()`**: The raw pointer, for library code that wants to walk the buffer itself, inside `unsafe`.
 
-**`At()`** — Element *i*. Retains before returning, same as `List.Get()`: the return value is a value the caller now owns, per Gata's calling convention, regardless of whether the Span itself owns anything. Free for unmanaged `T`, where `retain`/`release` compile to nothing.
+**`At()`**: Element *i*. Retains before returning, same as `List.Get()`: the return value is a value the caller now owns, per Gata's calling convention, regardless of whether the Span itself owns anything. Free for unmanaged `T`, where `retain`/`release` compile to nothing.
 
-**`Slice()`** — The sub-span `[start, start + len)`, clamped to *s*'s own bounds.
+**`Slice()`**: The sub-span `[start, start + len)`, clamped to *s*'s own bounds.
 
-**`Equal()`** — Element-wise `==` over both spans. Different lengths are never equal. Generic like `Algorithms.Min`/`Max`: fails to instantiate, once, named, on a `T` with no `==`, rather than silently comparing pointers.
+**`Equal()`**: Element-wise `==` over both spans. Different lengths are never equal. Generic like `Algorithms.Min`/`Max`: fails to instantiate, once, named, on a `T` with no `==`, rather than silently comparing pointers.
 
-**`StartsWith()`** — True if *prefix* occurs at the start of *s*. An empty *prefix* always matches.
+**`StartsWith()`**: True if *prefix* occurs at the start of *s*. An empty *prefix* always matches.
 
 ### RETURN VALUE
 
 `At()` returns the zero value if *i* is out of range.
 
-`FromRaw()` and `Slice()` return the zero-length span rather than an out-of-bounds one; indices are clamped, never rejected.
+`FromRaw()` and `Slice()` return the zero-length span when the range falls outside the buffer. Indices get clamped and are never rejected.
 
 ### NOTES
 
@@ -1660,7 +1660,7 @@ Algorithms.SortSpan(xs);
 
 ### NAME
 
-Stack — LIFO stack
+Stack: LIFO stack
 
 ### LIBRARY
 
@@ -1689,13 +1689,13 @@ public void func Clear()
 
 Growth doubles from 8.
 
-**`Push()`** — Add to the top.
+**`Push()`**: Add to the top.
 
-**`Pop()`** — Remove and return the top. Transfers ownership to the caller.
+**`Pop()`**: Remove and return the top. Transfers ownership to the caller.
 
-**`Peek()`** — The top without removing it. The stack keeps ownership.
+**`Peek()`**: The top without removing it. The stack keeps ownership.
 
-**`Clear()`** — Empty the stack, keep the buffer.
+**`Clear()`**: Empty the stack, keep the buffer.
 
 ### RETURN VALUE
 
@@ -1715,7 +1715,7 @@ Growth doubles from 8.
 
 ### NAME
 
-String, StringBuilder — text
+String, StringBuilder: text
 
 ### LIBRARY
 
@@ -1793,43 +1793,43 @@ public String        func ToString()
 
 Everything here is ASCII and byte-indexed.
 
-**`CStr()`** — The raw NUL-terminated buffer, for platform calls. Borrow-only; the string owns it.
+**`CStr()`**: The raw NUL-terminated buffer, for platform calls. Borrow-only, since the string owns it.
 
-**`AsSpan()`** — A [span(3)](#span3) over the whole string: a borrowed, non-allocating view, where `Substring` allocates a new `String`.
+**`AsSpan()`**: A [span(3)](#span3) over the whole string: a borrowed, non-allocating view, where `Substring` allocates a new `String`.
 
-**`SubSpan()`** — Like `Substring()`, but borrows instead of allocating. Clamped the same way.
+**`SubSpan()`**: Like `Substring()`, but borrows instead of allocating. Clamped the same way.
 
-**`CompareTo()`** — Lexicographic order.
+**`CompareTo()`**: Lexicographic order.
 
-**`IndexOf(sub, from)`** — First index of *sub* at or after *from*. An empty *sub* matches at *from*.
+**`IndexOf(sub, from)`**: First index of *sub* at or after *from*. An empty *sub* matches at *from*.
 
-**`Substring()`** — *len* characters from *start*. Indices are clamped.
+**`Substring()`**: *len* characters from *start*. Indices are clamped.
 
-**`ToUpper()`**, **`ToLower()`** — Map ASCII letters only.
+**`ToUpper()`**, **`ToLower()`**: Map ASCII letters only.
 
-**`Trim()`** — Remove leading and trailing whitespace.
+**`Trim()`**: Remove leading and trailing whitespace.
 
-**`PadLeft()`**, **`PadRight()`** — Pad to *width*.
+**`PadLeft()`**, **`PadRight()`**: Pad to *width*.
 
-**`Split()`** — Split on every occurrence of *sep*.
+**`Split()`**: Split on every occurrence of *sep*.
 
-**`Join()`** — Concatenate *parts* with *sep* between them.
+**`Join()`**: Concatenate *parts* with *sep* between them.
 
-**`FromChar()`** — A one-character string. Carries the `stringify_char` role, which is why an interpolated `char` prints the character rather than its codepoint.
+**`FromChar()`**: A one-character string. Carries the `stringify_char` role, which is why an interpolated `char` prints the character rather than its codepoint.
 
-**`FromRaw()`**, **`FromBuffer()`** — Wrap a `char*`, NUL-terminated or of known length. Both copy the bytes, so the source is yours to free immediately.
+**`FromRaw()`**, **`FromBuffer()`**: Wrap a `char*`, NUL-terminated or of known length. Both copy the bytes, so the source is yours to free immediately.
 
-**`FromSpan()`** — Materialize a borrowed `Span[char]` into a new, owned `String`. Copies the bytes, same as `FromBuffer()`.
+**`FromSpan()`**: Materialize a borrowed `Span[char]` into a new, owned `String`. Copies the bytes, same as `FromBuffer()`.
 
 `StringBuilder` is mutable text. Interpolation with three or more parts lowers to one, so a ten-part interpolation costs one growable buffer rather than nine intermediate strings. Growth doubles from 16.
 
-**`Append()`** — Append a string.
+**`Append()`**: Append a string.
 
-**`Put()`** — `Append()` returning the builder, so appends chain.
+**`Put()`**: `Append()` returning the builder, so appends chain.
 
-**`StringBuilder.ToString()`** — Snapshot the buffer into a new `String`. The builder stays usable and later appends do not affect the snapshot.
+**`StringBuilder.ToString()`**: Snapshot the buffer into a new `String`. The builder stays usable and later appends do not affect the snapshot.
 
-**`StringBuilder.Clear()`** — Reset the length, keep the buffer.
+**`StringBuilder.Clear()`**: Reset the length, keep the buffer.
 
 ### RETURN VALUE
 
@@ -1851,9 +1851,9 @@ There is no `[]=`. A string you were handed may be one of the shared static lite
 
 `==` compares contents, never buffer identity. Comparing against the `null` literal is a pointer check and never reaches the operator.
 
-`+` with a string on either side is always concatenation, with the other side converted; a user `+` on the other operand does not intercept it.
+`+` with a string on either side is always concatenation, with the other side converted. A user `+` on the other operand never intercepts it.
 
-A class used in an interpolation needs its own `String func ToString()`; without one it is an error naming that signature.
+A class used in an interpolation needs its own `String func ToString()`. Without one you get an error naming that signature.
 
 ### SEE ALSO
 
@@ -1865,7 +1865,7 @@ A class used in an interpolation needs its own `String func ToString()`; without
 
 ### NAME
 
-SpinLock, AtomicInt — locks and atomics
+SpinLock, AtomicInt: locks and atomics
 
 ### LIBRARY
 
@@ -1896,17 +1896,17 @@ public bool  func CompareExchange(int64 expected, int64 desired)
 
 Each is a `volatile` word plus native methods over the compiler's atomic builtins. Neither allocates beyond the object itself.
 
-**`Lock()`** — Acquire, spinning with a scheduler yield per failed attempt, so a contended lock does not starve its holder on one core.
+**`Lock()`**: Acquire, spinning with a scheduler yield per failed attempt, so a contended lock does not starve its holder on one core.
 
-**`TryLock()`** — One attempt. Never spins.
+**`TryLock()`**: One attempt. Never spins.
 
-**`Unlock()`** — Release.
+**`Unlock()`**: Release.
 
 `AtomicInt` is a 64-bit counter whose operations are single indivisible instructions with sequentially-consistent ordering. A fresh one starts at zero.
 
-**`Add()`**, **`Increment()`**, **`Decrement()`** — Update and return the new value.
+**`Add()`**, **`Increment()`**, **`Decrement()`**: Update and return the new value.
 
-**`CompareExchange()`** — Set the value to *desired* only if it currently equals *expected*.
+**`CompareExchange()`**: Set the value to *desired* only if it currently equals *expected*.
 
 ### RETURN VALUE
 
@@ -1914,7 +1914,7 @@ Each is a `volatile` word plus native methods over the compiler's atomic builtin
 
 ### NOTES
 
-`SpinLock` is not reentrant; locking twice from one thread deadlocks. There is no ownership check, so unlocking a lock you do not hold is an uncaught bug. Pair with `defer`.
+`SpinLock` is not reentrant, so locking twice from one thread deadlocks. There is no ownership check, so unlocking a lock you do not hold is an uncaught bug. Pair with `defer`.
 
 Nothing else in this library is thread-safe. Two threads sharing a container need one of these around it.
 
@@ -1938,7 +1938,7 @@ while (!counter.CompareExchange(old, old + 1)) { old = counter.Get(); }
 
 ### NAME
 
-Sys, Process, Thread — process and machine control
+Sys, Process, Thread: process and machine control
 
 ### LIBRARY
 
@@ -1963,15 +1963,15 @@ public void func Reboot()
 
 ### DESCRIPTION
 
-**`Yield()`** — Give up the CPU to other threads voluntarily.
+**`Yield()`**: Give up the CPU to other threads voluntarily.
 
-**`Sleep()`** — Sleep for at least *ms* milliseconds. Not a precise timer.
+**`Sleep()`**: Sleep for at least *ms* milliseconds. Not a precise timer.
 
-**`Exit()`** — Terminate the current userspace process.
+**`Exit()`**: Terminate the current userspace process.
 
-**`Shutdown()`**, **`Reboot()`** — Power off or restart. Neither returns on success; on a hosted build both end the process.
+**`Shutdown()`**, **`Reboot()`**: Power off or restart. Neither returns on success. On a hosted build both end the process.
 
-`Process` and `Thread` are opaque handles with no Gata-visible fields, which the compiler resolves to a bare pointer. You do not construct them; the generated launcher does, from the `process` and `thread` declarations in your realms.
+`Process` and `Thread` are opaque handles with no Gata-visible fields, which the compiler resolves to a bare pointer. You never construct them. The generated launcher does, from the `process` and `thread` declarations in your realms.
 
 ### RETURN VALUE
 
@@ -1987,7 +1987,7 @@ public void func Reboot()
 
 ### NAME
 
-Time — the monotonic clock
+Time: the monotonic clock
 
 ### LIBRARY
 
@@ -2006,9 +2006,9 @@ public int64 func Millis()
 
 ### DESCRIPTION
 
-**`Nanos()`** — Nanoseconds since boot, or since the Unix epoch on a hosted build.
+**`Nanos()`**: Nanoseconds since boot, or since the Unix epoch on a hosted build.
 
-**`Millis()`** — The same in milliseconds.
+**`Millis()`**: The same in milliseconds.
 
 On GatOS the clock is monotonic: it never goes backward and is not adjustable.
 

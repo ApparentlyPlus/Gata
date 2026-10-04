@@ -566,13 +566,13 @@ class Lexer {
  * TryEscape - Maps a single escape character to its value. Returns false for unrecognized escapes.
  */
 bool func TryEscape(char c, ref char val) {
-    if (c == 'n')  { val = '\n'; return true; }
-    if (c == 't')  { val = '\t'; return true; }
-    if (c == 'r')  { val = '\r'; return true; }
-    if (c == '0')  { val = '\0'; return true; }
+    if (c == 'n') { val = '\n'; return true; }
+    if (c == 't') { val = '\t'; return true; }
+    if (c == 'r') { val = '\r'; return true; }
+    if (c == '0') { val = '\0'; return true; }
     if (c == '\'') { val = '\''; return true; }
     if (c == '\\') { val = '\\'; return true; }
-    if (c == '"')  { val = '"';  return true; }
+    if (c == '"') { val = '"'; return true; }
     return false;
 }
 

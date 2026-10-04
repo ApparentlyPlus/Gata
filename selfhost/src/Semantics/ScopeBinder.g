@@ -354,8 +354,7 @@ class ScopeBinder {
 
                         let int n = 0;
                         while (n < realmDecl.items.Length()) {
-                            realmDecl.items.Set(n, self.RewriteItem(realmDecl.items.Get(n), tree, index,
-                                                                    scope, sub, pf.path));
+                            realmDecl.items.Set(n, self.RewriteItem(realmDecl.items.Get(n), tree, index, scope, sub, pf.path));
                             n = n + 1;
                         }
 
@@ -465,8 +464,7 @@ class ScopeBinder {
                 return TopLevel.UnionDecl(fresh);
             }
             case EnumDecl(ed) {
-                return TopLevel.EnumDecl(new EnumDecl(self.Q(index, scope, ed.name), ed.members,
-                                                      ed.span, ed.annotations));
+                return TopLevel.EnumDecl(new EnumDecl(self.Q(index, scope, ed.name), ed.members, ed.span, ed.annotations));
             }
             case NativeTypeDecl(nd) {
                 return TopLevel.NativeTypeDecl(new NativeTypeDecl(self.Q(index, scope, nd.name),
@@ -565,8 +563,7 @@ class ScopeBinder {
             j = j + 1;
         }
 
-        let GenericUse fresh = new GenericUse(baseName, args, use.span,
-            specs == null ? use.argSpecs : Optional.Some(specs));
+        let GenericUse fresh = new GenericUse(baseName, args, use.span, specs == null ? use.argSpecs : Optional.Some(specs));
         fresh.scope = use.scope;
         return fresh;
     }
@@ -940,7 +937,7 @@ class ScopeBinder {
             }
         }
 
-        // Every segment but the last may still be a scope; the last can only be the name
+        // Every segment but the last may still be a scope. The last can only be the name
         let int i = 0;
         let bool walking = true;
         while (walking && i < sn.path.Length() - 1) {
@@ -1020,8 +1017,7 @@ class ScopeBinder {
         let String hint = Sc.IsRoot(scope)
             ? "the top level of the build declares it nowhere; check the spelling, or drop the '::'"
             : "drop the qualifier to use whatever '" + name + "' is in scope here";
-        self.diag.Error(Codes.UnknownInScope(), file, span,
-            Where(path) + " declares no '" + name + "'", HintList.Of1(hint));
+        self.diag.Error(Codes.UnknownInScope(), file, span, Where(path) + " declares no '" + name + "'", HintList.Of1(hint));
         return Optional[String].None();
     }
 
@@ -1140,13 +1136,13 @@ String func Describe(NameKind k) {
  */
 List[Annotation] func AnnotationsOf(TopLevel item) {
     match (item) {
-        case ClassDecl(cd)      { return cd.annotations; }
-        case UnionDecl(ud)      { return ud.annotations; }
-        case EnumDecl(ed)       { return ed.annotations; }
+        case ClassDecl(cd) { return cd.annotations; }
+        case UnionDecl(ud) { return ud.annotations; }
+        case EnumDecl(ed) { return ed.annotations; }
         case NativeTypeDecl(nd) { return nd.annotations; }
-        case FuncDecl(fd)       { return fd.annotations; }
+        case FuncDecl(fd) { return fd.annotations; }
         case ExternFuncDecl(ef) { return ef.annotations; }
-        case NativeBlock(nb)    { return nb.annotations; }
+        case NativeBlock(nb) { return nb.annotations; }
         default { return new List[Annotation](); }
     }
 }

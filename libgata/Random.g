@@ -2,7 +2,7 @@
  * Random.g - xoshiro256 PRNG, seeded through SplitMix64
  *
  * Non cryptographic (never use for keys or tokens). new Random() seeds from the
- * clock; Reseed(seed) gives a deterministic, reproducible sequence.
+ * clock. Reseed(seed) gives a deterministic, reproducible sequence.
  *
  * Author: u/ApparentlyPlus
  */
@@ -20,7 +20,7 @@ class Random {
     }
 
     /*
-     * Reseed - Deterministic reset; the same seed always yields the same sequence
+     * Reseed - Deterministic reset. The same seed always yields the same sequence
      */
     public void func Reseed(int64 seed) {
         let x = seed as uint64;
@@ -69,7 +69,7 @@ class Random {
     }
 
     /*
-     * NextRange - Uniform in [lo, hi); returns lo for an empty range
+     * NextRange - Uniform in [lo, hi), lo for an empty range
      */
     public int func NextRange(int lo, int hi) {
         if (hi <= lo) { return lo; }

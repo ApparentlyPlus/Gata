@@ -71,14 +71,14 @@ module Sys {
     }
 
     /*
-     * Shutdown - Power the machine off; does not return on success (hosted: exits)
+     * Shutdown - Power the machine off. Does not return on success (hosted: exits)
      */
     public void func Shutdown() {
         _env_shutdown();
     }
 
     /*
-     * Reboot - Reboot the machine; does not return on success (hosted: exits)
+     * Reboot - Reboot the machine. Does not return on success (hosted: exits)
      */
     public void func Reboot() {
         _env_reboot();

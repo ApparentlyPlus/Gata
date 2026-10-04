@@ -1,22 +1,21 @@
 /*
- * Runtime.g - The ARC (automatic reference counting) runtime, expressed in Gata
+ * Runtime.g - The ARC runtime, expressed in Gata
  *
- * The compiler holds no literal runtime C names; it emits whatever symbol carries
- * each @intrinsic(role). This file fills the memory-management roles:
- *   obj_header - the per-object ARC header, embedded first in every managed object
- *   obj_init   - stamp a fresh object's header (refcount = 1, destructor pointer)
+ * The compiler holds no literal runtime C names, it emits whatever symbol carries each @intrinsic(role).
+ * This file fills the memory-management roles:
+ *   obj_header - the per-object ARC header, first in every managed object
+ *   obj_init   - stamp a fresh header (refcount = 1, destructor pointer)
  *   retain     - +1 a reference
- *   release    - -1 a reference; at zero, run the destructor then free it
- * Allocation is the pure-Gata `alloc` (see Mem.g); deallocation calls _env_free
- * directly. Any managed pointer aliases its embedded header (offset 0), so
- * retain/release treat every object uniformly as a gata_obj.
+ *   release    - -1 a reference, at zero run the destructor then free
+ * Allocation is the pure-Gata `alloc` (Mem.g), deallocation calls _env_free directly. A managed pointer
+ * aliases its header (offset 0), so retain/release treat every object as a gata_obj.
  *
  * Author: u/ApparentlyPlus
  */
 
 
 /*
- * obj - the ARC header. __dtor shares one C signature, void (*)(void*); obj_init's
+ * obj - the ARC header. __dtor shares one C signature, void (*)(void*). obj_init's
  * parameter is declared with real `func(void*) -> void` syntax so the compiler emits
  * that typedef under its deterministic mangled name, which the field spells here so
  * the two agree without either hardcoding the other's C name. (A native type body is
@@ -24,7 +23,7 @@
  */
 @intrinsic(obj_header)
 native type obj {
-    gata_Fn_void__void_p __dtor;   // every class's destructor; NULL if it has none
+    gata_Fn_void__void_p __dtor;   // every class's destructor. NULL if it has none
     size_t                __rc;    // strong reference count (GATA_RC_STATIC marks a static object)
 }
 
@@ -48,7 +47,7 @@ native {
  * refcount update entirely.
  *
  * gata_obj_ma is the same two fields with the `may_alias` type attribute, which turns
- * that assumption off for exactly these three functions. It has to be a genuinely
+ * that assumption off for exactly these three functions. It has to be a truly
  * separate struct definition rather than a typedef of `gata_obj` - GCC silently
  * ignores an attribute tacked onto a typedef of an already-complete struct type
  * ("ignoring attributes applied to 'struct gata_obj' after definition"), which would
@@ -84,7 +83,7 @@ void* func retain(void* p) native {
 }
 
 /*
- * release - -1 a reference; at zero, run the destructor then free it
+ * release - -1 a reference. At zero, run the destructor then free it
  */
 @intrinsic(release)
 void func release(void* p) native {

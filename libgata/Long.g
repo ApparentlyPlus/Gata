@@ -32,7 +32,7 @@ module Long {
     }
 
     /*
-     * Parse - Lenient decimal parse; returns 0 for null/empty/invalid (mirrors Int.Parse)
+     * Parse - Lenient decimal parse. Returns 0 for null/empty/invalid (mirrors Int.Parse)
      */
     public int64 func Parse(String s) {
         if (s == null) { return (0 as int64); }

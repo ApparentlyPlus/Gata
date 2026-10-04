@@ -176,14 +176,27 @@ module AppaCli {
         let int i = 0;
         while (i < args.Length()) {
             let String a = args.Get(i);
-            if (a == "--env" && i + 1 < args.Length())         { i = i + 1; envOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--entry" && i + 1 < args.Length())  { i = i + 1; entryOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--stdlib" && i + 1 < args.Length()) { i = i + 1; stdlibOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--werror")          { warnAsError = true; }
-            else { if (a == "--pure-transpile")  { pureTranspile = true; }
-            else { if (a == "--emit-sourcemap")  { emitSourcemap = true; }
-            else { if (a.StartsWith("--")) { Cli.Fail("unknown option '" + a + "'"); }
-            else { manifestArg = Optional.Some(a); } } } } } } }
+            let bool hasValue = i + 1 < args.Length();
+            if (a == "--env" && hasValue) {
+                i = i + 1;
+                envOverride = Optional.Some(args.Get(i));
+            } else if (a == "--entry" && hasValue) {
+                i = i + 1;
+                entryOverride = Optional.Some(args.Get(i));
+            } else if (a == "--stdlib" && hasValue) {
+                i = i + 1;
+                stdlibOverride = Optional.Some(args.Get(i));
+            } else if (a == "--werror") {
+                warnAsError = true;
+            } else if (a == "--pure-transpile") {
+                pureTranspile = true;
+            } else if (a == "--emit-sourcemap") {
+                emitSourcemap = true;
+            } else if (a.StartsWith("--")) {
+                Cli.Fail("unknown option '" + a + "'");
+            } else {
+                manifestArg = Optional.Some(a);
+            }
             i = i + 1;
         }
 
@@ -258,12 +271,23 @@ module AppaCli {
         let int i = 0;
         while (i < args.Length()) {
             let String a = args.Get(i);
-            if (a == "--env" && i + 1 < args.Length())          { i = i + 1; envOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--entry" && i + 1 < args.Length())  { i = i + 1; entryOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--stdlib" && i + 1 < args.Length()) { i = i + 1; stdlibOverride = Optional.Some(args.Get(i)); }
-            else { if (a == "--werror") { warnAsError = true; }
-            else { if (a.StartsWith("--")) { Cli.Fail("unknown option '" + a + "'"); }
-            else { manifestArg = Optional.Some(a); } } } } }
+            let bool hasValue = i + 1 < args.Length();
+            if (a == "--env" && hasValue) {
+                i = i + 1;
+                envOverride = Optional.Some(args.Get(i));
+            } else if (a == "--entry" && hasValue) {
+                i = i + 1;
+                entryOverride = Optional.Some(args.Get(i));
+            } else if (a == "--stdlib" && hasValue) {
+                i = i + 1;
+                stdlibOverride = Optional.Some(args.Get(i));
+            } else if (a == "--werror") {
+                warnAsError = true;
+            } else if (a.StartsWith("--")) {
+                Cli.Fail("unknown option '" + a + "'");
+            } else {
+                manifestArg = Optional.Some(a);
+            }
             i = i + 1;
         }
 
@@ -519,7 +543,7 @@ module AppaCli {
         cl.Add("appa check [project]"); cr.Add("Lex, parse, and type-check only - reports errors, emits nothing");
         cl.Add("appa build [project]"); cr.Add("Transpile the project described by its .gconf to C");
         cl.Add("appa clean [project]"); cr.Add("Remove " + String.Join(Cli.GeneratedDirs(), "/, ") + "/");
-        cl.Add("appa --version / -v");  cr.Add("Print the Appa version");
+        cl.Add("appa --version / -v"); cr.Add("Print the Appa version");
         Fmt.Table(cl, cr, Fmt.Indent());
         Console.PrintLine("");
         Fmt.Para(C.DIM() + "A project argument is a directory or a path to its .gconf; the default is the current directory." + C.NC(), Fmt.Indent());
@@ -527,9 +551,9 @@ module AppaCli {
         Fmt.SectionNote("Build options", "(also accepted by check)");
         let List[String] bl = new List[String]();
         let List[String] br = new List[String]();
-        bl.Add("--stdlib <dir>");   br.Add("Override the libgata directory");
-        bl.Add("--werror");         br.Add("Treat warnings as errors");
-        bl.Add("--env <env.g>");    br.Add("Environment file, overriding discovery");
+        bl.Add("--stdlib <dir>"); br.Add("Override the libgata directory");
+        bl.Add("--werror"); br.Add("Treat warnings as errors");
+        bl.Add("--env <env.g>"); br.Add("Environment file, overriding discovery");
         bl.Add("--entry <file.g>"); br.Add("Entry source, overriding discovery");
         bl.Add("--emit-sourcemap"); br.Add("Write sourcemap.json (dense name -> readable name)");
         bl.Add("--pure-transpile"); br.Add("Emit C and stop, with no .gconf at all - needs --env and --entry (build only; check never emits, so it takes --env/--entry on their own)");

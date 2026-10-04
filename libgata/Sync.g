@@ -79,7 +79,6 @@ class AtomicInt {
      */
     public bool func CompareExchange(int64 expected, int64 desired) native {
         long long e = expected;
-        return __atomic_compare_exchange_n(&self->_v, &e, (long long)desired, 0,
-                                           __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+        return __atomic_compare_exchange_n(&self->_v, &e, (long long)desired, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     }
 }

@@ -1,16 +1,11 @@
 /*
  * NetRandom.g - .NET's seeded System.Random, reproduced exactly
  *
- * The Knuth subtractive generator .NET Core routes `new Random(seed)` to (Net5CompatSeedImpl),
- * inherited unchanged from .NET Framework and kept bit-compatible on purpose: a 56-entry lag table,
- * two rolling indices 21 apart, and a subtract-with-borrow step modulo int.MaxValue.
- *
- * It lives here rather than beside its one caller because it is a general-purpose deterministic
- * generator, and because reproducing a specific platform's PRNG is a library concern - anything
- * that has to agree with a .NET-produced sequence wants exactly this, not a better generator.
- *
- * Next(max) is `(int)(InternalSample() * (1.0 / int.MaxValue) * max)` - a double multiply, NOT an
- * integer modulo. The two disagree, and the double is the one .NET does.
+ * The Knuth subtractive generator behind `new Random(seed)` (Net5CompatSeedImpl): a 56-entry lag table, two
+ * rolling indices 21 apart, subtract-with-borrow modulo int.MaxValue. It lives here and not beside its one
+ * caller because matching a platform's PRNG is a library concern.
+ * Next(max) is `(int)(InternalSample() * (1.0 / int.MaxValue) * max)`, a double multiply, NOT an integer
+ * modulo. The two disagree and .NET does the double.
  *
  * Author: u/ApparentlyPlus
  */

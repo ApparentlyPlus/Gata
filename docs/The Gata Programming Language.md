@@ -12,7 +12,7 @@ I built this language because the road to a working kernel is messy, full of rab
 
 So the question that turned into PawStack was: what if all of that were somebody else's problem? What if you could open a file, write the thing you meant to write, and get a bootable image at the end of it?
 
-That is what this is. You write a program, Appa reads it and works out which parts of GatOS it genuinely needs, and you get an ISO with a kernel built around exactly those parts and nothing else. No configuration step, no subsystem list, no build system to maintain. Your program ***is*** the operating system.
+That is what this is. You write a program, Appa reads it and works out which parts of GatOS it needs, and you get an ISO with a kernel built around those parts and nothing else. No configuration step, no subsystem list, no build system to maintain. Your program ***is*** the operating system.
 
 Gata itself is meant to feel like a language you already know. Classes, generics, tagged unions, operator overloading, real error handling, automatic memory management: all the things I kept wanting while writing kernel C and could not have. What it does *not* do is quietly hand you things a kernel cannot pay for: there is no garbage collector, no exceptions unwinding through arbitrary frames, no hidden virtual dispatch, and nothing allocating behind your back. Every convenience in here had to survive the question "can this run at boot, on a machine with no operating system underneath it?"
 
@@ -22,7 +22,7 @@ A few honest notes before you start.
 
 This is a student project. It is part of my undergraduate thesis at the [University of Macedonia](https://www.uom.gr/en/dai), written solo, so expect the occasional rough edge and the odd bug. That said, the compiler has a real frontend, a real IR and a real backend, the kernel underneath it is feature complete, and I believe it is as close to production ready as it can be for its scope. Deploy it, break it, tell me what happened.
 
-It is also genuinely small in places, and I want to make that clear upfront so there are no misplaced expectations. There is no networking and no filesystem, because GatOS does not implement them. That gap is structural rather than an oversight, and the section [What you should know going in](#what-you-should-know-going-in) explains exactly why a library cannot paper over it. I am but a student, after all.
+It is also small in places, and I'd rather say so upfront. There is no networking and no filesystem, because GatOS does not implement them. I didn't forget them. The gap is structural, and the section [What you should know going in](#what-you-should-know-going-in) explains why a library cannot paper over it. I am but a student, after all.
 
 And on the names: **GatOS** is a pun on the Greek *gatos*, "male cat". **Gata** is Greek for "female cat", which felt right for the language you actually talk to. **Appa** is the flying bison from *Avatar: The Last Airbender*, and the "bison" part is a deliberate nod to GNU Bison. **PawStack** is what you get when you let that theme run unsupervised.
 
@@ -36,7 +36,7 @@ Now go build an operating system.
 
 Gata is a statically typed systems language whose compiler, `appa`, produces a bootable operating system image instead of an executable.
 
-That sentence is the whole idea. You write a program; the toolchain works out which kernel services it needs, builds a kernel around exactly those, and hands you an ISO. There is no kernel configuration step, no build system to maintain, and no subsystem list to prune.
+That sentence is the whole idea. You write a program, and the toolchain works out which kernel services it needs, builds a kernel around exactly those, and hands you an ISO. There is no kernel configuration step, no build system to maintain, and no subsystem list to prune.
 
 Gata is one part of **PawStack**, which has three:
 
@@ -60,7 +60,7 @@ The other thing to know up front is what Gata can and cannot reach, because the 
 
 **GatOS has no networking and no filesystem. So `libgata` has no APIs for either, and no amount of library code could add them.**
 
-That second half is the part worth understanding, because "the standard library is missing a module" and "the capability does not exist" are very different problems, and this is the second one.
+Hold on to that second half, because "the standard library is missing a module" and "the capability does not exist" are very different problems, and this is the second one.
 
 ### Why a library cannot add what the kernel lacks
 
@@ -93,22 +93,22 @@ if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
 }
 ```
 
-Then we could make a `Networking.g` file in libgata and write up `_env_socket_connect` to it, extending the functionality of the standard library for hosted targets. But GatOS simply doesn't implement sockets or networking at the kernel level, so for GatOS targets, it's structurally impossible to have libgata expose a networking module.
+Then we could make a `Networking.g` file in libgata and write up `_env_socket_connect` to it, extending the functionality of the standard library for hosted targets. But GatOS doesn't implement sockets or networking at the kernel level, so for GatOS targets, it's structurally impossible to have libgata expose a networking module.
 
 You cannot write around this in Gata, because Gata cannot do anything the floor does not expose. You cannot write around it in the environment either, because the environment is glue: its job is to call the kernel, not to be one. A network stack in Gata would mean writing a network stack *in GatOS*, in C, as a kernel subsystem, at which point the Gata side is a hundred-line wrapper and the work was all underneath.
 
-So the honest framing is: **this is a GatOS scope limitation that surfaces as a Gata one.** The language is not missing a feature; the platform is missing a subsystem, and the language is faithfully reporting that.
+So the honest framing is: **this is a GatOS scope limitation that surfaces as a Gata one.** The platform is missing a subsystem, and the language faithfully reports it.
 
 ### The flip side
 
-The same layering is what makes Chapter 2's headline work. Because every platform capability enters through a named floor function, `appa` can see exactly which ones your program reaches, and build a kernel containing only the matching subsystems. Strict layering is what buys you a 70 KB operating system; the cost is that the layers are real, and you cannot reach past one that is empty.
+The same layering is what makes Chapter 2's headline work. Because every platform capability enters through a named floor function, `appa` can see exactly which ones your program reaches, and build a kernel containing only the matching subsystems. Strict layering is what buys you a 70 KB operating system. The price is that the layers are real, and you cannot reach past an empty one.
 
 ### What you *can* reach
 
 Two escape hatches, with different reach:
 
 - **On a hosted build**, native interop (Chapter 19) can call anything you are able to link against. libc's sockets and file APIs are ordinary C functions, so a `native { }` block plus an `@extern` declaration reaches them today. If you are prototyping logic that needs a file, do it hosted.
-- **On GatOS**, native interop can call anything GatOS implements, which is the same set the floor already covers plus whatever you add to GatOS yourself. It is a kernel with source; adding a subsystem is a real option, just not a Gata-side one.
+- **On GatOS**, native interop can call anything GatOS implements, which is the same set the floor already covers plus whatever you add to GatOS yourself. It is a kernel with source, so adding a subsystem is a real option. You just do it in GatOS, in C.
 
 Everything else described in this book works on both targets.
 
@@ -122,7 +122,7 @@ Everything else described in this book works on both targets.
 
 **Part IV** is lookup: commands, diagnostics, grammar, and a pointer to the standard library's own reference.
 
-A companion document, `lang.txt`, is the complete feature reference, derived from the compiler source. When you want the exhaustive rule rather than the explanation, that is where to look.
+A companion document, `lang.txt`, is the complete feature reference, derived from the compiler source. Go there when you want the exhaustive rule instead of the explanation.
 
 ## Contents
 
@@ -241,7 +241,7 @@ For single threaded programs, opt for `kernel {}` only. This allows `appa` to st
 
 ### `entry func`
 
-An entry point is a function the system calls; you never call it yourself.
+An entry point is a function the system calls. You never call it yourself.
 
 There are two shapes, and the example has one of each:
 
@@ -280,7 +280,7 @@ That is a smaller change than it looks, and Chapter 2 is about why.
 3. Compiled GatOS, with only those subsystems, plus your C, and linked it.
 4. Built an ISO and booted it in QEMU.
 
-Step 2 is the one worth understanding, because it is what makes the "your program is the operating system" claim concrete rather than a slogan.
+Step 2 is the one worth understanding, because it is what turns "your program is the operating system" from a slogan into something you can measure.
 
 ### Capability discovery
 
@@ -297,9 +297,9 @@ Anything not reached is not compiled in.
 
 You can watch this happen. Build the two-realm starter project and note the size of `build/<name>.bin`, the linked kernel. Now build the kernel-only version from the end of Chapter 1 and look again. It drops noticeably, because with no `process` in the program, nothing reaches the thread-spawn primitive, and the scheduler goes with it.
 
-Look at the `.bin`, not the `.iso` sitting next to it. The ISO is mostly GRUB and its modules, around 32 MB whatever you build; the two images below differ by half a percent inside it and by 4.3x outside it. The kernel binary is the part your program produced.
+Look at the `.bin` and ignore the `.iso` sitting next to it. The ISO is mostly GRUB and its modules, around 32 MB whatever you build. The two images below differ by half a percent inside it and by 4.3x outside it. The kernel binary is the part your program produced.
 
-Measured, `Release`: a hello-world kernel realm links to 45 KB. A two-realm program using `List`, `Map`, threads and the clock links to 193 KB. Both numbers are small. The point is not the absolute size but that you did not configure anything to get there.
+Measured, `Release`: a hello-world kernel realm links to 45 KB. A two-realm program using `List`, `Map`, threads and the clock links to 193 KB. Both numbers are small, and you did not configure anything to get either of them.
 
 The table above is short, and that is not an abbreviation. It is close to the whole list. Every platform capability enters your program through one of a small, fixed set of named C functions called the floor (Chapter 21), which is precisely what makes this walk possible: `appa` is not guessing at what your program does, it is checking which of a dozen or so specific symbols are reachable.
 
@@ -378,7 +378,7 @@ Exactly one `.gconf` file per project, in the root:
 
 Only the first two matter at the start.
 
-`BuildMode` has one effect worth flagging: in `Release`, the `debug` and `panic` statements are rejected at compile time rather than compiled away. A shipping kernel does not carry the diagnostic floor, and you find out at build time instead of at runtime.
+`BuildMode` has one effect worth flagging: in `Release`, the `debug` and `panic` statements are rejected at compile time. They are not silently compiled away. A shipping kernel does not carry the diagnostic floor, and you find out at build time instead of at runtime.
 
 `KeyboardSupport` picks PS/2 only, PS/2 plus USB, or those plus hotplug re-detection. `CapabilityDiscovery` turns off the subsystem walk from Chapter 2 and links everything (see Chapter 19 for when you need that).
 
@@ -397,7 +397,7 @@ Quoted imports resolve **from the project root**, not from the importing file. A
 
 Import cycles are fine. Each file is parsed once.
 
-A file can name whatever it declares, plus everything its imports declare, transitively. So `import Console;` also gets you `String` and `Int`, because `Console` imports them. Import what you actually use anyway; the other module's dependency list is not your contract.
+A file can name whatever it declares, plus everything its imports declare, transitively. So `import Console;` also gets you `String` and `Int`, because `Console` imports them. Import what you use anyway. The other module's dependency list is its business, and it can change.
 
 ### Commands
 
@@ -473,7 +473,7 @@ let Point p = null;
 
 ### Reading before writing
 
-A `let` with no initializer stores nothing. For a class that means `null`; for a number it means whatever was in that memory. Reading it first is an error:
+A `let` with no initializer stores nothing. For a class that means `null`. For a number it means whatever was in that memory. Reading it first is an error:
 
 ```go
 let int x;
@@ -549,7 +549,7 @@ let uint asUnsigned = (a as uint) / b;     // 1431655762
 
 The direction that loses nothing stays quiet, since an unsigned value widening into a larger signed type keeps every value it had, so `int64 / uint` is fine.
 
-Two more casting notes. There are two cast forms, `(int) x` and `x as T`; the parenthesised one works on primitives only, because `(MyType) x` would be ambiguous with a parenthesised expression. And casting a class *out* to a primitive is not allowed; write a named method for that.
+Two more casting notes. There are two cast forms, `(int) x` and `x as T`. The parenthesised one works on primitives only, because `(MyType) x` would be ambiguous with a parenthesised expression. And you can't cast a class *out* to a primitive. Write a named method for that.
 
 ### Arrays
 
@@ -618,7 +618,7 @@ if (x = 1) { }               // error, and it asks if you meant '=='
 
 You lose `a = b = c` and `while ((n = read()) > 0)`. You gain the guarantee that `=` inside a condition is never something the compiler quietly accepted.
 
-Compound assignment always means `x = x OP y`. For a class, that uses the class's own `OP` operator (Chapter 11); there is no separate `+=` to define.
+Compound assignment always means `x = x OP y`. For a class, that uses the class's own `OP` operator (Chapter 11), so there is no separate `+=` to define.
 
 ### Loops
 
@@ -664,7 +664,7 @@ Valid inside loops. Outside one, an error.
 
 ### Prefix increment
 
-There isn't one. `i++` and `i--` exist as statements; `++i` does not parse as an increment.
+There isn't one. `i++` and `i--` exist as statements, and `++i` does not parse as an increment.
 
 ## 6. Functions
 
@@ -710,7 +710,7 @@ int64 func combine(int64 a, int64 b) { return a + b; }
 
 Not on return type, and not on parameter names.
 
-Resolution scores each candidate: an exact match costs 0, a widening costs 1, a narrowing costs 2. Lowest total wins; a tie is an error naming both candidates. Because exact matches cost zero, adding an overload can never steal a call that already matched exactly.
+Resolution scores each candidate: an exact match costs 0, a widening costs 1, a narrowing costs 2. Lowest total wins, and a tie is an error naming both candidates. Because exact matches cost zero, adding an overload can never steal a call that already matched exactly.
 
 ### File-private functions
 
@@ -720,7 +720,7 @@ private int func helper(int x) { return x + 1; }
 
 `private` on a free function means file-local. Two files can each have their own `private func helper` with no collision.
 
-You cannot write `public` on a free function: it is an error, not a redundancy. Free functions are already visible to everyone who imports the file. Allowing `public` would make the unmarked ones read as restricted when they are not.
+Writing `public` on a free function is an error. Free functions are already visible to everyone who imports the file. Allowing `public` would make the unmarked ones read as restricted when they are not.
 
 If a private function shadows an imported one of the same name, you get a warning, because every call in that file now means something different from the same call in the file next door. If that was the intent, say so with `@shadows` and the warning goes away. The imported one is still reachable as `filename.Clamp(...)`, which Chapter 20 covers.
 
@@ -742,7 +742,7 @@ That symmetry is the point. In C++ a reference parameter is invisible at the cal
 
 The argument has to be a real storage location, and its type has to match exactly, with no widening. A conversion would need a temporary, and writing back into a temporary would silently do nothing.
 
-`ref` does not require `unsafe`. It is checked, and for class-typed values it hands over the caller's own reference rather than making a new one, so there is no reference-counting cost.
+`ref` does not require `unsafe`. It is checked, and for class-typed values it hands over the caller's own reference instead of making a new one, so there is no reference-counting cost.
 
 ## 7. Classes
 
@@ -762,7 +762,7 @@ let Point p = new Point(3, 4);
 let int s = p.Sum();
 ```
 
-There is no inheritance, no interfaces, and no virtual dispatch. A class is exactly its own members. When you need one name to cover several shapes, that is a union (Chapter 9); when you need behavior chosen at runtime, that is a function-pointer field (below).
+There is no inheritance, no interfaces, and no virtual dispatch. A class is exactly its own members. When you need one name to cover several shapes, use a union (Chapter 9). When you need behavior chosen at runtime, use a function-pointer field (below).
 
 Classes cannot nest.
 
@@ -782,7 +782,7 @@ Fields are private unless marked `public`. Field initializers run before `_init`
 
 ### `self`
 
-`self` is the receiver inside an instance method. It is not a keyword, just a name the compiler binds, so it behaves like a parameter in every respect.
+`self` is the receiver inside an instance method. It's a name the compiler binds, and no keyword, so it behaves like a parameter in every respect.
 
 You always write it. There is no implicit `this` in either direction: `self.n` for a field, `self.Helper()` for a sibling method. Five characters, and a bare name in a method body is always a local or a parameter.
 
@@ -796,7 +796,7 @@ class Counter {
 }
 ```
 
-Calling a static method through an instance, or an instance method through the type name, each get their own error message rather than a generic one.
+Calling a static method through an instance, or an instance method through the type name, each get their own specific error message.
 
 ### Construction and destruction
 
@@ -898,7 +898,7 @@ a.balance;   // error: private
 
 Constructors are exempt, because `new C(...)` does not go through member lookup, so `_init` has no visibility to apply.
 
-Free functions and top-level types work differently, and it is worth stating plainly since the rules do not carry over: a free function or a top-level type is visible to every file that imports its file. There is no `public` to write and no way to make a *type* file-local.
+Free functions and top-level types work differently, and the rules do not carry over, so here it is plainly. A free function or a top-level type is visible to every file that imports its file. There is no `public` to write and no way to make a *type* file-local.
 
 ### No global state
 
@@ -996,7 +996,7 @@ Which is also why a `default` on an already-complete `match` warns. It is not ha
 
 `==` between two values of one union compares the tag, then the live variant's fields. Two cases get a warning at the comparison site:
 
-- a payload is a class with no `==` of its own, so it compares by identity rather than by value;
+- a payload is a class with no `==` of its own, so it compares by identity instead of by value.
 - a payload is a `float` or `double`, so it compares with floating-point `==`.
 
 At the comparison site, not the declaration. A union nobody compares stays silent, and the warning appears in the code making the assumption.
@@ -1030,7 +1030,7 @@ let Box[int]    a = new Box[int](5);
 let Box[String] b = new Box[String]("hi");
 ```
 
-`Box[int]` stores a real 32-bit integer, not a pointer to a boxed one, and `a.Get()` is a direct call. `Box` on its own is not a type; there is no `let Box b;`.
+`Box[int]` stores a real 32-bit integer, not a pointer to a boxed one, and `a.Get()` is a direct call. `Box` on its own is not a type, so there is no `let Box b;`.
 
 The cost is code size: every instantiation is real code in the image. For a target measured in tens of kilobytes that is the right trade: you pay for what you use, and nothing for dispatch.
 
@@ -1044,7 +1044,7 @@ T func Max[T](T a, T b) { if (a > b) { return a; } return b; }
 let int m = Max(3, 7);        // fine: int has >
 ```
 
-Call `Max` on a type with no `>` and it fails then, reported once, with a note naming the instantiation that caused it. So you get "in `Max[List[int]]`, no `>` on `List[int]`" rather than an unexplained error inside a template you did not write.
+Call `Max` on a type with no `>` and it fails then, reported once, with a note naming the instantiation that caused it. So you get "in `Max[List[int]]`, no `>` on `List[int]`" instead of an unexplained error inside a template you did not write.
 
 ### Inference
 
@@ -1055,7 +1055,7 @@ let int a = Max(3, 7);        // fine
 let int b = Max[int](3, 7);   // error
 ```
 
-`[...]` after a name means generic arguments on a *type*, and a function is not a type. When inference cannot decide, give an argument the type you mean rather than annotating the call.
+`[...]` after a name means generic arguments on a *type*, and a function is not a type. When inference cannot decide, give an argument the type you mean. Don't annotate the call.
 
 Inference binds `T` from a bare `T` parameter, a `T*` parameter, or one level of container, as in `List[T]` against a `List[int]` argument:
 
@@ -1064,7 +1064,7 @@ T func First[T](List[T] xs) { return xs.Get(0); }
 let int x = First(myIntList);       // T = int
 ```
 
-Two arguments that bind `T` to different types is an error. `Max(3, 4L)` does not quietly widen the `int`; write `Max(3L, 4L)`.
+Two arguments that bind `T` to different types is an error. `Max(3, 4L)` does not quietly widen the `int`. Write `Max(3L, 4L)`.
 
 A type parameter appearing in no parameter position cannot be inferred at all, so `T func Zero[T]()` is not writable.
 
@@ -1144,7 +1144,7 @@ Not overloadable: `&&`, `||`, assignment, and compound assignment. `&&` and `||`
 
 ### How dispatch works
 
-**On the left operand.** `money + money` finds `Money.+`; `int + money` does not. There is no reversed lookup, so an operator between two types has one home.
+**On the left operand.** `money + money` finds `Money.+`, but `int + money` does not. There is no reversed lookup, so an operator between two types has one home.
 
 Four more rules:
 
@@ -1153,7 +1153,7 @@ Four more rules:
 - **`+` with a string on either side is always concatenation**, with the other side converted. A user `+` does not intercept it.
 - **Comparing against `null` never reaches an operator.** `x == null` is always a pointer check, even when the class defines `==`. That is what lets an `==` body start with `if (o == null) { return false; }` without recursing into itself. `String` relies on it: `a == b` compares contents, `a == null` compares the pointer.
 
-Indexing comes in two halves. `[]` reads, `[]=` writes. A read-only indexer is fine; assigning through one is an error, and so is `xs[i] += v`, which needs both.
+Indexing comes in two halves. `[]` reads, `[]=` writes. A read-only indexer is fine. Assigning through one is an error, and so is `xs[i] += v`, which needs both.
 
 ### Conversions
 
@@ -1188,7 +1188,7 @@ That also explains why **`String` has no `[]=`**. A string you were handed might
 
 That is the complete set. No `\x41`, no `\u`. Anything else after a backslash is an error.
 
-A raw newline inside a string literal is an error too; the literal ends at the line.
+A raw newline inside a string literal is an error too. The literal ends at the line.
 
 ### Interpolation
 
@@ -1199,7 +1199,7 @@ let String s = $"n = {n}, twice = {n * 2}";
 
 Any expression goes between the braces. Double a brace to write one literally: `$"{{literal}}"`.
 
-The compiler picks the cheapest form for what it sees. One part is just that part's conversion. Two parts become a single concatenation. Three or more build through a `StringBuilder`, so a ten-part interpolation costs one growable buffer rather than nine intermediate strings.
+The compiler picks the cheapest form for what it sees. One part is just that part's conversion. Two parts become a single concatenation. Three or more build through a `StringBuilder`, so a ten-part interpolation costs one growable buffer instead of nine intermediate strings.
 
 There are no format specifiers inside the braces: no `{x:2}`, no padding, no precision. Interpolation converts, and that is all. For alignment or a fixed number of decimals, call `Format` inside the braces:
 
@@ -1226,7 +1226,7 @@ class P {
 let String s = $"{new P()}";
 ```
 
-One warning worth knowing: `'a' + 'b'` adds codepoints, it does not join text. Convert a side with `as String`.
+One warning to know about: `'a' + 'b'` adds the codepoints and joins nothing. Convert a side with `as String`.
 
 ## 13. Handling Failure
 
@@ -1249,7 +1249,7 @@ The reason: an error payload needs a type, and the only two candidates are bad. 
 
 So `throw;` means only "this failed." If you need to say *how* it failed, return a `Result[T, E]` union and match on it (Chapter 9).
 
-What `throws` gives you over just returning a union is that the failure cannot be ignored. A union's `Err` case can be dropped on the floor; an unhandled `throws` call is a compile error.
+What `throws` gives you over just returning a union is that the failure cannot be ignored. A union's `Err` case can be dropped on the floor. An unhandled `throws` call is a compile error.
 
 ### Three places a failing call can go
 
@@ -1262,7 +1262,7 @@ throws int func Outer(String s) {
 }
 ```
 
-No `?` operator, no `try` at the call site. The signature already said this function can fail; repeating it at every call would be noise.
+No `?` operator, no `try` at the call site. The signature already said this function can fail, and repeating it at every call would be noise.
 
 **Inside a `try` block:**
 
@@ -1345,7 +1345,7 @@ A handler on a call whose result you are discarding is pure control flow: there 
 Log.Flush() catch { debug "flush-failed"; };
 ```
 
-And a `catch` on a call that cannot fail is an error rather than a no-op, so when a function stops being `throws` you find out where the dead handlers are.
+And a `catch` on a call that cannot fail is an error, where it could have been a silent no-op, so when a function stops being `throws` you find out where the dead handlers are.
 
 ### One restriction
 
@@ -1373,11 +1373,11 @@ The same reasoning covers arguments: in `Outer(Inner())`, `Inner` fails before `
 
 When a `throw` fires, in order:
 
-1. pending `defer` actions run, last-registered first;
-2. the block's owned locals are released;
+1. pending `defer` actions run, last-registered first
+2. the block's owned locals are released
 3. the failure reaches the handler, or the caller.
 
-Steps 1 and 2 happen at every scope the unwind passes through, not just the innermost.
+Steps 1 and 2 happen at every scope the unwind passes through, the innermost and every one outside it.
 
 ## 14. Cleanup with `defer`
 
@@ -1446,7 +1446,7 @@ process App { }                   // error: mode is required
 process App : foreground { }      // error: it goes before 'process'
 ```
 
-`foreground` owns TTY focus. `background` is hidden. All threads of a process share its console, which is why the mode belongs to the process rather than the thread. Putting it on a thread is an error.
+`foreground` owns TTY focus. `background` is hidden. All threads of a process share its console, which is why the mode belongs to the process and not to any one thread. Putting it on a thread is an error.
 
 A process with no threads is an error. It would be created at boot, do nothing, and never be reclaimed.
 
@@ -1540,19 +1540,19 @@ background process P {
 }
 ```
 
-They run as one generated function, so a variable further down still holds nothing. The name resolves fine; it just has no value yet, and the error says so.
+They run as one generated function, so a variable further down still holds nothing. The name resolves fine. It just has no value yet, and the error says so.
 
 **A `catch` on one must end in `assign`**, never `return`. The only function to return from is that generated initializer, so returning would abandon this variable and every one below it while the startup gate still reports the state as ready.
 
 **They belong to their process.** Code outside cannot see one, and there is no qualified path that reaches in. Everything inside can: the threads, and any function the process declares.
 
-**Each process gets its own.** Two processes can use the same name; they are separate storage.
+**Each process gets its own.** Two processes can use the same name and still get separate storage.
 
-**They are never released.** A process variable holds its value for the life of the image. That is what makes it safe to read from any thread at any moment, and it means a class-typed one is a permanent allocation rather than something to churn.
+**They are never released.** A process variable holds its value for the life of the image. That is what makes it safe to read from any thread at any moment, and it means a class-typed one is a permanent allocation. Don't churn through them.
 
 **A local of the same name shadows it, and warns.** That direction is the dangerous one, because without the warning a thread would read and write its own copy while believing it shared one.
 
-Underneath, each becomes a file-scope static, and the initializers become one function. Every thread calls a gate before its first statement; exactly one runs the initializer and the rest wait. "Initialized before first read" holds by construction, not by scheduling luck.
+Underneath, each becomes a file-scope static, and the initializers become one function. Every thread calls a gate before its first statement. Exactly one runs the initializer and the rest wait. "Initialized before first read" holds by construction, so scheduling luck never enters into it.
 
 ### Atomics or locks?
 
@@ -1605,7 +1605,7 @@ Four rules:
 - Every exit from a scope releases the locals it owns, on every path (falling off the end, `return`, `break`, `continue`, and `throw`), in reverse declaration order.
 - At zero, `_deinit` runs, then the object's fields are released, then the memory is freed.
 
-Passing an object as an **argument** does not retain it. The callee borrows, and only retains if it stores the value somewhere that outlives the call. Retaining on every call would make reference counting cost proportional to call depth rather than to storage.
+Passing an object as an **argument** does not retain it. The callee borrows, and only retains if it stores the value somewhere that outlives the call. Retaining on every call would make reference counting cost grow with call depth, when it should grow with storage.
 
 String literals carry a sentinel count. Retain and release both skip them, and their destructor never runs.
 
@@ -1628,7 +1628,7 @@ Each keeps the other's count above zero, so neither is ever destroyed.
 
 Two ways out: make one field a raw pointer inside `unsafe`, which counts nothing, or restructure so ownership runs one direction.
 
-It is a warning rather than an error because a cycle is not always a leak: a structure that lives for the whole life of the image never needed collecting. `--werror` promotes it like any other warning.
+It is a warning because a cycle is not always a leak: a structure that lives for the whole life of the image never needed collecting. `--werror` promotes it like any other warning.
 
 ### Seeing it
 
@@ -1692,13 +1692,13 @@ unsafe {
 
 `ref` parameters, array indexing, field access, calling a method whose own body uses `unsafe` internally, and writing or comparing `null`. Unsafety does not propagate through a call.
 
-There are no runtime null checks anywhere, so a null dereference is a real possible bug. But writing `null` needs no ceremony; only dereferencing a pointer that might be null does.
+There are no runtime null checks anywhere, so a null dereference is a real possible bug. But writing `null` needs no ceremony. Only dereferencing a pointer that might be null does.
 
 ## 19. Dropping to C
 
 Gata compiles to C, and building an OS means occasionally leaving the language: a hardware register, an ABI-compatible struct, a function the scheduler calls by raw pointer.
 
-This is also the answer to "the floor has no row for what I need" (Chapter 21). Native interop is not restricted to the floor's fixed list. It reaches whatever the build can link against. How much that gets you depends on the target, and the difference is worth stating plainly:
+This is also the answer to "the floor has no row for what I need" (Chapter 21). Native interop can go past the floor's fixed list and reach whatever the build can link against. How much that gets you depends on the target, and the difference is worth stating plainly:
 
 - **Hosted**, you are linking against libc, so native interop reaches all of it. Sockets, files, `getenv`, all ordinary C functions, reachable with a `native { }` block and an `@extern`. If you are prototyping logic that needs a filesystem, do it here.
 - **GatOS**, you are linking against GatOS, so native interop reaches what GatOS implements. That is a much smaller set, and it is why the front matter's networking gap is not something this chapter can route around. There is no socket function to call.
@@ -1796,7 +1796,7 @@ native { void lib_probe(void); }     // what C needs
 
 Without it, the C compiler reports an implicit declaration.
 
-This is not an unfinished feature. Gata has no `const`, so a generated `int puts(char*)` would contradict the `int puts(const char*)` in the real header, and the C compiler would be right to reject it. Rather than emit a prototype that is sometimes a lie, appa emits none.
+I left this out on purpose. Gata has no `const`, so a generated `int puts(char*)` would contradict the `int puts(const char*)` in the real header, and the C compiler would be right to reject it. Rather than emit a prototype that is sometimes a lie, appa emits none.
 
 Which means **the extern boundary is unchecked in both directions**. Nothing verifies that the signature you wrote matches the function you linked against, exactly as nothing verifies the contents of a `native { }` block.
 
@@ -1805,7 +1805,7 @@ Which means **the extern boundary is unchecked in both directions**. Nothing ver
 Four facts before you write C against the output:
 
 - **Class values are `gata_<Name>*` pointers with the reference-counting header first**, so any object pointer aliases its own header at offset 0.
-- **Type parameters are substituted textually** inside the native body of a generic. Whole-word, so `sizeof(T)` in `Box[int]` becomes `sizeof(int32_t)` while `TOTAL` is untouched. This is the one place substitution is textual rather than structural, because the compiler cannot parse the C to find type positions.
+- **Type parameters are substituted textually** inside the native body of a generic. Whole-word, so `sizeof(T)` in `Box[int]` becomes `sizeof(int32_t)` while `TOTAL` is untouched. This is the one place substitution is textual, because the compiler cannot parse the C to find type positions.
 - **Fixed arrays are a boxed struct**, not a bare C array.
 - The compiler scans native blocks for struct and typedef names and will not re-emit them.
 
@@ -1861,7 +1861,7 @@ Reach for a process variable first. This is for crossing a process boundary, not
 
 ## 20. Names Across Realms and Files
 
-Realms and processes are name scopes, not just compilation targets. A class, module, enum, union, or function declared inside one belongs to it.
+Realms and processes are compilation targets, and they are name scopes too. A class, module, enum, union, or function declared inside one belongs to it.
 
 Two processes can each declare a `Config`, and they are different types:
 
@@ -1916,7 +1916,7 @@ realm kernel {
 }
 ```
 
-Without `@shadows` those are errors. **Writing `@shadows` where nothing is displaced is also an error.** That second half is what makes the annotation worth having: it is always a true statement about the program, and deleting the outer declaration turns every stale annotation into a compile error rather than leaving a lie behind.
+Without `@shadows` those are errors. **Writing `@shadows` where nothing is displaced is also an error.** That second half is what makes the annotation worth having. It is always a true statement about the program, and deleting the outer declaration turns every stale annotation into a compile error instead of leaving a lie behind.
 
 It goes on a class, module, enum, union, native type, or free function inside a realm or process. Not on a thread, a process, a realm, or a class member, since none of those is a name in a scope.
 
@@ -1955,7 +1955,7 @@ Three limits:
 - **One exact scope.** `kernel.Config` means the kernel realm's `Config`. If the realm does not declare it, that is an error, not a quiet walk further out.
 - **It does not replace `@shadows`.** One says the displacement is deliberate, the other reaches past it.
 
-A qualifier costs nothing at runtime; it picks a symbol at compile time like any other name.
+A qualifier costs nothing at runtime. It picks a symbol at compile time like any other name.
 
 Because a qualifier has to be recognized before anything is resolved, `kernel` and `userspace` are reserved words and cannot be used as identifiers. `process`, `thread`, and `native` are contextual and stay available as ordinary names.
 
@@ -1967,7 +1967,7 @@ Within a scope, a name means one kind of thing. Two functions are overloads. Two
 
 Top-level type names are **global to the build**. Two files declaring `class Widget` collide, whether or not either imports the other.
 
-Design around it. The standard library does: `Optional` rather than `Maybe`, `PriorityQueue` rather than `Heap`, because a library claiming a common name takes it from every program that imports `List`. In your own code, `AstNode` and `HeapNode` cost nothing over two `Node`s.
+Design around it. The standard library does. It says `Optional` and not `Maybe`, `PriorityQueue` and not `Heap`, because a library claiming a common name takes it from every program that imports `List`. In your own code, `AstNode` and `HeapNode` cost nothing over two `Node`s.
 
 Free functions overload across files by parameter type. Identical signatures in two files collide.
 
@@ -2000,7 +2000,7 @@ That is `env.g`, and you will rarely edit it. Two ship with appa: `envs/env.GatO
 @preamble(boot)   native { /* C emitted after everything else */ }
 ```
 
-**Which preambles are present is what decides which realms the build has.** A GatOS environment has all three; a hosted one has only `user`. A realm with no preamble is not compiled at all, which is where Chapter 2's rule comes from: a hosted build cannot contain a `realm kernel` block, because there is no kernel translation unit to put it in.
+**Which preambles are present is what decides which realms the build has.** A GatOS environment has all three, and a hosted one has only `user`. A realm with no preamble is not compiled at all, which is where Chapter 2's rule comes from: a hosted build cannot contain a `realm kernel` block, because there is no kernel translation unit to put it in.
 
 Exactly one file per build carries `@environment`. appa finds it by scanning for the marker.
 
@@ -2034,7 +2034,7 @@ Inside those blocks the environment defines a fixed set of plain C functions, th
 
 Missing one your program needs is a build error naming it, not a linker error.
 
-Not every environment needs all of them. `_env_panic` and the process/thread trio are kernel-only, so a hosted environment simply does not define them.
+Not every environment needs all of them. `_env_panic` and the process/thread trio are kernel-only, so a hosted environment does not define them.
 
 These are also what capability discovery watches (Chapter 2): reaching `_env_alloc` pulls in memory management, `_env_read` the input stack, the process trio the scheduler, `_env_time_ns` the timers. Constructing a `new Random()` seeds from the clock, so it pulls in timers. That is the kind of connection the walk finds for you.
 
@@ -2042,13 +2042,13 @@ These are also what capability discovery watches (Chapter 2): reaching `_env_all
 
 That table is the complete list of ways a Gata program touches the machine. Not a summary of the common ones, but the list.
 
-Which means it is also the boundary of what the standard library can ever offer. `libgata` is ordinary Gata (Appendix E); it has no privileges the language does not have, so anything it does eventually bottoms out in one of those calls. A module cannot invent a capability, because there is no call for it to make.
+Which means it is also the boundary of what the standard library can ever offer. `libgata` is ordinary Gata (Appendix E). It has no privileges the language does not have, so anything it does eventually bottoms out in one of those calls. A module cannot invent a capability, because there is no call for it to make.
 
-This is why GatOS having no network stack is a Gata-visible fact rather than a library to-do. Adding sockets means adding a row to that table, which means the environment has to implement `_env_socket_*` by calling something, which means GatOS needs a NIC driver, a protocol stack, and buffer management first. The Gata-side wrapper is the last and smallest part of that work. Same for a filesystem.
+This is why GatOS having no network stack shows up in Gata as a hard fact. No library can check it off a to-do list. Adding sockets means adding a row to that table, which means the environment has to implement `_env_socket_*` by calling something, which means GatOS needs a NIC driver, a protocol stack, and buffer management first. The Gata-side wrapper is the last and smallest part of that work. Same for a filesystem.
 
-Two smaller consequences of the same design worth noting:
+The same design has two smaller consequences:
 
-- **Not every environment implements every row**, and that is normal rather than an error. `_env_panic` and the process/thread trio are kernel-only. A capability whose floor function this environment does not define is simply absent for this target, and a program that reaches it fails at build time with the name of the missing symbol.
+- **Not every environment implements every row**, and that is normal. `_env_panic` and the process/thread trio are kernel-only. A capability whose floor function this environment does not define is absent for this target, and a program that reaches it fails at build time with the name of the missing symbol.
 - **The floor is small on purpose.** Every row is a function the environment author has to write correctly for a new platform, so each addition is a tax on every port. Chapter 19's native interop exists so that one-off C calls do not need a floor row. The floor is for capabilities the *standard library* depends on, not for everything you might want to call.
 
 ### Porting
@@ -2064,7 +2064,7 @@ debug "reached checkpoint A";
 panic "heap corruption detected";
 ```
 
-Both take a **string literal only**, not an interpolated string and not a variable. That is what makes them statements rather than library calls: a `debug` taking an expression would need string conversion, which needs an allocator, which early boot may not have yet. A literal is just a pointer into the image.
+Both take a **string literal only**. An interpolated string or a variable won't do. That is why they are statements and not library calls: a `debug` taking an expression would need string conversion, which needs an allocator, which early boot may not have yet. A literal is just a pointer into the image.
 
 So the idiom for logging a computed value is to check it in Gata and emit a fixed marker:
 
@@ -2076,7 +2076,7 @@ A missing marker in the log is the failure report: greppable, deterministic, and
 
 `panic` is kernel-only. Halting the machine is not something a sandboxed user process should be able to do.
 
-Both are **rejected in a Release build** rather than compiled away, so there is no silent "your logging vanished" to discover later.
+Both are **rejected in a Release build**. Compiling them away silently would leave you to discover later that your logging vanished.
 
 On GatOS each realm gets its own debug channel, and `appa run` captures both: `artifacts/debug.log` for the kernel and `artifacts/user-debug.log` for userspace.
 
@@ -2134,7 +2134,7 @@ Values are case-insensitive. An unrecognised one is an error listing the accepte
 
 ## B. Diagnostics
 
-Every error and warning carries a stable code. Codes are assigned in declaration order. There is no numbering scheme, and a code's range says nothing about its severity. Warnings are marked below; everything else is an error.
+Every error and warning carries a stable code. Codes are assigned in declaration order. There is no numbering scheme, and a code's range says nothing about its severity. Warnings are marked below, and everything else is an error.
 
 Warnings never fail a build on their own. `--werror` promotes them.
 
@@ -2389,7 +2389,7 @@ int64 uint uint64 ushort byte sbyte usize uintptr
 true false
 ```
 
-`process`, `thread`, and `native` are contextual: they mean something only in declaration position and stay usable as identifiers elsewhere. `self` is not a keyword either; it is a name the compiler binds inside an instance method.
+`process`, `thread`, and `native` are contextual: they mean something only in declaration position and stay usable as identifiers elsewhere. `self` is not a keyword either. It is a name the compiler binds inside an instance method.
 
 ### Annotations
 
@@ -2405,7 +2405,7 @@ Seven, and only seven. Any other `@word` is an error.
 | `@intrinsic(role)` | binds a function to a compiler role (standard library only) |
 | `@builtin(name)` | binds a type to a compiler slot (standard library only) |
 
-The last two are how the compiler avoids hardcoding any runtime name. It emits a call to "whatever carries the `retain` role", not to a function called `retain`. That is what lets `libgata` be an ordinary library rather than a compiler built-in. You will not write either.
+The last two are how the compiler avoids hardcoding any runtime name. It emits a call to "whatever carries the `retain` role", whatever that function happens to be called. That is what lets `libgata` be an ordinary library, with nothing built into the compiler. You will not write either.
 
 ### Names the compiler owns
 
@@ -2413,7 +2413,7 @@ A name starting with two underscores is reserved for the compiler's temporaries 
 
 A few emitted symbols cannot be taken over at all: the process launcher `uapps`, the kernel entry symbol, and each thread's entry.
 
-C's vocabulary is not Gata's, so `inline`, `register`, `volatile` and the rest are ordinary Gata identifiers. Where the compiler owns the emitted name end to end — locals, parameters, class fields, union variants and their payload fields — a colliding name simply picks up a trailing underscore in the C, at its declaration and at every use, and you never see it. An `@extern` is the exception: it is emitted verbatim so the linker can find it, so one named after a C keyword or a standard macro is rejected (`G102`).
+C's vocabulary is not Gata's, so `inline`, `register`, `volatile` and the rest are ordinary Gata identifiers. The compiler owns some emitted names end to end: locals, parameters, class fields, union variants and their payload fields. There, a colliding name picks up a trailing underscore in the C, at its declaration and at every use, and you never see it. An `@extern` is the exception: it is emitted verbatim so the linker can find it, so one named after a C keyword or a standard macro is rejected (`G102`).
 
 ### Precedence
 
@@ -2436,7 +2436,7 @@ Lowest to highest:
 | 13 | `!` `~` `-` `&` `*` (unary) | right |
 | 14 | `++` `--` `.` `[]` `()` `catch` (postfix) | left |
 
-Assignment is not on the table; it is a statement.
+Assignment is not on the table, because it is a statement.
 
 The table matches C wherever C has one, including `&` binding looser than `==`. Parenthesise that one, in both languages.
 
@@ -2460,11 +2460,11 @@ import List;
 
 There is no umbrella import. A module you never name is never parsed and never compiled in.
 
-Modules pull in what they are built on, so `import Console;` also reaches `String` and `Int`. Import what you actually use anyway; the other module's dependency list is not your contract.
+Modules pull in what they are built on, so `import Console;` also reaches `String` and `Int`. Import what you use anyway. The other module's dependency list is its business, and it can change.
 
 `libgata` is ordinary Gata, written with the features in this book. It has no privileges the language does not have, which is why Chapter 21's floor is the ceiling on what it can ever offer.
 
-**The full surface is documented in [Libgata Reference.md](Libgata%20Reference.md), in this folder**, as manual pages: one per module, with the usual NAME, SYNOPSIS, DESCRIPTION, RETURN VALUE and ERRORS sections. Look up a signature there; learn the language here.
+**The full surface is documented in [Libgata Reference.md](Libgata%20Reference.md), in this folder**, as manual pages: one per module, with the usual NAME, SYNOPSIS, DESCRIPTION, RETURN VALUE and ERRORS sections. Look up a signature there and learn the language here.
 
 ## Appendix: A Program Using Most of the Language
 
@@ -2958,17 +2958,17 @@ result verified against pi(100000000)
 powering off in 30 seconds
 ```
 
-The per-worker split is the part worth watching. It is never even, because a claim cursor hands out work on demand rather than in advance, so a worker that got a cheap block comes back sooner. That is the property you wanted: the imbalance lands in the *claiming*, not in the wall clock.
+Watch the per-worker split. It is never even, because a claim cursor hands out work on demand, so a worker that drew a cheap block comes back sooner and takes another. The imbalance lands in the *claiming* and the wall clock stays flat, which is the property you wanted.
 
 ### Notes on the build
 
 **Every subsystem is reached from Gata, so capability discovery needs no help.** The program allocates, writes to a console, spawns threads, reads the clock, sleeps and powers off, and all of that goes through the standard library, which goes through the floor. The native blocks call nothing but compiler atomic builtins, so nothing is hidden from the walk and `<CapabilityDiscovery>` stays `On`. The one subsystem that does *not* get linked in is the input stack, because nothing here ever reads a line.
 
-**It wants a Debug build.** The `debug` markers are the machine-readable half of the result, and Release rejects them outright. For a timing number rather than a test result, delete the markers and build Release.
+**It wants a Debug build.** The `debug` markers are the machine-readable half of the result, and Release rejects them outright. If you want a timing number instead of a test result, delete the markers and build Release.
 
-**Retuning it is three functions.** `Limit()` sets the run length, and half a minute of sieving is roughly what a hundred million buys you on a laptop's QEMU. `BlockSize()` trades allocator traffic against cache residency; the block buffer wants to fit in L2. `Workers()` has to stay in step with the number of `thread` declarations, since a thread is a declaration and not something you spawn in a loop. `HoldMs()` is how long the results stay on screen before the supervisor powers the machine off, which is the difference between a demo you can read and a window that closes on the answer. Drop it to zero when the run is scripted and `debug.log` is the only reader.
+**Retuning it is three functions.** `Limit()` sets the run length, and half a minute of sieving is roughly what a hundred million buys you on a laptop's QEMU. `BlockSize()` trades allocator traffic against cache residency, and the block buffer wants to fit in L2. `Workers()` has to stay in step with the number of `thread` declarations, since a thread is a declaration. You can't spawn one in a loop. `HoldMs()` is how long the results stay on screen before the supervisor powers the machine off, which is the difference between a demo you can read and a window that closes on the answer. Drop it to zero when the run is scripted and `debug.log` is the only reader.
 
-**A hundred million is where `int` stops being free.** Every index here is a 32-bit `int`, and the largest thing the arithmetic builds is `p * p` for a base prime near `sqrt(limit)`, which is `limit` itself. That fits with room to spare at a hundred million and stops fitting a little past two billion, so a larger run means moving the range arithmetic to `int64` rather than just editing the constant. The block buffers do not care: memory is one `blockSize` byte array per running worker, whatever the limit is.
+**A hundred million is where `int` stops being free.** Every index here is a 32-bit `int`, and the largest thing the arithmetic builds is `p * p` for a base prime near `sqrt(limit)`, which is `limit` itself. That fits with room to spare at a hundred million and stops fitting a little past two billion, so a larger run means moving the range arithmetic to `int64`, and editing the constant won't be enough. The block buffers do not care. Memory is one `blockSize` byte array per running worker, whatever the limit is.
 
 **Hosted first.** Set `<TargetBackend>Hosted</TargetBackend>`, move the entry point into `realm userspace`, drop the `panic`, and the whole thing runs under your debugger. Then move it back. That round trip is the workflow this toolchain is for.
 
@@ -2976,7 +2976,7 @@ The per-worker split is the part worth watching. It is never even, because a cla
 
 `sieve` is a demo that happens to be a test. This is the version you run when you want to know whether the machine is any good.
 
-`sieve-xl` sieves to **10^12**, is built `Release`, and is tuned for **one core**, because that is what GatOS gives you. Both of those change the program in ways worth seeing rather than describing.
+`sieve-xl` sieves to **10^12**, is built `Release`, and is tuned for **one core**, because that is what GatOS gives you. Both of those change the program, and it's easier to show than to describe.
 
 Release rejects `debug` and `panic` outright, and those were the first version's entire result channel: `debug "sieve-verified"` in the log was the pass, and `panic` was the failure. Neither compiles here. So the console becomes the result channel, `RESULT: PASS` or `RESULT: FAIL` is the last line either way, and the watchdog stops halting the machine and starts reporting instead.
 
@@ -2988,7 +2988,7 @@ With the coordination gone, the effort moves to the algorithm.
 
 A **mod-30 wheel**. The eight residues coprime to 30 (1, 7, 11, 13, 17, 19, 23, 29) are exactly one byte per thirty integers, so the bitmap addresses 30 integers per byte with no waste, and 73.3% of all integers are never represented at all. Against the odds-only sieve that is 1.875x fewer candidates and 1.875x fewer crossings.
 
-The crossing loop walks the wheel rather than the number line. For a prime `p` and its current multiple `n = p * m`, advancing `m` to the next wheel residue moves `n` by `p * delta[w]`, which in byte terms is `q * delta[w] + ADD[j][w]` where `q = p / 30`, `j` is the wheel index of `p % 30`, and `ADD` is an 8x8 table that depends on nothing else. The bit to clear is `BIT[j][w]`, another 8x8 table. So per prime the whole loop is two 8-entry lookups:
+The crossing loop walks the wheel instead of the number line. For a prime `p` and its current multiple `n = p * m`, advancing `m` to the next wheel residue moves `n` by `p * delta[w]`, which in byte terms is `q * delta[w] + ADD[j][w]` where `q = p / 30`, `j` is the wheel index of `p % 30`, and `ADD` is an 8x8 table that depends on nothing else. The bit to clear is `BIT[j][w]`, another 8x8 table. So per prime the whole loop is two 8-entry lookups:
 
 ```
 while (k < nbytes) {
@@ -3566,10 +3566,10 @@ Same count, same largest prime, both times.
 
 ### Where the language earns its place
 
-Worth pointing out, since a fast inner loop is usually where a language gets abandoned:
+A fast inner loop is usually where people give up on a language, so a few things stand out here:
 
 - **`RawArray[T]`** is one generic class, monomorphized for `int`, `byte` and `uint64`. Every raw pointer in the program lives inside it, and it carries `Get`/`Set`, `[]`/`[]=` operators and a `Raw()` escape hatch for the hot loops. Nothing outside it writes `unsafe` except the four functions that need the bare pointer.
-- **`Wheel` and `Sieve` are ordinary classes** with `_init` doing real work and `_deinit` freeing through reference counting. The engine is a process variable, so its entire setup runs once, before any thread's first statement, by construction rather than by scheduling luck.
+- **`Wheel` and `Sieve` are ordinary classes** with `_init` doing real work and `_deinit` freeing through reference counting. The engine is a process variable, so its entire setup runs once, before any thread's first statement, by construction and never by scheduling luck.
 - **`union Verdict`** is how a check reports, and the same three arms serve the self-test and the final result. Adding a fourth outcome would break both `match`es at compile time.
 - **`throws`** guards the block size, handled in the process variable's initializer with `assign`, which is the one place a handler cannot `return`.
 - **`for p in small`** iterates a fixed array in two places, and the base primes are an ordinary `List[int]`.

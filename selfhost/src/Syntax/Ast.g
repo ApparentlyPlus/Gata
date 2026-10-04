@@ -11,7 +11,7 @@ import "src/Diagnostics/TextSpan.g";
 import "src/Backend/Mangler.g";
 
 /*
- * Which execution environment a declaration belongs to. Lives in Ir.cs on the C# side; it is
+ * Which execution environment a declaration belongs to. Lives in Ir.cs on the C# side. It is
  * declared here because ContextDecl needs it and a Gata type name is global to the build, so
  * Ir.g must import this rather than redeclare it (ERROR G003).
  */
@@ -19,7 +19,7 @@ enum Realm { None, Kernel, User }
 
 /*
  * The access/storage modifiers accepted before a function, method, or field declaration.
- * Combinable, eg. 'public static'. C#'s [Flags] enum; Gata enums carry no bitwise operators of
+ * Combinable, eg. 'public static'. C#'s [Flags] enum. Gata enums carry no bitwise operators of
  * their own, so the set operations live in Mods below and go through `as int`.
  */
 enum Modifiers { None = 0, Static = 1, Public = 2, Private = 4 }
@@ -67,7 +67,7 @@ enum UnOp { Not, BitNot, Neg }
 enum PostfixOp { Inc, Dec }
 
 /*
- * The kind of an assignment operator. Assign is plain '='; the rest are compound forms that
+ * The kind of an assignment operator. Assign is plain '=', and the rest are compound forms that
  * combine a BinOp with the store, eg. AddAssign for '+='.
  */
 enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, AndAssign, OrAssign, XorAssign, ShlAssign, ShrAssign }
@@ -122,16 +122,16 @@ module Ops {
      */
     public String func BinSym(BinOp op) {
         switch (op as int) {
-            case 0  { return "||"; }
-            case 1  { return "&&"; }
-            case 2  { return "|"; }
-            case 3  { return "^"; }
-            case 4  { return "&"; }
-            case 5  { return "=="; }
-            case 6  { return "!="; }
-            case 7  { return "<"; }
-            case 8  { return ">"; }
-            case 9  { return "<="; }
+            case 0 { return "||"; }
+            case 1 { return "&&"; }
+            case 2 { return "|"; }
+            case 3 { return "^"; }
+            case 4 { return "&"; }
+            case 5 { return "=="; }
+            case 6 { return "!="; }
+            case 7 { return "<"; }
+            case 8 { return ">"; }
+            case 9 { return "<="; }
             case 10 { return ">="; }
             case 11 { return "<<"; }
             case 12 { return ">>"; }
@@ -181,16 +181,16 @@ module Ops {
      */
     public String func AssignSym(AssignOp op) {
         switch (op as int) {
-            case 0  { return "="; }
-            case 1  { return "+="; }
-            case 2  { return "-="; }
-            case 3  { return "*="; }
-            case 4  { return "/="; }
-            case 5  { return "%="; }
-            case 6  { return "&="; }
-            case 7  { return "|="; }
-            case 8  { return "^="; }
-            case 9  { return "<<="; }
+            case 0 { return "="; }
+            case 1 { return "+="; }
+            case 2 { return "-="; }
+            case 3 { return "*="; }
+            case 4 { return "/="; }
+            case 5 { return "%="; }
+            case 6 { return "&="; }
+            case 7 { return "|="; }
+            case 8 { return "^="; }
+            case 9 { return "<<="; }
             case 10 { return ">>="; }
         }
         return "";
@@ -201,15 +201,15 @@ module Ops {
      */
     public Optional[BinOp] func BaseOp(AssignOp op) {
         switch (op as int) {
-            case 1  { return Optional.Some(BinOp.Add); }
-            case 2  { return Optional.Some(BinOp.Sub); }
-            case 3  { return Optional.Some(BinOp.Mul); }
-            case 4  { return Optional.Some(BinOp.Div); }
-            case 5  { return Optional.Some(BinOp.Mod); }
-            case 6  { return Optional.Some(BinOp.BitAnd); }
-            case 7  { return Optional.Some(BinOp.BitOr); }
-            case 8  { return Optional.Some(BinOp.BitXor); }
-            case 9  { return Optional.Some(BinOp.Shl); }
+            case 1 { return Optional.Some(BinOp.Add); }
+            case 2 { return Optional.Some(BinOp.Sub); }
+            case 3 { return Optional.Some(BinOp.Mul); }
+            case 4 { return Optional.Some(BinOp.Div); }
+            case 5 { return Optional.Some(BinOp.Mod); }
+            case 6 { return Optional.Some(BinOp.BitAnd); }
+            case 7 { return Optional.Some(BinOp.BitOr); }
+            case 8 { return Optional.Some(BinOp.BitXor); }
+            case 9 { return Optional.Some(BinOp.Shl); }
             case 10 { return Optional.Some(BinOp.Shr); }
         }
         return Optional[BinOp].None();
@@ -227,7 +227,7 @@ module Ops {
 
 
 /*
- * Structured type specifier. The parser builds it once; every later pass walks it structurally.
+ * Structured type specifier. The parser builds it once. Every later pass walks it structurally.
  */
 union TypeSpec {
     NamedSpec(NamedSpec s),
@@ -334,15 +334,12 @@ module Specs {
         return TypeSpec.NamedSpec(new NamedSpec(name, new List[NamedSpec](), span));
     }
 
-    /*
-     * Span - The source span of any type spec (C#'s TypeSpec.Span base property)
-     */
     public TextSpan func Span(TypeSpec t) {
         match (t) {
             case NamedSpec(s) { return s.span; }
-            case PtrSpec(s)   { return s.span; }
+            case PtrSpec(s) { return s.span; }
             case ArraySpec(s) { return s.span; }
-            case FuncSpec(s)  { return s.span; }
+            case FuncSpec(s) { return s.span; }
         }
     }
 
@@ -371,7 +368,7 @@ module Specs {
             case NamedSpec(s) { return s.Mangled(); }
             case PtrSpec(s) { return Specs.ToSpecString(s.inner) + "*"; }
             case ArraySpec(s) { return "[" + s.sizeText + "]" + Specs.ToSpecString(s.elem); }
-            case FuncSpec(s)  {
+            case FuncSpec(s) {
                 let StringBuilder sb = new StringBuilder();
                 sb.Put("func(");
                 let int i = 0;
@@ -474,16 +471,13 @@ class BuiltinAnnotation {
 }
 
 module Anns {
-    /*
-     * Span - The source span of any annotation
-     */
     public TextSpan func Span(Annotation a) {
         match (a) {
             case IntrinsicAnnotation(x) { return x.span; }
-            case PreambleAnnotation(x)  { return x.span; }
-            case KeepAnnotation(x)      { return x.span; }
-            case ShadowsAnnotation(x)   { return x.span; }
-            case BuiltinAnnotation(x)   { return x.span; }
+            case PreambleAnnotation(x) { return x.span; }
+            case KeepAnnotation(x) { return x.span; }
+            case ShadowsAnnotation(x) { return x.span; }
+            case BuiltinAnnotation(x) { return x.span; }
         }
     }
 
@@ -846,38 +840,35 @@ class DefaultExpr {
 
 module Exprs {
 
-    /*
-     * Span - The source span of any expression (C#'s Expr.Span base property)
-     */
     public TextSpan func Span(Expr e) {
         match (e) {
-            case IntLitExpr(x)         { return x.span; }
-            case CharLitExpr(x)        { return x.span; }
-            case FloatLitExpr(x)       { return x.span; }
-            case BoolLitExpr(x)        { return x.span; }
-            case StrLitExpr(x)         { return x.span; }
-            case NullExpr(x)           { return x.span; }
-            case InterpStrExpr(x)      { return x.span; }
-            case IdentExpr(x)          { return x.span; }
-            case ScopedNameExpr(x)     { return x.span; }
-            case PoisonExpr(x)         { return x.span; }
-            case CastExpr(x)           { return x.span; }
-            case CallExpr(x)           { return x.span; }
-            case CatchCallExpr(x)      { return x.span; }
-            case MemberAccessExpr(x)   { return x.span; }
-            case IndexExpr(x)          { return x.span; }
+            case IntLitExpr(x) { return x.span; }
+            case CharLitExpr(x) { return x.span; }
+            case FloatLitExpr(x) { return x.span; }
+            case BoolLitExpr(x) { return x.span; }
+            case StrLitExpr(x) { return x.span; }
+            case NullExpr(x) { return x.span; }
+            case InterpStrExpr(x) { return x.span; }
+            case IdentExpr(x) { return x.span; }
+            case ScopedNameExpr(x) { return x.span; }
+            case PoisonExpr(x) { return x.span; }
+            case CastExpr(x) { return x.span; }
+            case CallExpr(x) { return x.span; }
+            case CatchCallExpr(x) { return x.span; }
+            case MemberAccessExpr(x) { return x.span; }
+            case IndexExpr(x) { return x.span; }
             case GenericTypeRefExpr(x) { return x.span; }
-            case BinExpr(x)            { return x.span; }
-            case TernaryExpr(x)        { return x.span; }
-            case UnaryExpr(x)          { return x.span; }
-            case PostfixExpr(x)        { return x.span; }
-            case NewExpr(x)            { return x.span; }
-            case ArrayLitExpr(x)       { return x.span; }
-            case AddrOfExpr(x)         { return x.span; }
-            case RefArgExpr(x)         { return x.span; }
-            case DerefExpr(x)          { return x.span; }
-            case SizeofExpr(x)         { return x.span; }
-            case DefaultExpr(x)        { return x.span; }
+            case BinExpr(x) { return x.span; }
+            case TernaryExpr(x) { return x.span; }
+            case UnaryExpr(x) { return x.span; }
+            case PostfixExpr(x) { return x.span; }
+            case NewExpr(x) { return x.span; }
+            case ArrayLitExpr(x) { return x.span; }
+            case AddrOfExpr(x) { return x.span; }
+            case RefArgExpr(x) { return x.span; }
+            case DerefExpr(x) { return x.span; }
+            case SizeofExpr(x) { return x.span; }
+            case DefaultExpr(x) { return x.span; }
         }
     }
 
@@ -1097,7 +1088,7 @@ class TryCatchStmt {
 }
 
 /*
- * A switch statement. cases is the list of arms; otherwise is the optional fallback block.
+ * A switch statement. cases is the list of arms. Otherwise is the optional fallback block.
  */
 class SwitchStmt {
     public Expr scrutinee;
@@ -1143,7 +1134,7 @@ class MatchStmt {
 }
 
 /*
- * One arm of a match statement. variant is the union variant name; bindings are the local names
+ * One arm of a match statement. variant is the union variant name. Bindings are the local names
  * bound to the variant's fields in source order.
  */
 class MatchCase {
@@ -1217,32 +1208,29 @@ class PanicStmt {
 
 module Stmts {
 
-    /*
-     * Span - The source span of any statement (C#'s Stmt.Span base property)
-     */
     public TextSpan func Span(Stmt s) {
         match (s) {
-            case Block(x)           { return x.span; }
-            case NativeStmt(x)      { return x.span; }
-            case LetStmt(x)         { return x.span; }
-            case AssignStmt(x)      { return x.span; }
-            case ExprStmt(x)        { return x.span; }
-            case IfStmt(x)          { return x.span; }
-            case WhileStmt(x)       { return x.span; }
-            case ForStmt(x)         { return x.span; }
-            case ForInStmt(x)       { return x.span; }
-            case ReturnStmt(x)      { return x.span; }
-            case BreakStmt(x)       { return x.span; }
-            case ContinueStmt(x)    { return x.span; }
-            case TryCatchStmt(x)    { return x.span; }
-            case SwitchStmt(x)      { return x.span; }
-            case MatchStmt(x)       { return x.span; }
-            case UnsafeBlock(x)     { return x.span; }
-            case DeferStmt(x)       { return x.span; }
-            case ThrowStmt(x)       { return x.span; }
+            case Block(x) { return x.span; }
+            case NativeStmt(x) { return x.span; }
+            case LetStmt(x) { return x.span; }
+            case AssignStmt(x) { return x.span; }
+            case ExprStmt(x) { return x.span; }
+            case IfStmt(x) { return x.span; }
+            case WhileStmt(x) { return x.span; }
+            case ForStmt(x) { return x.span; }
+            case ForInStmt(x) { return x.span; }
+            case ReturnStmt(x) { return x.span; }
+            case BreakStmt(x) { return x.span; }
+            case ContinueStmt(x) { return x.span; }
+            case TryCatchStmt(x) { return x.span; }
+            case SwitchStmt(x) { return x.span; }
+            case MatchStmt(x) { return x.span; }
+            case UnsafeBlock(x) { return x.span; }
+            case DeferStmt(x) { return x.span; }
+            case ThrowStmt(x) { return x.span; }
             case AssignValueStmt(x) { return x.span; }
-            case DebugStmt(x)       { return x.span; }
-            case PanicStmt(x)       { return x.span; }
+            case DebugStmt(x) { return x.span; }
+            case PanicStmt(x) { return x.span; }
         }
     }
 
@@ -1374,14 +1362,11 @@ class OperatorDecl {
 }
 
 module Members {
-    /*
-     * Span - The source span of any class member
-     */
     public TextSpan func Span(ClassMember m) {
         match (m) {
-            case FieldsBlock(x)  { return x.span; }
-            case FieldDecl(x)    { return x.span; }
-            case MethodDecl(x)   { return x.span; }
+            case FieldsBlock(x) { return x.span; }
+            case FieldDecl(x) { return x.span; }
+            case MethodDecl(x) { return x.span; }
             case OperatorDecl(x) { return x.span; }
         }
     }
@@ -1652,7 +1637,7 @@ class EnumMember {
 }
 
 /*
- * A tagged union; each variant carries named fields or no payload, lowered to a tag enum plus a C union.
+ * A tagged union. Each variant carries named fields or no payload, lowered to a tag enum plus a C union.
  */
 class UnionDecl {
     public String name;
@@ -1688,23 +1673,20 @@ class UnionVariant {
 }
 
 module Tops {
-    /*
-     * Span - The source span of any top-level declaration
-     */
     public TextSpan func Span(TopLevel t) {
         match (t) {
-            case ImportDecl(x)      { return x.span; }
+            case ImportDecl(x) { return x.span; }
             case EnvironmentDecl(x) { return x.span; }
-            case NativeBlock(x)     { return x.span; }
-            case ClassDecl(x)       { return x.span; }
-            case ContextDecl(x)     { return x.span; }
-            case FuncDecl(x)        { return x.span; }
-            case ProcessDecl(x)     { return x.span; }
-            case ProcessVarDecl(x)  { return x.span; }
-            case ExternFuncDecl(x)  { return x.span; }
-            case NativeTypeDecl(x)  { return x.span; }
-            case EnumDecl(x)        { return x.span; }
-            case UnionDecl(x)       { return x.span; }
+            case NativeBlock(x) { return x.span; }
+            case ClassDecl(x) { return x.span; }
+            case ContextDecl(x) { return x.span; }
+            case FuncDecl(x) { return x.span; }
+            case ProcessDecl(x) { return x.span; }
+            case ProcessVarDecl(x) { return x.span; }
+            case ExternFuncDecl(x) { return x.span; }
+            case NativeTypeDecl(x) { return x.span; }
+            case EnumDecl(x) { return x.span; }
+            case UnionDecl(x) { return x.span; }
         }
     }
 }

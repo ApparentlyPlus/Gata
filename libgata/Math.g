@@ -30,7 +30,7 @@ module Math {
     /*
      * E - Euler's number
      */
-    public double func E()  { return 2.718281828459045; }
+    public double func E() { return 2.718281828459045; }
 
     double func fabs(double x) {
         let u = bits(x) & 0x7FFFFFFFFFFFFFFFULL;
@@ -270,9 +270,8 @@ module Math {
             k = -27;
         }
         let ex = (((i >> 52) & 0x7FFULL) as int) - 1023;
-        k = k + (ex >> 1);                        // floor(ex / 2); the odd bit stays in f
-        let f = frombits((i & 0x000FFFFFFFFFFFFFULL) |
-                         (((1023 + (ex & 1)) as uint64) << 52));
+        k = k + (ex >> 1);                        // floor(ex / 2), and the odd bit stays in f
+        let f = frombits((i & 0x000FFFFFFFFFFFFFULL) | (((1023 + (ex & 1)) as uint64) << 52));
 
         let j = 0x5fe6eb50c7b537a9ULL - (bits(f) >> 1);
         let y = frombits(j);
@@ -283,8 +282,8 @@ module Math {
         let r = refine(f, f * y);
         let F = (bits(f) & 0x000FFFFFFFFFFFFFULL) | 0x0010000000000000ULL;
         if ((ex & 1) != 0) { F = F << 1; }
-        let nh = F >> 12;  let nl = F << 52;
-        let qh = F >> 10;  let ql = F << 54;
+        let nh = F >> 12; let nl = F << 52;
+        let qh = F >> 10; let ql = F << 54;
 
         let s = (r * 4503599627370496.0) as uint64;
         if (s < 0x0010000000000000ULL) { s = 0x0010000000000000ULL; }
@@ -300,14 +299,14 @@ module Math {
 
     double func k_ln2hi() { return 6.93147180369123816490e-01; }
     double func k_ln2lo() { return 1.90821492927058770002e-10; }
-    double func k_ln2()   { return 6.93147180559945286227e-01; }
-    double func k_lg1()   { return 6.666666666666735130e-01; }
-    double func k_lg2()   { return 3.999999999940941908e-01; }
-    double func k_lg3()   { return 2.857142874366239149e-01; }
-    double func k_lg4()   { return 2.222219843214978396e-01; }
-    double func k_lg5()   { return 1.818357216161805012e-01; }
-    double func k_lg6()   { return 1.531383769920937332e-01; }
-    double func k_lg7()   { return 1.479819860511658591e-01; }
+    double func k_ln2() { return 6.93147180559945286227e-01; }
+    double func k_lg1() { return 6.666666666666735130e-01; }
+    double func k_lg2() { return 3.999999999940941908e-01; }
+    double func k_lg3() { return 2.857142874366239149e-01; }
+    double func k_lg4() { return 2.222219843214978396e-01; }
+    double func k_lg5() { return 1.818357216161805012e-01; }
+    double func k_lg6() { return 1.531383769920937332e-01; }
+    double func k_lg7() { return 1.479819860511658591e-01; }
 
     double func log(double x) {
         let u = bits(x);
@@ -628,14 +627,14 @@ module Math {
 
         if (hx < 0x00100000) {
             if (hx == 0) { ix = -1043 - normshift(lx); }
-            else         { ix = -1022 - normshift((hx << 11) as uint); }
+            else { ix = -1022 - normshift((hx << 11) as uint); }
         } else {
             ix = (hx >> 20) - 1023;
         }
 
         if (hy < 0x00100000) {
             if (hy == 0) { iy = -1043 - normshift(ly); }
-            else         { iy = -1022 - normshift((hy << 11) as uint); }
+            else { iy = -1022 - normshift((hy << 11) as uint); }
         } else {
             iy = (hy >> 20) - 1023;
         }
@@ -1000,12 +999,10 @@ module Math {
     }
 
     [4]double func atanhi_tbl() {
-        return [4.63647609000806093515e-01, 7.85398163397448278999e-01,
-                9.82793723247329054082e-01, 1.57079632679489655800e+00];
+        return [4.63647609000806093515e-01, 7.85398163397448278999e-01, 9.82793723247329054082e-01, 1.57079632679489655800e+00];
     }
     [4]double func atanlo_tbl() {
-        return [2.26987774529616870924e-17, 3.06161699786838301793e-17,
-                1.39033110312309984516e-17, 6.12323399573676603587e-17];
+        return [2.26987774529616870924e-17, 3.06161699786838301793e-17, 1.39033110312309984516e-17, 6.12323399573676603587e-17];
     }
     [11]double func aT_tbl() {
         return [3.33333333333329318027e-01, -1.99999999998764832476e-01,
@@ -1758,30 +1755,30 @@ module Math {
     }
 
     // Public API
-    public double func Abs(double x)   { return fabs(x); }
+    public double func Abs(double x) { return fabs(x); }
     public double func Floor(double x) { return floor(x); }
-    public double func Ceil(double x)  { return ceil(x); }
+    public double func Ceil(double x) { return ceil(x); }
     public double func Round(double x) { return round(x); }
     public double func Trunc(double x) { return trunc(x); }
-    public double func Sqrt(double x)  { return sqrt(x); }
+    public double func Sqrt(double x) { return sqrt(x); }
     public double func CopySign(double x, double y) { return copysign(x, y); }
-    public double func ScalbN(double x, int n)      { return scalbn(x, n); }
-    public double func Log(double x)    { return log(x); }
-    public double func Exp(double x)    { return exp(x); }
-    public double func Log1p(double x)  { return log1p(x); }
-    public double func Expm1(double x)  { return expm1(x); }
+    public double func ScalbN(double x, int n) { return scalbn(x, n); }
+    public double func Log(double x) { return log(x); }
+    public double func Exp(double x) { return exp(x); }
+    public double func Log1p(double x) { return log1p(x); }
+    public double func Expm1(double x) { return expm1(x); }
     public double func Mod(double x, double y) { return fmod(x, y); }
-    public double func Pow(double b, double e)  { return pow(b, e); }
-    public double func Sin(double x)  { return sin(x); }
-    public double func Cos(double x)  { return cos(x); }
-    public double func Tan(double x)  { return tan(x); }
+    public double func Pow(double b, double e) { return pow(b, e); }
+    public double func Sin(double x) { return sin(x); }
+    public double func Cos(double x) { return cos(x); }
+    public double func Tan(double x) { return tan(x); }
     public double func Asin(double x) { return asin(x); }
     public double func Acos(double x) { return acos(x); }
     public double func Atan(double x) { return atan(x); }
     public double func Atan2(double y, double x) { return atan2(y, x); }
-    public double func Sinh(double x)  { return sinh(x); }
-    public double func Cosh(double x)  { return cosh(x); }
-    public double func Tanh(double x)  { return tanh(x); }
+    public double func Sinh(double x) { return sinh(x); }
+    public double func Cosh(double x) { return cosh(x); }
+    public double func Tanh(double x) { return tanh(x); }
     public double func Asinh(double x) { return asinh(x); }
     public double func Acosh(double x) { return acosh(x); }
     public double func Atanh(double x) { return atanh(x); }
@@ -1793,12 +1790,12 @@ module Math {
     }
 
     /*
-     * Min - The smaller of a and b; delegates to Algorithms' generic Min
+     * Min - The smaller of a and b. Delegates to Algorithms' generic Min
      */
     public double func Min(double a, double b) { return Algorithms.Min(a, b); }
 
     /*
-     * Max - The larger of a and b; delegates to Algorithms' generic Max
+     * Max - The larger of a and b. Delegates to Algorithms' generic Max
      */
     public double func Max(double a, double b) { return Algorithms.Max(a, b); }
 

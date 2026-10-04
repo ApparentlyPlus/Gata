@@ -1,42 +1,26 @@
 /*
  * Ownership.g - ARC insertion, defer ordering, and the throws/Result lowering
  *
- * Ports Appa/src/Lowering/Ownership.cs. The last pass before the emitter, and the one the memory
- * model actually lives in: everything section 21 of the reference promises is decided here and
- * nowhere else. Nothing downstream inserts a retain or a release.
- *
+ * Ports Appa/src/Lowering/Ownership.cs. The last pass before the emitter and the one the memory model lives
+ * in: everything section 21 of the reference promises is decided here, nothing downstream inserts a retain or release.
  * Three jobs, interleaved because they share the frame stack:
- *
- *   ARC      every managed local is registered as an OWNER of its frame, and every exit from that
- *            frame - falling off the end, return, break, continue, throw - releases the owners it
- *            accumulated, innermost frame outward. A producer (new, a literal string, a call
- *            returning a managed value) hands back +1; a borrow gets retained on the way into
- *            storage that will outlive the expression.
- *   defer    the action is kept UNLOWERED on its frame and re-lowered at every splice site, so
- *            each occurrence gets its own hoisted temp names. Defers run before the frame's
- *            releases, so a defer can still read a local ARC is about to drop.
- *   throws   a throwing call is bound to a Result temp, its has_error tested, and the failure
- *            path either jumps to the enclosing try's catch label or returns an error Result.
- *
+ *   ARC      every managed local is an OWNER of its frame, and every exit (end of frame, return, break,
+ *            continue, throw) releases the owners it accumulated, innermost frame outward. A producer (new,
+ *            a literal string, a call returning a managed value) hands back +1, a borrow is retained on its
+ *            way into storage that outlives the expression.
+ *   defer    the action stays UNLOWERED on its frame and is re-lowered at every splice site, so each gets its
+ *            own hoisted temp names. Defers run before the frame's releases, so one can still read a local
+ *            ARC is about to drop.
+ *   throws   a throwing call binds to a Result temp, has_error is tested, and the failure path jumps to the
+ *            enclosing try's catch label or returns an error Result.
  * PORTING NOTES
- *
- * C# rebuilds with `record with`; the port's IR nodes are mutable classes, so the equivalent is an
- * in-place field write and a return of the same reference. That is the same divergence IrRewriter
- * already makes, and it is safe here for the same reason: nothing holds a second reference to a
- * body while this pass is walking it.
- *
- * `Stack<Frame>` becomes a List used as a stack. C#'s `_frames.ToArray()` enumerates a Stack from
- * the TOP down, which is the innermost-outward order every exit path depends on - so ReleaseForExit
- * below walks the list backwards, and getting that direction wrong would release an outer frame's
- * owners before an inner one's.
- *
- * `List<T>.RemoveRange` has no equivalent in List.g, so the two scratch lists are trimmed with a
- * TruncatePre/TruncateCl pair. Every use is 'drop everything added after this mark', which is what
- * those two do.
- *
- * `IrType.Bool` and friends are static in C#; here they are interned through the IrTypeTable the
- * pipeline threads, so the same shape stays one object. Mangler is an instance for the same reason
- * it is one in TypeResolver.
+ * C# rebuilds with `record with`. The IR nodes here are mutable classes, so it's an in-place field write and a
+ * return of the same reference (same divergence as IrRewriter, safe because nothing else holds the body).
+ * `Stack<Frame>` becomes a List used as a stack. C#'s ToArray() enumerates a Stack from the TOP down, the
+ * innermost-outward order every exit depends on, so ReleaseForExit walks the list backwards.
+ * `List<T>.RemoveRange` has no equivalent in List.g, so TruncatePre/TruncateCl drop everything added after a mark.
+ * `IrType.Bool` and friends are static in C#. Here they're interned through the IrTypeTable the pipeline threads,
+ * and Mangler is an instance for the same reason as in TypeResolver.
  */
 
 import "selfhostlib/String.g";
@@ -72,7 +56,7 @@ class OwnFrame {
 }
 
 /*
- * A (name, type) pair. C# uses a tuple; a union payload or a list element needs a real type here.
+ * A (name, type) pair. C# uses a tuple. A union payload or a list element needs a real type here.
  */
 class OwnedLocal {
     public String name;
@@ -81,11 +65,11 @@ class OwnedLocal {
 }
 
 /*
- * The frame predicates the exit paths stop on. C# passes lambdas; Gata has function pointers and no
+ * The frame predicates the exit paths stop on. C# passes lambdas. Gata has function pointers and no
  * closures, so they are three free functions and ReleaseForExit takes one.
  */
 bool func FrameIsLoop(OwnFrame f) { return f.loop; }
-bool func FrameIsTry(OwnFrame f)  { return f.tryFrame; }
+bool func FrameIsTry(OwnFrame f) { return f.tryFrame; }
 bool func FrameNever(OwnFrame _f) { return false; }
 
 class Ownership {
@@ -166,14 +150,14 @@ class Ownership {
      */
     bool func IsProducer(IrExpr e) {
         match (e) {
-            case IrNew(x)          { return true; }
-            case IrNewInit(x)      { return true; }
-            case IrLitString(x)    { return true; }
-            case IrCast(x)         { return self.IsProducer(x.value); }
-            case IrStaticCall(x)   { return self.IsManaged(x.type); }
+            case IrNew(x) { return true; }
+            case IrNewInit(x) { return true; }
+            case IrLitString(x) { return true; }
+            case IrCast(x) { return self.IsProducer(x.value); }
+            case IrStaticCall(x) { return self.IsManaged(x.type); }
             case IrInstanceCall(x) { return self.IsManaged(x.type); }
             case IrIndirectCall(x) { return self.IsManaged(x.type); }
-            case IrTernary(x)      { return self.IsManaged(x.type); }
+            case IrTernary(x) { return self.IsManaged(x.type); }
             default { return false; }
         }
     }
@@ -189,7 +173,7 @@ class Ownership {
 
     /*
      * TruncatePre / TruncateCl - Drop everything added to a scratch list after a mark. Stands in
-     * for C#'s List.RemoveRange, which List.g does not have; every call site in the original is
+     * for C#'s List.RemoveRange, which List.g does not have. Every call site in the original is
      * this shape.
      */
     void func TruncatePre(int mark) {
@@ -238,7 +222,7 @@ class Ownership {
     // The two Result fields the throws lowering reads and writes. Spelled once here so the struct's
     // shape lives in exactly two places: this pass and the emitter's Result typedefs.
 
-    String func ResultValueField()    { return "value"; }
+    String func ResultValueField() { return "value"; }
     String func ResultHasErrorField() { return "has_error"; }
 
     /*
@@ -276,8 +260,7 @@ class Ownership {
      */
     IrExpr func ErrorResult() {
         let List[IrFieldInit] fs = new List[IrFieldInit]();
-        fs.Add(new IrFieldInit(self.ResultHasErrorField(),
-                               IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool()))));
+        fs.Add(new IrFieldInit(self.ResultHasErrorField(), IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool()))));
         return IrExpr.IrStructLit(new IrStructLit(self.CurrentResultType(), fs));
     }
 
@@ -290,8 +273,7 @@ class Ownership {
             case Some(v) { fs.Add(new IrFieldInit(self.ResultValueField(), v)); }
             case None { }
         }
-        fs.Add(new IrFieldInit(self.ResultHasErrorField(),
-                               IrExpr.IrLitBool(new IrLitBool(false, self.t.Bool()))));
+        fs.Add(new IrFieldInit(self.ResultHasErrorField(), IrExpr.IrLitBool(new IrLitBool(false, self.t.Bool()))));
         return IrExpr.IrStructLit(new IrStructLit(self.CurrentResultType(), fs));
     }
 
@@ -310,7 +292,7 @@ class Ownership {
     }
 
     /*
-     * The per-try error flag. One is declared at the top of each try block; nested throwing calls
+     * The per-try error flag. One is declared at the top of each try block. Nested throwing calls
      * inside that block set it, and the block's tail tests it to reach the catch label.
      */
     String func HasErrorFlag() { return "__has_error"; }
@@ -437,8 +419,8 @@ class Ownership {
      */
     public static bool func IsExit(IrStmt s) {
         match (s) {
-            case IrReturn(x)   { return true; }
-            case IrBreak(x)    { return true; }
+            case IrReturn(x) { return true; }
+            case IrBreak(x) { return true; }
             case IrContinue(x) { return true; }
             default { return false; }
         }
@@ -493,7 +475,7 @@ class Ownership {
     }
 
     /*
-     * ReleaseForExit - Release frames innermost outward until stopAfter says to stop; used by
+     * ReleaseForExit - Release frames innermost outward until stopAfter says to stop. Used by
      * return, break, continue and throw.
      *
      * C# snapshots the stack first because ReleaseFrame re-lowers defers and a block-bodied one
@@ -536,8 +518,7 @@ class Ownership {
         }
         let List[IrExpr] args = new List[IrExpr]();
         args.Add(e);
-        return IrStmt.IrExprStmt(new IrExprStmt(
-            IrExpr.IrStaticCall(new IrStaticCall(fn, self.t.Void(), args))));
+        return IrStmt.IrExprStmt(new IrExprStmt(IrExpr.IrStaticCall(new IrStaticCall(fn, self.t.Void(), args))));
     }
 
     /*
@@ -575,32 +556,32 @@ class Ownership {
     void func LowerStmt(IrStmt s, List[IrStmt] outs) {
         match (s) {
             case IrNativeStmt(x) { outs.Add(s); }
-            case IrGoto(x)       { outs.Add(s); }
-            case IrLabel(x)      { outs.Add(s); }
-            case IrDebug(x)      { outs.Add(s); }
-            case IrPanic(x)      { outs.Add(s); }
-            case IrBlock(b)      { outs.Add(IrStmt.IrBlock(self.LowerBlock(b))); }
+            case IrGoto(x) { outs.Add(s); }
+            case IrLabel(x) { outs.Add(s); }
+            case IrDebug(x) { outs.Add(s); }
+            case IrPanic(x) { outs.Add(s); }
+            case IrBlock(b) { outs.Add(IrStmt.IrBlock(self.LowerBlock(b))); }
             case IrUnsafeBlock(u) {
                 let bool prev = self.inUnsafe;
                 self.inUnsafe = true;
                 outs.Add(IrStmt.IrBlock(self.LowerBlock(u.body)));
                 self.inUnsafe = prev;
             }
-            case IrThrow(x)       { self.LowerThrow(outs); }
+            case IrThrow(x) { self.LowerThrow(outs); }
             case IrAssignValue(av){ self.LowerAssignValue(av, outs); }
-            case IrDeclVar(dv)    { self.LowerDecl(dv, outs); }
-            case IrAssign(a)      { self.LowerAssign(a, outs); }
-            case IrExprStmt(es)   { self.LowerExprStmt(es, outs); }
-            case IrReturn(r)      { self.LowerReturn(r, outs); }
-            case IrBreak(x)       { self.ReleaseForExit(outs, FrameIsLoop); outs.Add(IrStmt.IrBreak(new IrBreak())); }
-            case IrContinue(x)    { self.ReleaseForExit(outs, FrameIsLoop); outs.Add(IrStmt.IrContinue(new IrContinue())); }
-            case IrIf(i)          { self.LowerIf(i, outs); }
-            case IrWhile(w)       { self.LowerWhile(w, outs); }
-            case IrFor(fr)        { self.LowerFor(fr, outs); }
-            case IrForIn(fi)      { self.LowerForIn(fi, outs); }
-            case IrTryCatch(tc)   { self.LowerTryCatch(tc, outs); }
-            case IrDefer(d)       { self.LowerDefer(d); }
-            // Desugar removed match and switch before this pass ran; anything left is a bug there.
+            case IrDeclVar(dv) { self.LowerDecl(dv, outs); }
+            case IrAssign(a) { self.LowerAssign(a, outs); }
+            case IrExprStmt(es) { self.LowerExprStmt(es, outs); }
+            case IrReturn(r) { self.LowerReturn(r, outs); }
+            case IrBreak(x) { self.ReleaseForExit(outs, FrameIsLoop); outs.Add(IrStmt.IrBreak(new IrBreak())); }
+            case IrContinue(x) { self.ReleaseForExit(outs, FrameIsLoop); outs.Add(IrStmt.IrContinue(new IrContinue())); }
+            case IrIf(i) { self.LowerIf(i, outs); }
+            case IrWhile(w) { self.LowerWhile(w, outs); }
+            case IrFor(fr) { self.LowerFor(fr, outs); }
+            case IrForIn(fi) { self.LowerForIn(fi, outs); }
+            case IrTryCatch(tc) { self.LowerTryCatch(tc, outs); }
+            case IrDefer(d) { self.LowerDefer(d); }
+            // Desugar removed match and switch before this pass ran. Anything left is a bug there.
             default { outs.Add(s); }
         }
     }
@@ -610,7 +591,7 @@ class Ownership {
      */
     bool func IsThrowsCall(IrExpr e) {
         match (e) {
-            case IrThrowsCall(x)         { return true; }
+            case IrThrowsCall(x) { return true; }
             case IrThrowsInstanceCall(x) { return true; }
             default { return false; }
         }
@@ -748,7 +729,7 @@ class Ownership {
     /*
      * LowerCatchExprStmt - 'f() catch { ... };' in statement position, where the result is
      * discarded. No variable, so the resolver already rejected 'assign' here. The success arm still
-     * releases the +1 nothing else will own; the failure arm must not, since value was never set.
+     * releases the +1 nothing else will own. The failure arm must not, since value was never set.
      */
     void func LowerCatchExprStmt(IrCatchCall cc, List[IrStmt] outs) {
         let int preStart = self.pre.Length();
@@ -874,8 +855,7 @@ class Ownership {
         self.FlushCl(clStart, outs);
 
         self.ThrowsCheck(res, rt, outs);
-        let bool owns = self.IsManaged(Exprs2.TypeOf(a.target)) && !self.inUnsafe &&
-                        self.IsManaged(Exprs2.TypeOf(target));
+        let bool owns = self.IsManaged(Exprs2.TypeOf(a.target)) && !self.inUnsafe && self.IsManaged(Exprs2.TypeOf(target));
         self.StoreInto(target, self.ResultValueOf(res, rt, inner), owns, outs);
     }
 
@@ -910,7 +890,7 @@ class Ownership {
         let IrExpr e = self.Flatten(es.expr, false);
         self.FlushPre(p2, outs);
 
-        // A hoisted producer is already a temp this pass will release; emitting the statement too
+        // A hoisted producer is already a temp this pass will release. Emitting the statement too
         // would evaluate it twice.
         if (!(self.IsProducer(es.expr) && self.IsManaged(Exprs2.TypeOf(es.expr)))) {
             let IrExprStmt st = new IrExprStmt(e);
@@ -972,7 +952,7 @@ class Ownership {
 
         if (pCount == 0 && cCount == 0) {
             // 'then' first, then 'else'. C# lowers both as arguments to the IrIf constructor, which
-            // it evaluates left to right; the temp counter is a sequence, so doing the else first
+            // it evaluates left to right. The temp counter is a sequence, so doing the else first
             // here would number every temp inside the two arms the other way round.
             let IrBlock thenBlk = self.LowerBlock(ifs.then);
             let Optional[IrBlock] els = Optional[IrBlock].None();
@@ -996,7 +976,7 @@ class Ownership {
 
     /*
      * LowerWhile - Same problem as LowerIf, but the condition is re-evaluated every turn, so the
-     * hoisted form becomes 'while (true) { <cond side effects>; if (!c) break; <body> }'.
+     * hoisted form becomes 'while (true) { <cond side effects>. If (!c) break; <body> }'.
      */
     void func LowerWhile(IrWhile ws, List[IrStmt] outs) {
         let int pStart = self.pre.Length();
@@ -1026,8 +1006,7 @@ class Ownership {
 
         self.nextFrameIsLoop = true;
         inner.Add(IrStmt.IrBlock(self.LowerBlock(ws.body)));
-        outs.Add(IrStmt.IrWhile(new IrWhile(
-            IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool())), new IrBlock(inner))));
+        outs.Add(IrStmt.IrWhile(new IrWhile(IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool())), new IrBlock(inner))));
     }
 
     /*
@@ -1057,8 +1036,7 @@ class Ownership {
 
         let List[IrStmt] stepOut = new List[IrStmt]();
         match (fr.step) { case Some(st) { self.LowerStmt(st, stepOut); } case None { } }
-        let bool stepSimple = stepOut.Length() == 0 ||
-                              (stepOut.Length() == 1 && Ownership.IsSimpleStep(stepOut.Get(0)));
+        let bool stepSimple = stepOut.Length() == 0 || (stepOut.Length() == 1 && Ownership.IsSimpleStep(stepOut.Get(0)));
 
         if (!initManaged && cpCount == 0 && ccCount == 0 && stepSimple) {
             self.TruncatePre(cpStart);
@@ -1118,8 +1096,7 @@ class Ownership {
 
         self.nextFrameIsLoop = true;
         loop.Add(IrStmt.IrBlock(self.LowerBlock(fr.body)));
-        outer.Add(IrStmt.IrWhile(new IrWhile(
-            IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool())), new IrBlock(loop))));
+        outer.Add(IrStmt.IrWhile(new IrWhile(IrExpr.IrLitBool(new IrLitBool(true, self.t.Bool())), new IrBlock(loop))));
         self.ReleaseFrame(frame, outer);
         self.frames.RemoveLast();
         outs.Add(IrStmt.IrBlock(new IrBlock(outer)));
@@ -1131,7 +1108,7 @@ class Ownership {
     public static bool func IsSimpleStep(IrStmt s) {
         match (s) {
             case IrExprStmt(x) { return true; }
-            case IrAssign(x)   { return true; }
+            case IrAssign(x) { return true; }
             default { return false; }
         }
     }
@@ -1141,15 +1118,15 @@ class Ownership {
      */
     public static bool func IsForInit(IrStmt s) {
         match (s) {
-            case IrDeclVar(x)  { return true; }
-            case IrAssign(x)   { return true; }
+            case IrDeclVar(x) { return true; }
+            case IrAssign(x) { return true; }
             case IrExprStmt(x) { return true; }
             default { return false; }
         }
     }
 
     /*
-     * LowerForIn - Two shapes. A fixed array counts to a known size and indexes directly; a
+     * LowerForIn - Two shapes. A fixed array counts to a known size and indexes directly. A
      * collection class counts to Length() and reads through Get(). The element is retained when the
      * element type is managed, because the binding outlives the call that produced it.
      */
@@ -1212,14 +1189,13 @@ class Ownership {
 
         let List[IrExpr] lenArgs = new List[IrExpr]();
         lenArgs.Add(colVar);
-        outs.Add(self.CountedFor(
-            IrExpr.IrStaticCall(new IrStaticCall(fi.lenCName, self.t.Int(), lenArgs)), new IrBlock(b2)));
+        outs.Add(self.CountedFor(IrExpr.IrStaticCall(new IrStaticCall(fi.lenCName, self.t.Int(), lenArgs)), new IrBlock(b2)));
         if (colManaged) { outs.Add(self.ReleaseStmt(colVar)); }
     }
 
     /*
      * LowerTryCatch - There is no C 'try', so this becomes a flag, a label and two gotos. Throwing
-     * calls inside the try body set __has_error and jump straight to the catch label; the body's
+     * calls inside the try body set __has_error and jump straight to the catch label. The body's
      * tail tests the flag for the ones that fell through.
      */
     void func LowerTryCatch(IrTryCatch tc, List[IrStmt] outs) {
@@ -1265,13 +1241,12 @@ class Ownership {
 
     /*
      * ThrowsCheck - The error branch after a throwing call's Result is bound. Inside a try it routes
-     * to the catch label; otherwise it propagates upward as an error Result.
+     * to the catch label. Otherwise it propagates upward as an error Result.
      */
     void func ThrowsCheck(String res, IrType rt, List[IrStmt] outs) {
         let List[IrStmt] branch = new List[IrStmt]();
         if (self.inTry) {
-            outs.Add(IrStmt.IrAssign(new IrAssign(self.HasErrorVar(), AssignOp.Assign,
-                                                  self.ResultHasErrorOf(res, rt))));
+            outs.Add(IrStmt.IrAssign(new IrAssign(self.HasErrorVar(), AssignOp.Assign, self.ResultHasErrorOf(res, rt))));
             self.ReleaseForExit(branch, FrameIsTry);
             branch.Add(IrStmt.IrGoto(new IrGoto(self.catchLabel)));
             outs.Add(self.IfThen(self.HasErrorVar(), branch));
@@ -1322,22 +1297,22 @@ class Ownership {
         }
 
         match (e) {
-            case IrStaticCall(sc)   { sc.args = self.FlattenArgs(sc.args); }
+            case IrStaticCall(sc) { sc.args = self.FlattenArgs(sc.args); }
             case IrInstanceCall(ic) { ic.recv = self.Flatten(ic.recv, false); ic.args = self.FlattenArgs(ic.args); }
-            case IrThrowsCall(tc)   { tc.args = self.FlattenArgs(tc.args); }
+            case IrThrowsCall(tc) { tc.args = self.FlattenArgs(tc.args); }
             case IrThrowsInstanceCall(ti) { ti.recv = self.Flatten(ti.recv, false); ti.args = self.FlattenArgs(ti.args); }
-            case IrNew(n)           { n.args = self.FlattenArgs(n.args); }
-            case IrCast(c)          { c.value = self.Flatten(c.value, true); }
-            case IrFieldLoad(fl)    { fl.obj = self.Flatten(fl.obj, false); }
-            case IrIndex(ix)        { ix.obj = self.Flatten(ix.obj, false); ix.idx = self.Flatten(ix.idx, false); }
-            case IrBinOp(b)         { b.left = self.Flatten(b.left, false); b.right = self.Flatten(b.right, false); }
-            case IrUnaryOp(u)       { u.operand = self.Flatten(u.operand, false); }
-            case IrPostfix(pf)      { pf.operand = self.Flatten(pf.operand, false); }
-            case IrAddrOf(a)        { a.target = self.Flatten(a.target, false); }
-            case IrDeref(d)         { d.ptr = self.Flatten(d.ptr, false); }
+            case IrNew(n) { n.args = self.FlattenArgs(n.args); }
+            case IrCast(c) { c.value = self.Flatten(c.value, true); }
+            case IrFieldLoad(fl) { fl.obj = self.Flatten(fl.obj, false); }
+            case IrIndex(ix) { ix.obj = self.Flatten(ix.obj, false); ix.idx = self.Flatten(ix.idx, false); }
+            case IrBinOp(b) { b.left = self.Flatten(b.left, false); b.right = self.Flatten(b.right, false); }
+            case IrUnaryOp(u) { u.operand = self.Flatten(u.operand, false); }
+            case IrPostfix(pf) { pf.operand = self.Flatten(pf.operand, false); }
+            case IrAddrOf(a) { a.target = self.Flatten(a.target, false); }
+            case IrDeref(d) { d.ptr = self.Flatten(d.ptr, false); }
             case IrIndirectCall(ic2){ ic2.target = self.Flatten(ic2.target, false); ic2.args = self.FlattenArgs(ic2.args); }
             case IrUnionConstruct(uc) { uc.args = self.FlattenArgs(uc.args); }
-            case IrUnionField(uf)   { uf.target = self.Flatten(uf.target, false); }
+            case IrUnionField(uf) { uf.target = self.Flatten(uf.target, false); }
             // literals, IrVar, IrSelfExpr, IrArrayLit, IrFuncRef have nothing to flatten
             default { }
         }
@@ -1369,7 +1344,7 @@ class Ownership {
     /*
      * FlattenTernary - A ternary evaluates ONE arm, so an arm's hoists must never spill into the
      * unconditional pre list - they would run whichever way the branch went. Arms with nothing to
-     * sequence stay inline as a real C conditional; otherwise both arms materialise into a temp
+     * sequence stay inline as a real C conditional. Otherwise both arms materialise into a temp
      * through an if/else, owned at +1 and released by the caller's frame.
      */
     IrExpr func FlattenTernary(IrTernary t, bool owned) {
@@ -1421,8 +1396,7 @@ class Ownership {
         self.TruncatePre(thenPre);
         self.TruncateCl(thenClStart);
 
-        self.pre.Add(IrStmt.IrIf(new IrIf(cond, new IrBlock(thenStmts),
-                                          Optional.Some(new IrBlock(elseStmts)))));
+        self.pre.Add(IrStmt.IrIf(new IrIf(cond, new IrBlock(thenStmts), Optional.Some(new IrBlock(elseStmts)))));
 
         // Borrowed: the caller's statement is what releases it.
         if (managed && !owned) { self.cl.Add(new OwnedLocal(tmp, t.type)); }
@@ -1483,8 +1457,7 @@ class Ownership {
         let List[IrExpr] args = self.FlattenArgs(ni.args);
         let int acCount = self.cl.Length() - acStart;
 
-        self.pre.Add(IrStmt.IrDeclVar(new IrDeclVar(v, ct,
-            Optional.Some(IrExpr.IrNew(new IrNew(ni.className, args, ct))))));
+        self.pre.Add(IrStmt.IrDeclVar(new IrDeclVar(v, ct, Optional.Some(IrExpr.IrNew(new IrNew(ni.className, args, ct))))));
 
         let int i = 0;
         while (i < acCount) { self.pre.Add(self.ReleaseStmt(Ownership.VarOf(self.cl.Get(acStart + i)))); i = i + 1; }

@@ -86,100 +86,71 @@ class Map[K, V] {
     }
 
     /*
+     * Slot - Index of key's pair, or -1. Every lookup below is this probe plus what it does with
+     * the hit
+     */
+    int func Slot(K key) {
+        if (self.cap == 0) { return -1; }
+        unsafe {
+            let mask = (self.cap - 1) as usize;
+            let h = Hash.Mix(key as usize) & mask;
+            let start = h;
+            while (self.used[h] != 0) {
+                if (self.keys[h] == key) { return h as int; }
+                h = (h + (1 as usize)) & mask;
+                if (h == start) { break; }
+            }
+        }
+        return -1;
+    }
+
+    /*
      * Get - Value for key, or the zero value if absent
      */
     public V func Get(K key) {
-        if (self.cap == 0) { return default(V); }
-        unsafe {
-            let mask = (self.cap - 1) as usize;
-            let h = Hash.Mix(key as usize) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h] == key) { return retain(self.vals[h]); }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { break; }
-            }
-        }
-        return default(V);
+        let i = self.Slot(key);
+        if (i < 0) { return default(V); }
+        unsafe { return retain(self.vals[i]); }
     }
 
     /*
-     * GetOrThrow - Value for key; throws if absent
+     * GetOrThrow - Value for key. Throws if absent
      */
     public throws V func GetOrThrow(K key) {
-        if (self.cap > 0) {
-            unsafe {
-                let mask = (self.cap - 1) as usize;
-                let h = Hash.Mix(key as usize) & mask;
-                let start = h;
-                while (self.used[h] != 0) {
-                    if (self.keys[h] == key) { return retain(self.vals[h]); }
-                    h = (h + (1 as usize)) & mask;
-                    if (h == start) { break; }
-                }
-            }
-        }
-        throw;
+        let i = self.Slot(key);
+        if (i < 0) { throw; }
+        unsafe { return retain(self.vals[i]); }
     }
 
     /*
-     * Find - Some(value) for key, or None; one probe, and tells absent from a stored zero
+     * Find - Some(value) for key, or None. One probe, and tells absent from a stored zero
      */
     public Optional[V] func Find(K key) {
-        if (self.cap > 0) {
-            unsafe {
-                let mask = (self.cap - 1) as usize;
-                let h = Hash.Mix(key as usize) & mask;
-                let start = h;
-                while (self.used[h] != 0) {
-                    if (self.keys[h] == key) { return Optional.Some(retain(self.vals[h])); }
-                    h = (h + (1 as usize)) & mask;
-                    if (h == start) { break; }
-                }
-            }
-        }
-        return Optional.None();
+        let i = self.Slot(key);
+        if (i < 0) { return Optional.None(); }
+        unsafe { return Optional.Some(retain(self.vals[i])); }
     }
 
     /*
-     * TryGet - Value for key into out, or false if absent; one probe, not Has then Get
+     * TryGet - Value for key into out, or false if absent. One probe, not Has then Get
      */
     public bool func TryGet(K key, ref V out) {
-        if (self.cap == 0) { return false; }
+        let i = self.Slot(key);
+        if (i < 0) { return false; }
         unsafe {
-            let mask = (self.cap - 1) as usize;
-            let h = Hash.Mix(key as usize) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h] == key) {
-                    release(out);
-                    out = retain(self.vals[h]);
-                    return true;
-                }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { break; }
-            }
+            release(out);
+            out = retain(self.vals[i]);
         }
-        return false;
+        return true;
     }
 
     /*
-     * GetOr - Value for key, or fallback if absent; tells absent from a stored zero value
+     * GetOr - Value for key, or fallback if absent. Tells absent from a stored zero value
      */
     public V func GetOr(K key, V fallback) {
-        if (self.cap > 0) {
-            unsafe {
-                let mask = (self.cap - 1) as usize;
-                let h = Hash.Mix(key as usize) & mask;
-                let start = h;
-                while (self.used[h] != 0) {
-                    if (self.keys[h] == key) { return retain(self.vals[h]); }
-                    h = (h + (1 as usize)) & mask;
-                    if (h == start) { break; }
-                }
-            }
-        }
-        return fallback;
+        let i = self.Slot(key);
+        if (i < 0) { return fallback; }
+        unsafe { return retain(self.vals[i]); }
     }
 
     public operator V func [](K key) { return self.Get(key); }
@@ -188,54 +159,36 @@ class Map[K, V] {
     /*
      * Has - True if key is present
      */
-    public bool func Has(K key) {
-        if (self.cap == 0) { return false; }
-        unsafe {
-            let mask = (self.cap - 1) as usize;
-            let h = Hash.Mix(key as usize) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h] == key) { return true; }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { break; }
-            }
-        }
-        return false;
-    }
+    public bool func Has(K key) { return self.Slot(key) >= 0; }
 
     /*
      * Remove - Delete key if present, backward-shifting any displaced pairs
      */
     public void func Remove(K key) {
-        if (self.cap == 0) { return; }
+        let slot = self.Slot(key);
+        if (slot < 0) { return; }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = Hash.Mix(key as usize) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h] == key) {
-                    release(self.keys[h]);
-                    release(self.vals[h]);
-                    self.used[h] = 0;
-                    self.count = self.count - 1;
-                    let j = (h + (1 as usize)) & mask;
-                    while (self.used[j] != 0) {
-                        let k2 = self.keys[j];
-                        let v2 = self.vals[j];
-                        self.used[j] = 0;
-                        self.count = self.count - 1;
-                        let hh = Hash.Mix(k2 as usize) & mask;
-                        while (self.used[hh] != 0) { hh = (hh + (1 as usize)) & mask; }
-                        self.keys[hh] = k2;
-                        self.vals[hh] = v2;
-                        self.used[hh] = 1;
-                        self.count = self.count + 1;
-                        j = (j + (1 as usize)) & mask;
-                    }
-                    return;
-                }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { return; }
+            let h = slot as usize;
+            release(self.keys[h]);
+            release(self.vals[h]);
+            self.used[h] = 0;
+            self.count = self.count - 1;
+
+            // everything after it in the run gets re-inserted, so no probe stops at the gap
+            let j = (h + (1 as usize)) & mask;
+            while (self.used[j] != 0) {
+                let k2 = self.keys[j];
+                let v2 = self.vals[j];
+                self.used[j] = 0;
+                self.count = self.count - 1;
+                let hh = Hash.Mix(k2 as usize) & mask;
+                while (self.used[hh] != 0) { hh = (hh + (1 as usize)) & mask; }
+                self.keys[hh] = k2;
+                self.vals[hh] = v2;
+                self.used[hh] = 1;
+                self.count = self.count + 1;
+                j = (j + (1 as usize)) & mask;
             }
         }
     }
@@ -368,7 +321,7 @@ class StringMap[V] {
     }
 
     /*
-     * Put - Insert or overwrite the value for key; a null key is ignored
+     * Put - Insert or overwrite the value for key. A null key is ignored
      */
     public void func Put(String key, V value) {
         if (key == null) { return; }
@@ -399,100 +352,71 @@ class StringMap[V] {
     }
 
     /*
+     * Slot - Index of key's pair, or -1. Every lookup below is this probe plus what it does with
+     * the hit
+     */
+    int func Slot(String key) {
+        if (self.cap == 0 || key == null) { return -1; }
+        unsafe {
+            let mask = (self.cap - 1) as usize;
+            let h = Hash.HashString(key) & mask;
+            let start = h;
+            while (self.used[h] != 0) {
+                if (self.keys[h].Equals(key)) { return h as int; }
+                h = (h + (1 as usize)) & mask;
+                if (h == start) { break; }
+            }
+        }
+        return -1;
+    }
+
+    /*
      * Get - Value for key, or the zero value if absent (incl. a null key)
      */
     public V func Get(String key) {
-        if (self.cap == 0 || key == null) { return default(V); }
-        unsafe {
-            let mask = (self.cap - 1) as usize;
-            let h = Hash.HashString(key) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h].Equals(key)) { return retain(self.vals[h]); }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { break; }
-            }
-        }
-        return default(V);
+        let i = self.Slot(key);
+        if (i < 0) { return default(V); }
+        unsafe { return retain(self.vals[i]); }
     }
 
     /*
-     * GetOrThrow - Value for key; throws if absent or key is null
+     * GetOrThrow - Value for key. Throws if absent or key is null
      */
     public throws V func GetOrThrow(String key) {
-        if (self.cap > 0 && key != null) {
-            unsafe {
-                let mask = (self.cap - 1) as usize;
-                let h = Hash.HashString(key) & mask;
-                let start = h;
-                while (self.used[h] != 0) {
-                    if (self.keys[h].Equals(key)) { return retain(self.vals[h]); }
-                    h = (h + (1 as usize)) & mask;
-                    if (h == start) { break; }
-                }
-            }
-        }
-        throw;
+        let i = self.Slot(key);
+        if (i < 0) { throw; }
+        unsafe { return retain(self.vals[i]); }
     }
 
     /*
-     * Find - Some(value) for key, or None; one probe, and tells absent from a stored zero
+     * Find - Some(value) for key, or None. One probe, and tells absent from a stored zero
      */
     public Optional[V] func Find(String key) {
-        if (self.cap > 0 && key != null) {
-            unsafe {
-                let mask = (self.cap - 1) as usize;
-                let h = Hash.HashString(key) & mask;
-                let start = h;
-                while (self.used[h] != 0) {
-                    if (self.keys[h].Equals(key)) { return Optional.Some(retain(self.vals[h])); }
-                    h = (h + (1 as usize)) & mask;
-                    if (h == start) { break; }
-                }
-            }
-        }
-        return Optional.None();
+        let i = self.Slot(key);
+        if (i < 0) { return Optional.None(); }
+        unsafe { return Optional.Some(retain(self.vals[i])); }
     }
 
     /*
-     * TryGet - Value for key into out, or false if absent; one probe, not Has then Get
+     * TryGet - Value for key into out, or false if absent. One probe, not Has then Get
      */
     public bool func TryGet(String key, ref V out) {
-        if (self.cap == 0 || key == null) { return false; }
+        let i = self.Slot(key);
+        if (i < 0) { return false; }
         unsafe {
-            let mask = (self.cap - 1) as usize;
-            let h = Hash.HashString(key) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h].Equals(key)) {
-                    release(out);
-                    out = retain(self.vals[h]);
-                    return true;
-                }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { break; }
-            }
+            release(out);
+            out = retain(self.vals[i]);
         }
-        return false;
+        return true;
     }
 
     /*
-     * GetOr - Value for key, or fallback if absent; tells absent from a stored zero value
+     * GetOr - Value for key, or fallback if absent. Tells absent from a stored zero value
      */
     public V func GetOr(String key, V fallback) {
-        if (self.cap > 0 && key != null) {
-            unsafe {
-                let mask = (self.cap - 1) as usize;
-                let h = Hash.HashString(key) & mask;
-                let start = h;
-                while (self.used[h] != 0) {
-                    if (self.keys[h].Equals(key)) { return retain(self.vals[h]); }
-                    h = (h + (1 as usize)) & mask;
-                    if (h == start) { break; }
-                }
-            }
-        }
-        return fallback;
+        let i = self.Slot(key);
+        if (i < 0) { return fallback; }
+        unsafe { return retain(self.vals[i]); }
     }
 
     public operator V func [](String key) { return self.Get(key); }
@@ -501,54 +425,36 @@ class StringMap[V] {
     /*
      * Has - True if key is present
      */
-    public bool func Has(String key) {
-        if (self.cap == 0 || key == null) { return false; }
-        unsafe {
-            let mask = (self.cap - 1) as usize;
-            let h = Hash.HashString(key) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h].Equals(key)) { return true; }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { break; }
-            }
-        }
-        return false;
-    }
+    public bool func Has(String key) { return self.Slot(key) >= 0; }
 
     /*
      * Remove - Delete key if present, backward-shifting any displaced pairs
      */
     public void func Remove(String key) {
-        if (self.cap == 0 || key == null) { return; }
+        let slot = self.Slot(key);
+        if (slot < 0) { return; }
         unsafe {
             let mask = (self.cap - 1) as usize;
-            let h = Hash.HashString(key) & mask;
-            let start = h;
-            while (self.used[h] != 0) {
-                if (self.keys[h].Equals(key)) {
-                    release(self.keys[h]);
-                    release(self.vals[h]);
-                    self.used[h] = 0;
-                    self.count = self.count - 1;
-                    let j = (h + (1 as usize)) & mask;
-                    while (self.used[j] != 0) {
-                        let k2 = self.keys[j];
-                        let v2 = self.vals[j];
-                        self.used[j] = 0;
-                        self.count = self.count - 1;
-                        let hh = Hash.HashString(k2) & mask;
-                        while (self.used[hh] != 0) { hh = (hh + (1 as usize)) & mask; }
-                        self.keys[hh] = k2;
-                        self.vals[hh] = v2;
-                        self.used[hh] = 1;
-                        self.count = self.count + 1;
-                        j = (j + (1 as usize)) & mask;
-                    }
-                    return;
-                }
-                h = (h + (1 as usize)) & mask;
-                if (h == start) { return; }
+            let h = slot as usize;
+            release(self.keys[h]);
+            release(self.vals[h]);
+            self.used[h] = 0;
+            self.count = self.count - 1;
+
+            // everything after it in the run gets re-inserted, so no probe stops at the gap
+            let j = (h + (1 as usize)) & mask;
+            while (self.used[j] != 0) {
+                let k2 = self.keys[j];
+                let v2 = self.vals[j];
+                self.used[j] = 0;
+                self.count = self.count - 1;
+                let hh = Hash.HashString(k2) & mask;
+                while (self.used[hh] != 0) { hh = (hh + (1 as usize)) & mask; }
+                self.keys[hh] = k2;
+                self.vals[hh] = v2;
+                self.used[hh] = 1;
+                self.count = self.count + 1;
+                j = (j + (1 as usize)) & mask;
             }
         }
     }

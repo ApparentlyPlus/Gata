@@ -91,7 +91,7 @@ class ManagedTypes {
      */
     public bool func IsManaged(IrType t) {
         match (t) {
-            case IrClassRef(cr)  { return self.classes.Has(cr.className); }
+            case IrClassRef(cr) { return self.classes.Has(cr.className); }
             case IrUnionType(ut) { return self.unions.Has(ut.name); }
             default { return false; }
         }

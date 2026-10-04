@@ -40,7 +40,7 @@ class CollectionResult {
 }
 
 /*
- * Walks every parsed program and fills a SymbolTable. One instance per build; call Collect once.
+ * Walks every parsed program and fills a SymbolTable. One instance per build. Call Collect once.
  */
 class SymbolCollector {
     DiagnosticBag diag;
@@ -186,23 +186,20 @@ class SymbolCollector {
                         self.diag.Error(Codes.WrongAnnotationKind(), file, span,
                             "'@builtin' has no effect here; it only matters on a class or native type");
                     } else if (!BuiltinTypes.IsBuiltin(ba.name)) {
-                        self.diag.Error(Codes.UnknownIntrinsic(), file, span,
-                            "unknown @builtin type '" + ba.name + "'");
+                        self.diag.Error(Codes.UnknownIntrinsic(), file, span, "unknown @builtin type '" + ba.name + "'");
                     } else {
                         self.BindSlot(self.sym.builtins, "@builtin", ba.name, cName, file, span);
                     }
                 }
                 case IntrinsicAnnotation(ia) {
                     if (!Roles.IsRole(ia.role)) {
-                        self.diag.Error(Codes.UnknownIntrinsic(), file, span,
-                            "unknown @intrinsic role '" + ia.role + "'");
+                        self.diag.Error(Codes.UnknownIntrinsic(), file, span, "unknown @intrinsic role '" + ia.role + "'");
                     } else {
                         self.BindSlot(self.sym.intrinsics, "@intrinsic", ia.role, cName, file, span);
                     }
                 }
                 default {
-                    self.diag.Error(Codes.WrongAnnotationKind(), file, span,
-                        "only '@intrinsic' is valid here, not '@preamble'");
+                    self.diag.Error(Codes.WrongAnnotationKind(), file, span, "only '@intrinsic' is valid here, not '@preamble'");
                 }
             }
             i = i + 1;
@@ -280,7 +277,7 @@ class SymbolCollector {
             case None {
                 match (Literals.InferFieldTypeSpec(fd.init)) {
                     case Some(t) { return t; }
-                    case None    { return Specs.NamedAt("int", fd.span); }
+                    case None { return Specs.NamedAt("int", fd.span); }
                 }
             }
         }
@@ -335,8 +332,7 @@ class SymbolCollector {
         let bool isAs = od.op == "as" && od.params.Length() == 1;
         let bool fresh = isAs
             ? self.declaredAsConversions.AddNew(MemberKey(cd.name, SigKey.Of("as", od.params)))
-            : self.declaredOperatorSigs.AddNew(
-                  MemberKey(cd.name, od.op + "|" + (od.params.Length() as String)));
+            : self.declaredOperatorSigs.AddNew(MemberKey(cd.name, od.op + "|" + (od.params.Length() as String)));
 
         if (!fresh) {
             self.diag.Error(Codes.DuplicateName(), file, od.span, isAs
@@ -361,8 +357,7 @@ class SymbolCollector {
         match (od.returnType) {
             case Some(t) { return od.returnType; }
             case None {
-                return Optional.Some(
-                    Specs.NamedAt(OperatorRules.DefaultReturn(od.op, cls), od.span));
+                return Optional.Some(Specs.NamedAt(OperatorRules.DefaultReturn(od.op, cls), od.span));
             }
         }
     }
@@ -416,8 +411,7 @@ class SymbolCollector {
         self.DeclareType(nd.name, file, nd.span);
         self.sym.RegisterClass(nd.name, file, self.mangler);
         self.preDefinedStructs.AddNew(nd.name);
-        self.BindIntrinsics(nd.annotations, self.mangler.Class(nd.name), file, nd.span,
-                            false, true, true);
+        self.BindIntrinsics(nd.annotations, self.mangler.Class(nd.name), file, nd.span, false, true, true);
     }
 
     /*

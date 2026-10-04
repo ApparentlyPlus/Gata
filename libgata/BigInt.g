@@ -64,9 +64,9 @@ private int func _bi_clz32(uint v) {
     if (v == (0 as uint)) { return 32; }
     let n = 0;
     if ((v & (0xFFFF0000 as uint)) == (0 as uint)) { n = n + 16; v = v << 16; }
-    if ((v & (0xFF000000 as uint)) == (0 as uint)) { n = n + 8;  v = v << 8;  }
-    if ((v & (0xF0000000 as uint)) == (0 as uint)) { n = n + 4;  v = v << 4;  }
-    if ((v & (0xC0000000 as uint)) == (0 as uint)) { n = n + 2;  v = v << 2;  }
+    if ((v & (0xFF000000 as uint)) == (0 as uint)) { n = n + 8; v = v << 8; }
+    if ((v & (0xF0000000 as uint)) == (0 as uint)) { n = n + 4; v = v << 4; }
+    if ((v & (0xC0000000 as uint)) == (0 as uint)) { n = n + 2; v = v << 2; }
     if ((v & (0x80000000 as uint)) == (0 as uint)) { n = n + 1; }
     return n;
 }
@@ -100,7 +100,7 @@ private int func _bi_cmp(uint* a, int an, uint* b, int bn) {
 }
 
 /*
- * _bi_add - r = a + b, an >= bn; writes an limbs and returns the carry out
+ * _bi_add - r = a + b, an >= bn. Writes an limbs and returns the carry out
  */
 private uint func _bi_add(uint* r, uint* a, int an, uint* b, int bn) {
     unsafe {
@@ -123,7 +123,7 @@ private uint func _bi_add(uint* r, uint* a, int an, uint* b, int bn) {
 }
 
 /*
- * _bi_addself - a += b in place, an >= bn; the caller guarantees no carry escapes
+ * _bi_addself - a += b in place, an >= bn. The caller guarantees no carry escapes
  */
 private void func _bi_addself(uint* a, int an, uint* b, int bn) {
     unsafe {
@@ -145,7 +145,7 @@ private void func _bi_addself(uint* a, int an, uint* b, int bn) {
 }
 
 /*
- * _bi_sub - r = a - b, requiring |a| >= |b|; writes an limbs
+ * _bi_sub - r = a - b, requiring |a| >= |b|. Writes an limbs
  */
 private void func _bi_sub(uint* r, uint* a, int an, uint* b, int bn) {
     unsafe {
@@ -167,7 +167,7 @@ private void func _bi_sub(uint* r, uint* a, int an, uint* b, int bn) {
 }
 
 /*
- * _bi_muladd1 - a = a * m + add, in place; returns the carry out
+ * _bi_muladd1 - a = a * m + add, in place. Returns the carry out
  */
 private uint func _bi_muladd1(uint* a, int an, uint m, uint add) {
     unsafe {
@@ -184,7 +184,7 @@ private uint func _bi_muladd1(uint* a, int an, uint m, uint add) {
 }
 
 /*
- * _bi_submul - a -= b * m; returns the borrow out (up to a full limb wide)
+ * _bi_submul - a -= b * m. Returns the borrow out (up to a full limb wide)
  */
 private uint func _bi_submul(uint* a, uint* b, int bn, uint m) {
     unsafe {
@@ -428,12 +428,12 @@ private bool func _bi_guess_too_big(uint q, uint64 valHi, uint valLo, uint divHi
 /*
  * _bi_divrem - grammar-school long division
  *
- * a is overwritten with the remainder; q receives qn quotient limbs (pass a null
+ * a is overwritten with the remainder. Q receives qn quotient limbs (pass a null
  * q with qn 0 to compute the remainder alone). Requires an >= bn >= 2 and a
  * normalised divisor (b[bn-1] != 0).
  *
  * The divisor's top limb is shifted so its high bit is set before any guessing
- * happens, which is what makes the leading-limb quotient estimate accurate; the
+ * happens, which is what makes the leading-limb quotient estimate accurate. The
  * dividend window is shifted by the same amount as it is read, so neither buffer
  * has to be normalised for real.
  */
@@ -506,7 +506,7 @@ private void func _bi_divrem(uint* a, int an, uint* b, int bn, uint* q, int qn) 
  * has no address the language can hand out.
  */
 private int func _bi_op_and() { return 0; }
-private int func _bi_op_or()  { return 1; }
+private int func _bi_op_or() { return 1; }
 private int func _bi_op_xor() { return 2; }
 
 /*
@@ -522,9 +522,9 @@ private int func _bi_digit(char c, int radix) {
 }
 
 class BigInt {
-    int   sign;   // -1, 0 or +1; 0 exactly when the value is zero
-    uint* mag;    // |value| in little-endian 32-bit limbs; null when sign is 0
-    int   len;    // significant limbs, so mag[len-1] is never 0; 0 when sign is 0
+    int   sign;   // -1, 0 or +1, 0 exactly when the value is zero
+    uint* mag;    // |value| in little-endian 32-bit limbs. Null when sign is 0
+    int   len;    // significant limbs, so mag[len-1] is never 0 (len is 0 when sign is 0)
     int   cap;    // limbs actually allocated, which len may be shorter than
 
     func _init() {
@@ -560,7 +560,7 @@ class BigInt {
     /*
      * AdoptTwos - Take ownership of a buffer holding a two's-complement value
      *
-     * The top limb decides the sign; a negative one is negated in place back
+     * The top limb decides the sign. A negative one is negated in place back
      * into magnitude form. Callers size the buffer one limb beyond the operands
      * so the sign bit is always a real limb and never an overflowed one.
      */
@@ -577,8 +577,8 @@ class BigInt {
         return BigInt.Adopt(-1, buf, n);
     }
 
-    public static BigInt func Zero()     { return new BigInt(); }
-    public static BigInt func One()      { return BigInt.FromInt(1); }
+    public static BigInt func Zero() { return new BigInt(); }
+    public static BigInt func One() { return BigInt.FromInt(1); }
     public static BigInt func MinusOne() { return BigInt.FromInt(-1); }
 
     /*
@@ -625,7 +625,7 @@ class BigInt {
      * Clone - A separate BigInt with the same value
      *
      * Rarely needed, since values are immutable and sharing a reference is
-     * always safe; it exists for callers holding a BigInt across a boundary
+     * always safe. It exists for callers holding a BigInt across a boundary
      * that expects sole ownership.
      */
     public BigInt func Clone() {
@@ -640,8 +640,8 @@ class BigInt {
      */
     public int func Sign() { return self.sign; }
 
-    public bool func IsZero()     { return self.sign == 0; }
-    public bool func IsOne()      { return self.sign > 0 && self.len == 1 && _bi_get(self.mag, 0) == (1 as uint); }
+    public bool func IsZero() { return self.sign == 0; }
+    public bool func IsOne() { return self.sign > 0 && self.len == 1 && _bi_get(self.mag, 0) == (1 as uint); }
     public bool func IsMinusOne() { return self.sign < 0 && self.len == 1 && _bi_get(self.mag, 0) == (1 as uint); }
     public bool func IsNegative() { return self.sign < 0; }
 
@@ -680,7 +680,7 @@ class BigInt {
     public int func LimbCount() { return self.len; }
 
     /*
-     * TestBit - Bit i of |value|; false past the top bit and for a negative i
+     * TestBit - Bit i of |value|. False past the top bit and for a negative i
      *
      * This reads the MAGNITUDE, not a two's-complement view, so the bits of a
      * negative value are the bits of its absolute value. The exponent walks in
@@ -694,7 +694,7 @@ class BigInt {
     }
 
     /*
-     * CompareTo - -1, 0 or 1; a null operand compares as zero
+     * CompareTo - -1, 0 or 1. A null operand compares as zero
      */
     public int func CompareTo(BigInt o) {
         if (o == null) { return self.sign; }
@@ -715,8 +715,8 @@ class BigInt {
         return self.CompareTo(o) == 0;
     }
 
-    public operator bool func < (BigInt o) { return self.CompareTo(o) <  0; }
-    public operator bool func > (BigInt o) { return self.CompareTo(o) >  0; }
+    public operator bool func < (BigInt o) { return self.CompareTo(o) < 0; }
+    public operator bool func > (BigInt o) { return self.CompareTo(o) > 0; }
     public operator bool func <=(BigInt o) { return self.CompareTo(o) <= 0; }
     public operator bool func >=(BigInt o) { return self.CompareTo(o) >= 0; }
 
@@ -753,7 +753,7 @@ class BigInt {
     }
 
     /*
-     * + - Sum. Like signs add magnitudes; unlike signs subtract the smaller from
+     * + - Sum. Like signs add magnitudes. Unlike signs subtract the smaller from
      * the larger and take the larger's sign.
      */
     public operator BigInt func +(BigInt o) {
@@ -847,7 +847,7 @@ class BigInt {
      * DivRem - Quotient, with the remainder written through rem
      *
      * A zero divisor yields zero for both, matching the lenient half of the
-     * library's convention; DivRemOrThrow is the strict one.
+     * library's convention. DivRemOrThrow is the strict one.
      */
     public static BigInt func DivRem(BigInt a, BigInt b, ref BigInt rem) {
         rem = new BigInt();
@@ -880,7 +880,7 @@ class BigInt {
     }
 
     /*
-     * Divide - Quotient alone; zero when the divisor is zero
+     * Divide - Quotient alone. Zero when the divisor is zero
      */
     public static BigInt func Divide(BigInt a, BigInt b) {
         let BigInt r = null;
@@ -888,7 +888,7 @@ class BigInt {
     }
 
     /*
-     * Remainder - Remainder alone; zero when the divisor is zero
+     * Remainder - Remainder alone. Zero when the divisor is zero
      */
     public static BigInt func Remainder(BigInt a, BigInt b) {
         let BigInt r = null;
@@ -1007,7 +1007,7 @@ class BigInt {
      *
      * borrow carries the +1 of the negation and must start at 1. It stays 1 only
      * while every limb so far has been zero, which is exactly when the increment
-     * is still propagating; past the top limb the result settles at all-ones,
+     * is still propagating. Past the top limb the result settles at all-ones,
      * which is the sign extension.
      */
     uint func TwosLimb(int i, ref uint borrow) {
@@ -1023,7 +1023,7 @@ class BigInt {
      * BitwiseOp - Walk both operands in two's complement, applying op limb by limb
      *
      * The result is one limb longer than the widest operand so its own sign bit
-     * is a real limb; AND of two non-negatives needs only the narrower one, since
+     * is a real limb. AND of two non-negatives needs only the narrower one, since
      * anything above it is zero on at least one side.
      */
     static BigInt func BitwiseOp(BigInt a, BigInt b, int op) {
@@ -1083,7 +1083,7 @@ class BigInt {
      * Pow - value raised to a non-negative exponent, by square and multiply
      *
      * A negative exponent has no integer value, so it yields zero rather than
-     * pretending; use ModPow when you want a modular inverse-style result.
+     * pretending. Use ModPow when you want a modular inverse-style result.
      */
     public static BigInt func Pow(BigInt v, int e) {
         if (e < 0) { return new BigInt(); }
@@ -1139,7 +1139,7 @@ class BigInt {
      * Gcd - Greatest common divisor, always non-negative
      *
      * Plain Euclid over full-width remainders. Lehmer's algorithm would cut the
-     * number of big divisions by working on the leading digits first; this does
+     * number of big divisions by working on the leading digits first. This does
      * not implement it.
      */
     public static BigInt func Gcd(BigInt a, BigInt b) {
@@ -1271,7 +1271,7 @@ class BigInt {
     
     /*
      * Parse - Lenient decimal parse: skips leading whitespace, takes an optional
-     * sign, stops at the first non-digit; null, empty and invalid all give zero
+     * sign, stops at the first non-digit. Null, empty and invalid all give zero
      * (mirrors Int.Parse)
      */
     public static BigInt func Parse(String s) { return BigInt.ParseRadix(s, 10); }

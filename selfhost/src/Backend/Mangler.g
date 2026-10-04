@@ -122,8 +122,7 @@ module Mangle {
                 return name == "goto";
             }
             case 'i' {
-                return name == "if" || name == "imaginary" || name == "inline" || name == "int"
-                       || name == "interface";
+                return name == "if" || name == "imaginary" || name == "inline" || name == "int" || name == "interface";
             }
             case 'l' {
                 return name == "long";
@@ -201,28 +200,28 @@ module Mangle {
      * OpSuffix - The stable C identifier suffix for a Gata operator token
      */
     public String func OpSuffix(String op) {
-        if (op == "+")   { return "add"; }
-        if (op == "-")   { return "sub"; }
-        if (op == "*")   { return "mul"; }
-        if (op == "/")   { return "div"; }
-        if (op == "%")   { return "mod"; }
-        if (op == "==")  { return "eq"; }
-        if (op == "!=")  { return "neq"; }
-        if (op == "<")   { return "lt"; }
-        if (op == ">")   { return "gt"; }
-        if (op == "<=")  { return "lte"; }
-        if (op == ">=")  { return "gte"; }
-        if (op == "&")   { return "band"; }
-        if (op == "|")   { return "bor"; }
-        if (op == "^")   { return "bxor"; }
-        if (op == "<<")  { return "shl"; }
-        if (op == ">>")  { return "shr"; }
-        if (op == "[]")  { return "index_get"; }
+        if (op == "+") { return "add"; }
+        if (op == "-") { return "sub"; }
+        if (op == "*") { return "mul"; }
+        if (op == "/") { return "div"; }
+        if (op == "%") { return "mod"; }
+        if (op == "==") { return "eq"; }
+        if (op == "!=") { return "neq"; }
+        if (op == "<") { return "lt"; }
+        if (op == ">") { return "gt"; }
+        if (op == "<=") { return "lte"; }
+        if (op == ">=") { return "gte"; }
+        if (op == "&") { return "band"; }
+        if (op == "|") { return "bor"; }
+        if (op == "^") { return "bxor"; }
+        if (op == "<<") { return "shl"; }
+        if (op == ">>") { return "shr"; }
+        if (op == "[]") { return "index_get"; }
         if (op == "[]=") { return "index_set"; }
-        if (op == "!")   { return "not"; }
-        if (op == "~")   { return "bnot"; }
-        if (op == "++")  { return "inc"; }
-        if (op == "--")  { return "dec"; }
+        if (op == "!") { return "not"; }
+        if (op == "~") { return "bnot"; }
+        if (op == "++") { return "inc"; }
+        if (op == "--") { return "dec"; }
         return "op";
     }
 
@@ -623,9 +622,6 @@ class Mangler {
         return overloaded ? bare + "_" + Mangle.OverloadSuffix(ps) : bare;
     }
 
-    /*
-     * Operator - The C name for an operator overload.
-     */
     public String func Operator(String owner, String op, List[Param] ps, bool overloaded) {
         let String bare = "gata_" + self.Sanitize(owner) + "_" + Mangle.OpSuffix(op);
         if (!overloaded) { return bare; }
@@ -652,15 +648,15 @@ class Mangler {
      */
     String func ComposeCType(IrType t) {
         match (t) {
-            case IrVoidType(x)    { return "void"; }
-            case IrErrorType(x)   { return "gata_ERROR_TYPE"; }
-            case IrPrimType(x)    { return PrimTypes.ToC(x.cName); }
-            case IrClassRef(x)    { return self.Class(x.className) + "*"; }
-            case IrEnumType(x)    { return self.EnumName(x.name); }
-            case IrUnionType(x)   { return self.UnionName(x.name); }
-            case IrPtrType(x)     { return self.CType(x.inner) + "*"; }
-            case IrArrayType(x)   { return self.Class(Types.MangledName(t)); }
-            case IrResultType(x)  { return Types.ResultName(x); }
+            case IrVoidType(x) { return "void"; }
+            case IrErrorType(x) { return "gata_ERROR_TYPE"; }
+            case IrPrimType(x) { return PrimTypes.ToC(x.cName); }
+            case IrClassRef(x) { return self.Class(x.className) + "*"; }
+            case IrEnumType(x) { return self.EnumName(x.name); }
+            case IrUnionType(x) { return self.UnionName(x.name); }
+            case IrPtrType(x) { return self.CType(x.inner) + "*"; }
+            case IrArrayType(x) { return self.Class(Types.MangledName(t)); }
+            case IrResultType(x) { return Types.ResultName(x); }
             case IrFuncPtrType(x) { return self.Class(Types.MangledName(t)); }
         }
     }

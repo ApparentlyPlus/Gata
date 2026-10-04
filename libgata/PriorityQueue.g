@@ -59,7 +59,7 @@ class PriorityQueue[T] {
     }
 
     /*
-     * PopOrThrow - Remove and return the minimum; throws if empty
+     * PopOrThrow - Remove and return the minimum. Throws if empty
      */
     public throws T func PopOrThrow() {
         if (self.length <= 0) { throw; }
@@ -96,7 +96,7 @@ class PriorityQueue[T] {
     }
 
     /*
-     * Grow - Double capacity (from 8) until at least need; raw move, no retains
+     * Grow - Double capacity (from 8) until at least need. Raw move, no retains
      */
     void func Grow(int need) {
         let nc = self.cap * 2;

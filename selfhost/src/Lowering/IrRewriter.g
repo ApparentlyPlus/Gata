@@ -2,24 +2,14 @@
  * IrRewriter.g - the one IR rewrite, written once and reused by every lowering pass
  *
  * Ports Appa/src/Lowering/IrRewriter.cs.
- *
- * The rewriting counterpart to IrWalker: same generic-plus-hook shape, because Gata has neither
- * inheritance nor closures, and the same reasoning applies. A pass supplies its state and up to
- * two hooks, each returning the node to put in place of the one it was handed.
- *
+ * The counterpart to IrWalker, same generic-plus-hook shape (Gata has no inheritance or closures). A pass
+ * supplies its state and up to two hooks, each returning the node to put in place of the one it got:
  *   func(IrRewrite[S], IrStmt) -> IrStmt   return s unchanged to keep it
- *
- * ONE DIFFERENCE FROM C#, AND IT IS DELIBERATE. C#'s IR nodes are records, so its rewriter is
- * copy-on-write: every Update* builds a replacement with `with`, and returns the original when
- * nothing changed, which is what makes `Run` able to hand back the very same module. Here the IR
- * nodes are ordinary mutable classes, so the structural recursion assigns each rewritten child
- * back into its parent instead. That is shorter, it cannot lose a node's span the way rebuilding
- * one by hand can, and identity preservation becomes automatic rather than something forty
- * ReferenceEquals checks have to maintain.
- *
- * What it costs: a pass can no longer read the original tree after rewriting part of it. No pass
- * does - Desugar and Densifier both rewrite bottom-up and never look back - and a pass that needed
- * to would have to copy first, which is worth being explicit about rather than getting for free.
+ * ONE DELIBERATE DIFFERENCE FROM C#: its IR nodes are records, so its rewriter is copy-on-write and returns
+ * the original when nothing changed. Here the nodes are mutable classes, so the recursion assigns each
+ * rewritten child back into its parent. Shorter, it can't lose a node's span, and identity preservation is
+ * automatic instead of forty ReferenceEquals checks. The cost: a pass can't read the original tree after
+ * rewriting part of it. None does (Desugar and Densifier both go bottom-up), and one that needed to would copy first.
  */
 
 import "selfhostlib/String.g";
@@ -225,7 +215,7 @@ class IrRewrite[S] {
                     case None { }
                 }
             }
-            case IrDefer(d2)       { d2.action = self.Stmt(d2.action); }
+            case IrDefer(d2) { d2.action = self.Stmt(d2.action); }
             case IrAssignValue(av) { av.value = self.Expr(av.value); }
             // Everything else is in NodeCoverage's inert set and has no children
             default { }
@@ -288,18 +278,18 @@ class IrRewrite[S] {
                 t.then = self.Expr(t.then);
                 t.otherwise = self.Expr(t.otherwise);
             }
-            case IrUnaryOp(u)  { u.operand = self.Expr(u.operand); }
-            case IrPostfix(p)  { p.operand = self.Expr(p.operand); }
+            case IrUnaryOp(u) { u.operand = self.Expr(u.operand); }
+            case IrPostfix(p) { p.operand = self.Expr(p.operand); }
             case IrArrayLit(al) { self.MapArgs(al.elems); }
-            case IrInterp(ip)  { self.MapArgs(ip.parts); }
-            case IrAddrOf(a2)  { a2.target = self.Expr(a2.target); }
-            case IrDeref(d3)   { d3.ptr = self.Expr(d3.ptr); }
+            case IrInterp(ip) { self.MapArgs(ip.parts); }
+            case IrAddrOf(a2) { a2.target = self.Expr(a2.target); }
+            case IrDeref(d3) { d3.ptr = self.Expr(d3.ptr); }
             case IrIndirectCall(ic2) {
                 ic2.target = self.Expr(ic2.target);
                 self.MapArgs(ic2.args);
             }
             case IrUnionConstruct(uc) { self.MapArgs(uc.args); }
-            case IrUnionField(uf)     { uf.target = self.Expr(uf.target); }
+            case IrUnionField(uf) { uf.target = self.Expr(uf.target); }
             // Everything else is in NodeCoverage's inert set and has no children
             default { }
         }

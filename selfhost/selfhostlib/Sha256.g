@@ -1,11 +1,8 @@
 /*
  * Sha256.g - SHA-256 (FIPS 180-4), incremental
  *
- * Eight working variables, sixty-four rounds, the standard round constants. Incremental because the
- * inputs worth hashing are large enough that materialising them a second time to hash them is the
- * expensive part.
- *
- * All arithmetic is on `uint`, which wraps at 32 bits exactly as the specification wants.
+ * Incremental because the inputs worth hashing are large, and materialising them a second time just to hash
+ * them is the expensive part. All arithmetic is on `uint`, which wraps at 32 bits like the spec wants.
  *
  * Author: u/ApparentlyPlus
  */
@@ -95,8 +92,7 @@ class Sha256 {
         let int t = 0;
         while (t < 16) {
             let int b = t * 4;
-            w.Set(t, (self.buf.Get(b) << 24) | (self.buf.Get(b + 1) << 16)
-                   | (self.buf.Get(b + 2) << 8) | self.buf.Get(b + 3));
+            w.Set(t, (self.buf.Get(b) << 24) | (self.buf.Get(b + 1) << 16) | (self.buf.Get(b + 2) << 8) | self.buf.Get(b + 3));
             t = t + 1;
         }
         let int u = 16;

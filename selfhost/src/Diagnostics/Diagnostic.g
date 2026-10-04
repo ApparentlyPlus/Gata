@@ -15,8 +15,7 @@ import "src/Diagnostics/TextSpan.g";
 import "src/Diagnostics/SourceText.g";
 
 /*
- * Severity of a diagnostic, either warning or error. Warnings do not prevent compilation, but
- * errors do.
+ * Severity of a diagnostic, a warning or an error. Only errors stop compilation.
  */
 enum Severity { Warning, Error }
 
@@ -152,8 +151,7 @@ module PErr {
 }
 
 /*
- * This module contains all the diagnostic codes used in the compiler. Each code is a string that
- * starts with "G" followed by a three digit number.
+ * Every diagnostic code the compiler uses, as a string: "G" plus a three digit number.
  */
 module Codes {
     public String func File() { return "G000"; }
@@ -338,12 +336,12 @@ module Suggest {
 module C {
 
     // The slots Install programs. 0, 7, 8 and 15 are left alone - they are the structural greys.
-    int func SlotEmber()  { return 1; }
-    int func SlotGold()   { return 2; }
-    int func SlotSand()   { return 3; }
-    int func SlotCyan()   { return 4; }
+    int func SlotEmber() { return 1; }
+    int func SlotGold() { return 2; }
+    int func SlotSand() { return 3; }
+    int func SlotCyan() { return 4; }
     int func SlotYellow() { return 5; }
-    int func SlotRed()    { return 6; }
+    int func SlotRed() { return 6; }
 
     /*
      * Install - Program the six tones, once, at startup. Skipped when neither stream is a terminal:
@@ -351,24 +349,24 @@ module C {
      */
     public void func Install() {
         if (!Console.IsTty() && !Console.IsTtyErr()) { return; }
-        Console.SetPalette(C.SlotEmber(),  255, 135,  95);   // xterm 209
-        Console.SetPalette(C.SlotGold(),   255, 215,  95);   // xterm 221
-        Console.SetPalette(C.SlotSand(),   215, 175, 135);   // xterm 180
-        Console.SetPalette(C.SlotCyan(),    95, 215, 215);   // xterm 80
-        Console.SetPalette(C.SlotYellow(), 255, 175,   0);   // xterm 214
-        Console.SetPalette(C.SlotRed(),    255,  95,  95);   // xterm 203
+        Console.SetPalette(C.SlotEmber(), 255, 135, 95);   // xterm 209
+        Console.SetPalette(C.SlotGold(), 255, 215, 95);   // xterm 221
+        Console.SetPalette(C.SlotSand(), 215, 175, 135);   // xterm 180
+        Console.SetPalette(C.SlotCyan(), 95, 215, 215);   // xterm 80
+        Console.SetPalette(C.SlotYellow(), 255, 175, 0);   // xterm 214
+        Console.SetPalette(C.SlotRed(), 255, 95, 95);   // xterm 203
     }
 
-    public String func NC()     { return Console.NoStyle(); }
-    public String func BOLD()   { return Console.Fg(Vga.White()); }
-    public String func DIM()    { return Console.Fg(Vga.DarkGray()); }
+    public String func NC() { return Console.NoStyle(); }
+    public String func BOLD() { return Console.Fg(Vga.White()); }
+    public String func DIM() { return Console.Fg(Vga.DarkGray()); }
 
-    public String func EMBER()  { return Console.Fg(Console.HasPalette() ? C.SlotEmber()  : Vga.Brown()); }
-    public String func GOLD()   { return Console.Fg(Console.HasPalette() ? C.SlotGold()   : Vga.Yellow()); }
-    public String func SAND()   { return Console.Fg(Console.HasPalette() ? C.SlotSand()   : Vga.Brown()); }
-    public String func CYAN()   { return Console.Fg(Console.HasPalette() ? C.SlotCyan()   : Vga.LightCyan()); }
+    public String func EMBER() { return Console.Fg(Console.HasPalette() ? C.SlotEmber() : Vga.Brown()); }
+    public String func GOLD() { return Console.Fg(Console.HasPalette() ? C.SlotGold() : Vga.Yellow()); }
+    public String func SAND() { return Console.Fg(Console.HasPalette() ? C.SlotSand() : Vga.Brown()); }
+    public String func CYAN() { return Console.Fg(Console.HasPalette() ? C.SlotCyan() : Vga.LightCyan()); }
     public String func YELLOW() { return Console.Fg(Console.HasPalette() ? C.SlotYellow() : Vga.Yellow()); }
-    public String func RED()    { return Console.Fg(Console.HasPalette() ? C.SlotRed()    : Vga.LightRed()); }
+    public String func RED() { return Console.Fg(Console.HasPalette() ? C.SlotRed() : Vga.LightRed()); }
 }
 
 /*
@@ -598,9 +596,6 @@ String func BaseName(String path) {
     return path.Substring(last + 1, path.Length() - (last + 1));
 }
 
-/*
- * Spaces - A run of n spaces
- */
 String func Spaces(int n) {
     let StringBuilder sb = new StringBuilder();
     let int i = 0;

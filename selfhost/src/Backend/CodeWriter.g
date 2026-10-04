@@ -23,7 +23,7 @@ class CodeWriter {
 
     /*
      * Line - Appends a line at the current depth. Multi-line text is split and each line indented
-     * on its own; the empty string appends a blank line with no leading whitespace.
+     * on its own. The empty string appends a blank line with no leading whitespace.
      */
     public void func Line(String text) {
         if (text.Length() == 0) { self.sb.Append("\n"); return; }
@@ -104,8 +104,5 @@ class CodeWriter {
      */
     public void func EndBrace() { self.End("}"); }
 
-    /*
-     * Text - The accumulated C text
-     */
     public String func Text() { return self.sb.ToString(); }
 }

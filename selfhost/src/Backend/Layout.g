@@ -74,9 +74,6 @@ module Layout {
         return files;
     }
 
-    /*
-     * HostedMain - The generated main() for a hosted build.
-     */
     String func HostedMain(Optional[String] entryCName, bool launch) {
         let bool hasEntry = false;
         let String entryFn = "";
@@ -177,8 +174,8 @@ module Layout {
      * environment bindings, so porting the OS is an edit to env.*.g and never to this file.
      */
     String func Launcher(Finesse fin, List[IrProcess] procs, SymbolTable sym, bool ownUnit) {
-        let String procCreate  = sym.FloorName(Roles.EnvProcCreate());
-        let String procHide    = sym.FloorName(Roles.EnvProcHide());
+        let String procCreate = sym.FloorName(Roles.EnvProcCreate());
+        let String procHide = sym.FloorName(Roles.EnvProcHide());
         let String threadSpawn = sym.FloorName(Roles.EnvThreadSpawn());
 
         let CodeWriter w = new CodeWriter();
@@ -189,8 +186,7 @@ module Layout {
             w.Line("// Topology floor provided by the environment (env.*.g).");
             w.Line("extern void* " + procCreate + "(const char* name);");
             w.Line("extern void  " + procHide + "(void* proc);");
-            w.Line("extern void  " + threadSpawn +
-                   "(void* proc, const char* name, void (*entry)(void*), int is_user);");
+            w.Line("extern void  " + threadSpawn + "(void* proc, const char* name, void (*entry)(void*), int is_user);");
             w.Line("");
         }
         w.Block("void " + Layout.LauncherName() + "(void) {");
@@ -206,8 +202,7 @@ module Layout {
                 match (th.entryFunc) {
                     case Some(e) {
                         let String isUser = e.vis == Visibility.Kernel ? "0" : "1";
-                        w.Line(threadSpawn + "(" + handle + ", \"" + th.name + "\", " + e.cName +
-                               ", " + isUser + ");");
+                        w.Line(threadSpawn + "(" + handle + ", \"" + th.name + "\", " + e.cName + ", " + isUser + ");");
                     }
                     case None { }
                 }

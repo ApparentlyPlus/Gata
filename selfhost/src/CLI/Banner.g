@@ -73,9 +73,9 @@ module Banner {
     int func StartR() { return 255; }
     int func StartG() { return 211; }
     int func StartB() { return 92; }
-    int func EndR()   { return 254; }
-    int func EndG()   { return 122; }
-    int func EndB()   { return 77; }
+    int func EndR() { return 254; }
+    int func EndG() { return 122; }
+    int func EndB() { return 77; }
 
     // How many slots the gradient gets, and where they start
     int func Stops() { return 6; }

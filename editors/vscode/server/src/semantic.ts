@@ -124,8 +124,23 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
     return files.get(base);
   };
 
+  // the diagnostic that help lines and the caret underline below it still belong to
   let openDiag: Diagnostic | undefined;
   let awaitingCarets = false;
+
+  const add = (name: string, line: number, col: number, sev: string, code: string, message: string) => {
+    const uri = pathToUri(resolveTarget(name) ?? filePath);
+    const diag: Diagnostic = {
+      severity: sev === 'error' ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+      range: { start: { line, character: col }, end: { line, character: col + 1 } },
+      message,
+      code,
+      source: 'appa',
+    };
+    if (!byUri.has(uri)) byUri.set(uri, []);
+    byUri.get(uri)!.push(diag);
+    openDiag = diag;
+  };
 
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.replace(ANSI, '');
@@ -146,38 +161,16 @@ export async function checkProject(filePath: string, settings: GataSettings): Pr
     let m = HEADER_WITH_SPAN.exec(line);
     if (m) {
       const [, name, lineStr, colStr, sev, code, message] = m;
-      const target = resolveTarget(name) ?? filePath;
-      const uri = pathToUri(target);
       const ln = Math.max(0, parseInt(lineStr, 10) - 1);
       const col = Math.max(0, parseInt(colStr, 10) - 1);
-      const diag: Diagnostic = {
-        severity: sev === 'error' ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
-        range: { start: { line: ln, character: col }, end: { line: ln, character: col + 1 } },
-        message,
-        code,
-        source: 'appa',
-      };
-      if (!byUri.has(uri)) byUri.set(uri, []);
-      byUri.get(uri)!.push(diag);
-      openDiag = diag;
+      add(name, ln, col, sev, code, message);
       awaitingCarets = true;
       continue;
     }
     m = HEADER_NO_SPAN.exec(line);
     if (m) {
       const [, name, sev, code, message] = m;
-      const target = resolveTarget(name) ?? filePath;
-      const uri = pathToUri(target);
-      const diag: Diagnostic = {
-        severity: sev === 'error' ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
-        message,
-        code,
-        source: 'appa',
-      };
-      if (!byUri.has(uri)) byUri.set(uri, []);
-      byUri.get(uri)!.push(diag);
-      openDiag = diag;
+      add(name, 0, 0, sev, code, message);   // no span, so it goes on the first character
       awaitingCarets = false;
     }
   }

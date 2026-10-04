@@ -103,30 +103,22 @@ function startLanguageServer(context) {
       { scheme: 'file', language: 'gata' },
       { scheme: 'file', language: 'gconf' },
     ],
-    synchronize: {
-      configurationSection: 'gata',
-    },
+    synchronize: { configurationSection: 'gata' },
   };
-  const languageClient = new LanguageClient('gata', 'Gata Language Server', serverOptions, clientOptions);
-  languageClient.start().catch((err) => {
+  const lc = new LanguageClient('gata', 'Gata Language Server', serverOptions, clientOptions);
+  lc.start().catch((err) => {
     console.error('gata: language server exited:', err);
     vscode.window.showWarningMessage(
       `Gata: the language server stopped (${err && err.message ? err.message : err}). Syntax highlighting still works.`
     );
   });
-  return languageClient;
+  return lc;
 }
 
 function removeLegacyOverlay(context) {
   if (context.globalState.get(OVERLAY_REMOVED_KEY)) return;
   const config = vscode.workspace.getConfiguration();
-
-  const pruned = [
-    pruneTextMate(config),
-    pruneSemantic(config),
-  ];
-
-  Promise.all(pruned).then(
+  Promise.all([pruneTextMate(config), pruneSemantic(config)]).then(
     () => context.globalState.update(OVERLAY_REMOVED_KEY, true),
     (err) => console.error('gata: could not remove the legacy color overlay:', err)
   );

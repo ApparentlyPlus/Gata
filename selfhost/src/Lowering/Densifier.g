@@ -2,24 +2,12 @@
  * Densifier.g - short names for everything the outside world never sees
  *
  * Ports Appa/src/Lowering/Densifier.cs.
- *
- * Every internal symbol is renamed to a dense base-36 token, which shrinks the emitted C
- * substantially on a large build. What CANNOT be renamed is anything something outside the
- * generated code names for itself:
- *
- *   an entry point       the runtime calls it by name
- *   a '@keep' symbol     native text references it by its readable spelling
- *   an '@extern'         the linker resolves it
- *   enums, unions,
- *   native types         emitted under names native code may spell
- *   process variables    the launcher and the state initialiser both name them
- *
- * Those go into the taken set BEFORE any token is handed out, because the sequence would
- * otherwise walk straight into one: an '@extern' really can be called '__g5', and nothing else
- * would stop the counter from reaching it.
- *
- * The renaming is recorded in a sourcemap - dense token back to the readable name - so a
- * diagnostic or a debugger can undo it.
+ * Every internal symbol becomes a dense base-36 token, which shrinks the emitted C a lot on a big build.
+ * Never renamed, because something outside the generated code names them: entry points (the runtime calls
+ * them), '@keep' symbols (native text uses the readable spelling), '@extern's (the linker), enums, unions,
+ * native types and process variables. They go into the taken set BEFORE any token is handed out, or the
+ * counter could walk into one ('@extern' really can be called '__g5').
+ * The renaming is recorded in a sourcemap (token back to readable name) so a diagnostic or a debugger can undo it.
  */
 
 import "selfhostlib/String.g";
@@ -107,8 +95,7 @@ class Densifier {
             }
             let int o = 0;
             while (o < cls.operators.Length()) {
-                self.MapFn(fn, src, cls.operators.Get(o).cName,
-                           owner + ".operator" + cls.operators.Get(o).op);
+                self.MapFn(fn, src, cls.operators.Get(o).cName, owner + ".operator" + cls.operators.Get(o).op);
                 o = o + 1;
             }
             c = c + 1;
@@ -254,12 +241,12 @@ class CallRenamer {
  */
 IrExpr func RenameExpr(IrRewrite[CallRenamer] r, IrExpr e) {
     match (e) {
-        case IrStaticCall(sc)         { sc.cName = r.state.Map(sc.cName); }
-        case IrInstanceCall(ic)       { ic.cName = r.state.Map(ic.cName); }
-        case IrThrowsCall(tc)         { tc.cName = r.state.Map(tc.cName); }
+        case IrStaticCall(sc) { sc.cName = r.state.Map(sc.cName); }
+        case IrInstanceCall(ic) { ic.cName = r.state.Map(ic.cName); }
+        case IrThrowsCall(tc) { tc.cName = r.state.Map(tc.cName); }
         case IrThrowsInstanceCall(ti) { ti.cName = r.state.Map(ti.cName); }
-        case IrNewInit(ni)            { ni.addCName = r.state.Map(ni.addCName); }
-        case IrFuncRef(fr)            { fr.cName = r.state.Map(fr.cName); }
+        case IrNewInit(ni) { ni.addCName = r.state.Map(ni.addCName); }
+        case IrFuncRef(fr) { fr.cName = r.state.Map(fr.cName); }
         default { }
     }
     return e;

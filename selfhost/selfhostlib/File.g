@@ -29,7 +29,7 @@ module File {
     }
 
     /*
-     * Write - Writes data to path, overwriting it if it exists; true on success
+     * Write - Writes data to path, overwriting it if it exists. True on success
      */
     public bool func Write(String path, String data) {
         if (path == null) { return false; }

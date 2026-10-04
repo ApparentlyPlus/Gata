@@ -72,7 +72,7 @@ class Parser {
     }
 
     /*
-     * MaxDepth - The recursion ceiling; C#'s MaxDepth const
+     * MaxDepth - The recursion ceiling. C#'s MaxDepth const
      */
     int func MaxDepth() { return 200; }
 
@@ -189,7 +189,7 @@ class Parser {
     }
 
     /*
-     * Try - Consumes the current token and returns true if it matches; otherwise leaves it
+     * Try - Consumes the current token and returns true if it matches. Otherwise leaves it
      */
     bool func Try(TK k) {
         if (self.At(k)) { self.Advance(); return true; }
@@ -301,13 +301,12 @@ class Parser {
             let bool ok = false;
             match (a) {
                 case ShadowsAnnotation(x) { ok = allowShadows; }
-                case KeepAnnotation(x)    { ok = allowKeep; }
+                case KeepAnnotation(x) { ok = allowKeep; }
                 case BuiltinAnnotation(x) { ok = allowBuiltin; }
                 default { ok = false; }
             }
             if (!ok) {
-                self.FailAt(Anns.Span(a), "annotations have no effect on " + what,
-                            Codes.BadAnnotation(), new List[String]());
+                self.FailAt(Anns.Span(a), "annotations have no effect on " + what, Codes.BadAnnotation(), new List[String]());
             }
             i = i + 1;
         }
@@ -390,10 +389,38 @@ class Parser {
     }
 
     /*
+     * TryParseTypeDecl - An enum, union, class or module if one starts here, else None. The file,
+     * realm and process levels all accept the same four
+     */
+    throws Optional[TopLevel] func TryParseTypeDecl(List[Annotation] anns, int s) {
+        if (self.At(TK.Enum)) {
+            self.RejectAnns(anns, "an enum");
+            let TopLevel e = self.ParseEnumDecl(anns, s);
+            return Optional.Some(e);
+        }
+        if (self.At(TK.Union)) {
+            self.RejectAnns(anns, "a union");
+            let TopLevel u = self.ParseUnionDecl(anns, s);
+            return Optional.Some(u);
+        }
+        if (self.At(TK.Class)) {
+            self.RejectAnns(anns, "a class", true, true, true);
+            let TopLevel c = self.ParseClassDecl(anns, s);
+            return Optional.Some(c);
+        }
+        if (self.At(TK.Module)) {
+            self.RejectAnns(anns, "a module", true, false, true);
+            let TopLevel m = self.ParseModuleDecl(anns, s);
+            return Optional.Some(m);
+        }
+        return Optional[TopLevel].None();
+    }
+
+    /*
      * ParseTopLevel - Dispatches to the correct top-level parser based on the current token
      */
     throws TopLevel func ParseTopLevel() {
-        if (self.At(TK.Import)) { let TopLevel r1 = self.ParseImport(); return r1; }
+        if (self.At(TK.Import)) { let TopLevel decl = self.ParseImport(); return decl; }
         if (self.At(TK.AtEnvironment)) {
             let int es = self.CurStart();
             self.Advance();
@@ -406,12 +433,10 @@ class Parser {
             let Token t = self.Advance();
             return TopLevel.NativeBlock(new NativeBlock(ParseNativeBody(t), self.To(s), anns));
         }
-        if (self.At(TK.NativeTypeDecl)) { let TopLevel r2 = self.ParseNativeType(anns, s); return r2; }
-        if (self.At(TK.Enum)) { self.RejectAnns(anns, "an enum"); let TopLevel r3 = self.ParseEnumDecl(anns, s); return r3; }
-        if (self.At(TK.Union)) { self.RejectAnns(anns, "a union"); let TopLevel r4 = self.ParseUnionDecl(anns, s); return r4; }
-        if (self.At(TK.Class)) { self.RejectAnns(anns, "a class", true, true, true); let TopLevel r5 = self.ParseClassDecl(anns, s); return r5; }
-        if (self.At(TK.Module)) { self.RejectAnns(anns, "a module", true, false, true); let TopLevel r6 = self.ParseModuleDecl(anns, s); return r6; }
-        if (self.At(TK.Realm)) { self.RejectAnns(anns, "a realm", false, false, false); let TopLevel r7 = self.ParseRealmDecl(); return r7; }
+        if (self.At(TK.NativeTypeDecl)) { let TopLevel decl = self.ParseNativeType(anns, s); return decl; }
+        let Optional[TopLevel] typeDecl = self.TryParseTypeDecl(anns, s);
+        match (typeDecl) { case Some(d) { return d; } case None { } }
+        if (self.At(TK.Realm)) { self.RejectAnns(anns, "a realm", false, false, false); let TopLevel decl = self.ParseRealmDecl(); return decl; }
         if (self.At(TK.Kernel)) { self.RequireRealmKeyword(); }
         if (self.AtProcessStart()) {
             self.Fail("a 'process' must be declared inside a 'realm' block", Codes.TopologyOutsideRealm(),
@@ -419,8 +444,8 @@ class Parser {
         }
         self.RejectStrayThread();
         self.RejectModifierOnType();
-        if (self.At(TK.AtExtern)) { let TopLevel r8 = self.ParseExternDecl(anns, s); return r8; }
-        let TopLevel r9 = self.ParseFreeFuncDecl(anns, s); return r9;
+        if (self.At(TK.AtExtern)) { let TopLevel decl = self.ParseExternDecl(anns, s); return decl; }
+        let TopLevel decl = self.ParseFreeFuncDecl(anns, s); return decl;
     }
 
     /*
@@ -442,12 +467,11 @@ class Parser {
         let String hint = mod == "private"
             ? "a top-level type is visible to every file that imports this one; there is no file-local type"
             : "remove '" + mod + "'; only a free function takes 'private' here";
-        self.FailAt(Toks.Span(self.Cur()), "'" + mod + "' has no meaning on " + what,
-                    Codes.BadDeclHeader(), HintList.Of1(hint));
+        self.FailAt(Toks.Span(self.Cur()), "'" + mod + "' has no meaning on " + what, Codes.BadDeclHeader(), HintList.Of1(hint));
     }
 
     /*
-     * ParseImport - Parses an import declaration. A string literal import is a filesystem path; a bare identifier is a module name.
+     * ParseImport - Parses an import declaration. A string literal import is a filesystem path. A bare identifier is a module name.
      */
     throws TopLevel func ParseImport() {
         let int s = self.CurStart();
@@ -463,9 +487,6 @@ class Parser {
         return TopLevel.ImportDecl(new ImportDecl(name, false, self.To(s)));
     }
 
-    /*
-     * ParseNativeType - Parses a native type declaration.
-     */
     throws TopLevel func ParseNativeType(List[Annotation] anns, int s) {
         let Token t = self.Advance();
         let String raw = Toks.Value(t);
@@ -487,8 +508,7 @@ class Parser {
         let List[Param] parms = self.ParseParamList();
         self.Expect(TK.RParen);
         if (self.At(TK.Arrow)) {
-            self.Fail("'" + name + "': return type goes before 'func', not after the parameter list",
-                      Codes.BadDeclHeader());
+            self.Fail("'" + name + "': return type goes before 'func', not after the parameter list", Codes.BadDeclHeader());
         }
         self.Expect(TK.Semi);
         return TopLevel.ExternFuncDecl(new ExternFuncDecl(ret, name, parms, self.To(s), anns));
@@ -525,8 +545,7 @@ class Parser {
      * RequireRealmKeyword - Reports a bare 'kernel' that is missing its 'realm' prefix.
      */
     throws void func RequireRealmKeyword() {
-        self.Fail("expected 'realm' before 'kernel'", Codes.MissingRealmKeyword(),
-                  HintList.Of1("write 'realm kernel { ... }'"));
+        self.Fail("expected 'realm' before 'kernel'", Codes.MissingRealmKeyword(), HintList.Of1("write 'realm kernel { ... }'"));
     }
 
     /*
@@ -549,17 +568,15 @@ class Parser {
             let Token t = self.Advance();
             return TopLevel.NativeBlock(new NativeBlock(ParseNativeBody(t), self.To(s), anns));
         }
-        if (self.At(TK.NativeTypeDecl)) { let TopLevel r10 = self.ParseNativeType(anns, s); return r10; }
-        if (self.At(TK.AtExtern)) { let TopLevel r11 = self.ParseExternDecl(anns, s); return r11; }
-        if (self.At(TK.Enum)) { self.RejectAnns(anns, "an enum"); let TopLevel r12 = self.ParseEnumDecl(anns, s); return r12; }
-        if (self.At(TK.Union)) { self.RejectAnns(anns, "a union"); let TopLevel r13 = self.ParseUnionDecl(anns, s); return r13; }
-        if (self.At(TK.Class)) { self.RejectAnns(anns, "a class", true, true, true); let TopLevel r14 = self.ParseClassDecl(anns, s); return r14; }
-        if (self.At(TK.Module)) { self.RejectAnns(anns, "a module", true, false, true); let TopLevel r15 = self.ParseModuleDecl(anns, s); return r15; }
+        if (self.At(TK.NativeTypeDecl)) { let TopLevel decl = self.ParseNativeType(anns, s); return decl; }
+        if (self.At(TK.AtExtern)) { let TopLevel decl = self.ParseExternDecl(anns, s); return decl; }
+        let Optional[TopLevel] typeDecl = self.TryParseTypeDecl(anns, s);
+        match (typeDecl) { case Some(d) { return d; } case None { } }
         if (self.AtProcessStart()) {
             self.RejectAnns(anns, "a process", false, false, false);
-            let TopLevel r16 = self.ParseProcessDeclTop(); return r16;
+            let TopLevel decl = self.ParseProcessDeclTop(); return decl;
         }
-        let TopLevel r17 = self.ParseFreeFuncDecl(anns, s); return r17;
+        let TopLevel decl = self.ParseFreeFuncDecl(anns, s); return decl;
     }
 
     /*
@@ -628,7 +645,7 @@ class Parser {
     }
 
     /*
-     * ParseEnumDecl - Parses an enum declaration. Members may carry explicit integer values; if
+     * ParseEnumDecl - Parses an enum declaration. Members may carry explicit integer values. If
      * absent the C compiler applies the usual increment rule.
      */
     throws TopLevel func ParseEnumDecl(List[Annotation] anns, int s) {
@@ -642,8 +659,7 @@ class Parser {
             members.Add(m0);
             while (self.Try(TK.Comma)) {
                 if (self.At(TK.RBrace)) {
-                    self.Fail("trailing comma not allowed after the last enum member; remove it",
-                              Codes.TrailingComma());
+                    self.Fail("trailing comma not allowed after the last enum member; remove it", Codes.TrailingComma());
                 }
                 ms = self.CurStart();
                 let EnumMember mn = self.ParseEnumMember(ms);
@@ -766,11 +782,11 @@ class Parser {
                 let List[String] outer = sc.Clone();
                 let int i = 0;
                 while (i < path.Length() - 1) { outer.Add(path.Get(i)); i = i + 1; }
-                let NamedSpec r18 = self.FinishTypeName(path.Last(), Optional.Some(outer), s); return r18;
+                let NamedSpec spec = self.FinishTypeName(path.Last(), Optional.Some(outer), s); return spec;
             }
             case None {
                 let String bare = self.ParseSimpleTypeName();
-                let NamedSpec r19 = self.FinishTypeName(bare, Optional[List[String]].None(), s); return r19;
+                let NamedSpec spec = self.FinishTypeName(bare, Optional[List[String]].None(), s); return spec;
             }
         }
     }
@@ -885,7 +901,7 @@ class Parser {
             let TypeSpec elem = self.ParseTypeSpec();
             return TypeSpec.ArraySpec(new ArraySpec(Toks.Value(nt), elem, self.To(s)));
         }
-        if (self.At(TK.Func)) { let TypeSpec r20 = self.ParseFuncTypeSpec(); return r20; }
+        if (self.At(TK.Func)) { let TypeSpec spec = self.ParseFuncTypeSpec(); return spec; }
         let NamedSpec named = self.ParseTypeName();
         let TypeSpec spec = TypeSpec.NamedSpec(named);
         while (self.AtP("*")) {
@@ -916,8 +932,7 @@ class Parser {
         let TypeSpec ret = self.ParseTypeSpec();
         let TypeSpec spec = TypeSpec.FuncSpec(new FuncSpec(ps, ret, self.To(s)));
         if (self.AtP("*")) {
-            self.Fail("pointer to a function type is not supported; use the function type directly",
-                      Codes.BadDeclHeader());
+            self.Fail("pointer to a function type is not supported; use the function type directly", Codes.BadDeclHeader());
         }
         return spec;
     }
@@ -947,7 +962,7 @@ class Parser {
         let bool isThrow = self.Try(TK.Throws);
         if (!isEntry) { isEntry = self.Try(TK.Entry); }
 
-        if (self.At(TK.Operator)) { let ClassMember r21 = self.ParseOperatorDecl(anns, mods, isEntry, isThrow, s); return r21; }
+        if (self.At(TK.Operator)) { let ClassMember member = self.ParseOperatorDecl(anns, mods, isEntry, isThrow, s); return member; }
         if (self.LooksLikeMethod()) {
             if (isEntry) { self.Fail("'entry' has no meaning on a class method", Codes.BadDeclHeader()); }
             let Optional[TypeSpec] ret = self.ParseOptionalReturnType();
@@ -958,8 +973,7 @@ class Parser {
             let List[Param] parms = self.ParseParamList();
             self.Expect(TK.RParen);
             if (self.At(TK.Arrow)) {
-                self.Fail("'" + name + "': return type goes before 'func', not after the parameter list",
-                          Codes.BadDeclHeader());
+                self.Fail("'" + name + "': return type goes before 'func', not after the parameter list", Codes.BadDeclHeader());
             }
             let MethodBody body = self.ParseMethodBody();
             return ClassMember.MethodDecl(new MethodDecl(mods, anns, ret, name, generics, parms, isEntry, isThrow, body, self.To(s)));
@@ -1209,17 +1223,15 @@ class Parser {
             let Token t = self.Advance();
             return TopLevel.NativeBlock(new NativeBlock(ParseNativeBody(t), self.To(s), anns));
         }
-        if (self.At(TK.NativeTypeDecl)) { let TopLevel r22 = self.ParseNativeType(anns, s); return r22; }
-        if (self.At(TK.AtExtern)) { let TopLevel r23 = self.ParseExternDecl(anns, s); return r23; }
-        if (self.At(TK.Enum)) { self.RejectAnns(anns, "an enum"); let TopLevel r24 = self.ParseEnumDecl(anns, s); return r24; }
-        if (self.At(TK.Union)) { self.RejectAnns(anns, "a union"); let TopLevel r25 = self.ParseUnionDecl(anns, s); return r25; }
-        if (self.At(TK.Class)) { self.RejectAnns(anns, "a class", true, true, true); let TopLevel r26 = self.ParseClassDecl(anns, s); return r26; }
-        if (self.At(TK.Module)) { self.RejectAnns(anns, "a module", true, false, true); let TopLevel r27 = self.ParseModuleDecl(anns, s); return r27; }
+        if (self.At(TK.NativeTypeDecl)) { let TopLevel decl = self.ParseNativeType(anns, s); return decl; }
+        if (self.At(TK.AtExtern)) { let TopLevel decl = self.ParseExternDecl(anns, s); return decl; }
+        let Optional[TopLevel] typeDecl = self.TryParseTypeDecl(anns, s);
+        match (typeDecl) { case Some(d) { return d; } case None { } }
         if (self.At(TK.Let)) {
             self.RejectAnns(anns, "a process variable", false, false, false);
-            let TopLevel r28 = self.ParseProcessVarDecl(s); return r28;
+            let TopLevel decl = self.ParseProcessVarDecl(s); return decl;
         }
-        let TopLevel r29 = self.ParseFreeFuncDecl(anns, s); return r29;
+        let TopLevel decl = self.ParseFreeFuncDecl(anns, s); return decl;
     }
 
     /*
@@ -1270,9 +1282,6 @@ class Parser {
         return new ThreadDecl(name, mode, entryFn, self.To(s));
     }
 
-    /*
-     * ParseThreadEntry - Parses the entry function of a thread.
-     */
     throws EntryFuncDecl func ParseThreadEntry() {
         let int s = self.CurStart();
         if (self.AtValue("thread")) { self.Fail("threads cannot be nested", Codes.InvalidNesting()); }
@@ -1292,7 +1301,7 @@ class Parser {
             ret = Optional.Some(r);
         }
         self.Expect(TK.Func);
-        if (self.At(TK.Ident)) { self.Advance(); } // entry name is documentation only; the thread names it
+        if (self.At(TK.Ident)) { self.Advance(); } // entry name is documentation only. The thread names it
         self.Expect(TK.LParen);
         let List[Param] parms = self.ParseParamList();
         self.Expect(TK.RParen);
@@ -1373,15 +1382,15 @@ class Parser {
             let Block b = self.ParseBlock();
             return Stmt.Block(b);
         }
-        if (self.At(TK.Let)) { let Stmt r30 = self.ParseLetStmt(s); return r30; }
-        if (self.At(TK.If)) { let Stmt r31 = self.ParseIfStmt(s); return r31; }
-        if (self.At(TK.While)) { let Stmt r32 = self.ParseWhileStmt(s); return r32; }
-        if (self.At(TK.For)) { let Stmt r33 = self.ParseForStmt(s); return r33; }
-        if (self.At(TK.Switch)) { let Stmt r34 = self.ParseSwitchStmt(s); return r34; }
-        if (self.At(TK.Match)) { let Stmt r35 = self.ParseMatchStmt(s); return r35; }
-        if (self.At(TK.Try)) { let Stmt r36 = self.ParseTryCatchStmt(s); return r36; }
-        if (self.At(TK.Unsafe)) { let Stmt r37 = self.ParseUnsafeBlock(s); return r37; }
-        if (self.At(TK.Defer)) { let Stmt r38 = self.ParseDeferStmt(s); return r38; }
+        if (self.At(TK.Let)) { let Stmt stmt = self.ParseLetStmt(s); return stmt; }
+        if (self.At(TK.If)) { let Stmt stmt = self.ParseIfStmt(s); return stmt; }
+        if (self.At(TK.While)) { let Stmt stmt = self.ParseWhileStmt(s); return stmt; }
+        if (self.At(TK.For)) { let Stmt stmt = self.ParseForStmt(s); return stmt; }
+        if (self.At(TK.Switch)) { let Stmt stmt = self.ParseSwitchStmt(s); return stmt; }
+        if (self.At(TK.Match)) { let Stmt stmt = self.ParseMatchStmt(s); return stmt; }
+        if (self.At(TK.Try)) { let Stmt stmt = self.ParseTryCatchStmt(s); return stmt; }
+        if (self.At(TK.Unsafe)) { let Stmt stmt = self.ParseUnsafeBlock(s); return stmt; }
+        if (self.At(TK.Defer)) { let Stmt stmt = self.ParseDeferStmt(s); return stmt; }
         if (self.At(TK.Return)) {
             self.Advance();
             let Optional[Expr] v = Optional[Expr].None();
@@ -1434,7 +1443,7 @@ class Parser {
             if (self.At(TK.Ident)) { hints.Add("e.g. 'let " + Toks.Value(self.Cur()) + " ...'"); }
             self.Fail("expected a statement", Codes.MissingLet(), hints);
         }
-        let Stmt r39 = self.ParseExprOrAssign(s); return r39;
+        let Stmt stmt = self.ParseExprOrAssign(s); return stmt;
     }
 
     /*
@@ -1589,7 +1598,7 @@ class Parser {
     }
 
     /*
-     * ParseWhileStmt - Parses a while loop. The condition is parenthesised; the body is a full
+     * ParseWhileStmt - Parses a while loop. The condition is parenthesised. The body is a full
      * statement.
      */
     throws Stmt func ParseWhileStmt(int s) {
@@ -1687,7 +1696,7 @@ class Parser {
     }
 
     /*
-     * ParseUnsafeBlock - Parses an unsafe block. Pointer operations inside are permitted; the type
+     * ParseUnsafeBlock - Parses an unsafe block. Pointer operations inside are permitted. The type
      * checker rejects them everywhere else.
      */
     throws Stmt func ParseUnsafeBlock(int s) {
@@ -1725,7 +1734,7 @@ class Parser {
     /*
      * ParseExpr - Entry point for all expression parsing
      */
-    public throws Expr func ParseExpr() { let Expr r40 = self.ParseTernary(); return r40; }
+    public throws Expr func ParseExpr() { let Expr expr = self.ParseTernary(); return expr; }
 
     /*
      * ParseTernary - Parses a ternary conditional.
@@ -1928,7 +1937,7 @@ class Parser {
         if (self.AtP("-")) { self.Advance(); let Expr o = self.ParseUnary(); return Expr.UnaryExpr(new UnaryExpr(UnOp.Neg, o, self.To(s))); }
         if (self.AtP("&")) { self.Advance(); let Expr o = self.ParseUnary(); return Expr.AddrOfExpr(new AddrOfExpr(o, self.To(s))); }
         if (self.AtP("*")) { self.Advance(); let Expr o = self.ParseUnary(); return Expr.DerefExpr(new DerefExpr(o, self.To(s))); }
-        let Expr r41 = self.ParsePostfix(); return r41;
+        let Expr expr = self.ParsePostfix(); return expr;
     }
 
     /*
@@ -1982,7 +1991,7 @@ class Parser {
             case IdentExpr(x) { id = x; }
             default { }
         }
-        if (id == null) { let Expr r42 = self.ParseIndexRest(expr, s); return r42; }
+        if (id == null) { let Expr indexed = self.ParseIndexRest(expr, s); return indexed; }
 
         let Snapshot start = self.Mark();
         let List[NamedSpec] typeArgs = null;
@@ -2006,11 +2015,11 @@ class Parser {
                 }
             }
         } catch {
-            // not a type list; the index reading stands alone
+            // not a type list. The index reading stands alone
         }
 
         self.Rewind(start);
-        if (typeArgs == null) { let Expr r43 = self.ParseIndexRest(expr, s); return r43; }
+        if (typeArgs == null) { let Expr indexed = self.ParseIndexRest(expr, s); return indexed; }
 
         // The index reading, from the same starting token.
         let Optional[Expr] indexForm = Optional[Expr].None();
@@ -2121,7 +2130,7 @@ class Parser {
             let Expr t = self.ParseExpr();
             return Expr.RefArgExpr(new RefArgExpr(t, self.To(s)));
         }
-        let Expr r44 = self.ParseExpr(); return r44;
+        let Expr expr = self.ParseExpr(); return expr;
     }
 
     /*
@@ -2144,7 +2153,7 @@ class Parser {
 
         // A scope qualifier swallows the dotted run after it
         match (self.ParseScopeQualifier()) {
-            case Some(scope) { let Expr r45 = self.ParseScopedName(scope, s); return r45; }
+            case Some(scope) { let Expr expr = self.ParseScopedName(scope, s); return expr; }
             case None { }
         }
 
@@ -2159,7 +2168,7 @@ class Parser {
         }
         if (self.At(TK.StrLit)) { let Token t = self.Advance(); return Expr.StrLitExpr(new StrLitExpr(Toks.Value(t), Toks.Span(t))); }
         if (self.At(TK.Null)) { self.Advance(); return Expr.NullExpr(new NullExpr(self.To(s))); }
-        if (self.At(TK.InterpStrStart)) { let Expr r46 = self.ParseInterpStr(s); return r46; }
+        if (self.At(TK.InterpStrStart)) { let Expr expr = self.ParseInterpStr(s); return expr; }
 
         // sizeof(Type) and default(Type) are special forms that take a type specifier in parentheses
         if (self.At(TK.Sizeof)) {
@@ -2178,7 +2187,7 @@ class Parser {
         }
 
         // 'new Type(...)' or 'new Type[...]' or 'new Type' for fixed-size arrays
-        if (self.At(TK.New)) { let Expr r47 = self.ParseNewExpr(s); return r47; }
+        if (self.At(TK.New)) { let Expr expr = self.ParseNewExpr(s); return expr; }
 
         // [elem1, elem2, ...] or [] for an empty array
         if (self.At(TK.LBrack)) {
@@ -2426,16 +2435,16 @@ bool func IsAssignTk(TK k) {
  * AssignOpOf - Maps an assignment-operator token kind to its AssignOp value.
  */
 AssignOp func AssignOpOf(TK k) {
-    if (k == TK.PlusEq)    { return AssignOp.AddAssign; }
-    if (k == TK.MinusEq)   { return AssignOp.SubAssign; }
-    if (k == TK.StarEq)    { return AssignOp.MulAssign; }
-    if (k == TK.SlashEq)   { return AssignOp.DivAssign; }
+    if (k == TK.PlusEq) { return AssignOp.AddAssign; }
+    if (k == TK.MinusEq) { return AssignOp.SubAssign; }
+    if (k == TK.StarEq) { return AssignOp.MulAssign; }
+    if (k == TK.SlashEq) { return AssignOp.DivAssign; }
     if (k == TK.PercentEq) { return AssignOp.ModAssign; }
-    if (k == TK.AmpEq)     { return AssignOp.AndAssign; }
-    if (k == TK.PipeEq)    { return AssignOp.OrAssign; }
-    if (k == TK.CaretEq)   { return AssignOp.XorAssign; }
-    if (k == TK.ShlEq)     { return AssignOp.ShlAssign; }
-    if (k == TK.ShrEq)     { return AssignOp.ShrAssign; }
+    if (k == TK.AmpEq) { return AssignOp.AndAssign; }
+    if (k == TK.PipeEq) { return AssignOp.OrAssign; }
+    if (k == TK.CaretEq) { return AssignOp.XorAssign; }
+    if (k == TK.ShlEq) { return AssignOp.ShlAssign; }
+    if (k == TK.ShrEq) { return AssignOp.ShrAssign; }
     return AssignOp.Assign;
 }
 
@@ -2461,13 +2470,13 @@ bool func IsTypeKeyword(TK k) {
  */
 String func PrimName(Token t) {
     let TK k = Toks.Kind(t);
-    if (k == TK.TBool)   { return "bool"; }
-    if (k == TK.TInt)    { return "int"; }
-    if (k == TK.TChar)   { return "char"; }
-    if (k == TK.TFloat)  { return "float"; }
+    if (k == TK.TBool) { return "bool"; }
+    if (k == TK.TInt) { return "int"; }
+    if (k == TK.TChar) { return "char"; }
+    if (k == TK.TFloat) { return "float"; }
     if (k == TK.TDouble) { return "double"; }
-    if (k == TK.TShort)  { return "short"; }
-    if (k == TK.TVoid)   { return "void"; }
+    if (k == TK.TShort) { return "short"; }
+    if (k == TK.TVoid) { return "void"; }
     return Toks.Value(t);
 }
 

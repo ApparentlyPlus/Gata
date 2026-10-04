@@ -53,13 +53,12 @@ module Literals {
 
         let bool hasSuffix = end < raw.Length();
         let String core = raw.Substring(0, end);
-        let bool isHex = core.Length() > 2 && core.CharAt(0) == '0' &&
-                         (core.CharAt(1) == 'x' || core.CharAt(1) == 'X');
+        let bool isHex = core.Length() > 2 && core.CharAt(0) == '0' && (core.CharAt(1) == 'x' || core.CharAt(1) == 'X');
 
         let uint64 mag = 0 as uint64;
         let bool ok = false;
         if (isHex) { ok = Literals.ParseHex(core.Substring(2, core.Length() - 2), ref mag); }
-        else       { ok = Literals.ParseDec(core, ref mag); }
+        else { ok = Literals.ParseDec(core, ref mag); }
         if (!ok) { return IntLit.Bad(); }
 
         let String type = Literals.IntLitType(mag, hasU, lCount >= 1);
@@ -85,9 +84,9 @@ module Literals {
      */
     private String func IntLitType(uint64 mag, bool hasU, bool isLong) {
         if (hasU && isLong) { return "uint64"; }
-        if (isLong)         { return "int64"; }
-        if (hasU)           { return mag <= 4294967295u ? "uint" : "uint64"; }
-        if (mag <= 2147483647u)          { return "int"; }
+        if (isLong) { return "int64"; }
+        if (hasU) { return mag <= 4294967295u ? "uint" : "uint64"; }
+        if (mag <= 2147483647u) { return "int"; }
         if (mag <= 9223372036854775807u) { return "int64"; }
         return "uint64";
     }
@@ -469,7 +468,7 @@ class GenericJob {
 }
 
 /*
- * One queued stamping of a generic method, which additionally remembers what it hangs off
+ * One queued stamping of a generic method, which also remembers what it hangs off
  */
 class GenericMethodJob {
     public MethodDecl decl;
@@ -492,7 +491,7 @@ class GenericMethodJob {
 }
 
 /*
- * The pass itself. One instance per build; call Resolve once.
+ * The pass itself. One instance per build. Call Resolve once.
  */
 class TypeResolver {
     SymbolTable sym;
@@ -910,11 +909,11 @@ class TypeResolver {
             }
             return;
         }
-        if (PrimTypes.IsPrim(name))         { return; }
-        if (BuiltinTypes.IsBuiltin(name))   { return; }
-        if (self.sym.IsEnum(name))          { return; }
-        if (self.sym.IsUnion(name))         { return; }
-        if (self.ClassInScope(name))        { return; }
+        if (PrimTypes.IsPrim(name)) { return; }
+        if (BuiltinTypes.IsBuiltin(name)) { return; }
+        if (self.sym.IsEnum(name)) { return; }
+        if (self.sym.IsUnion(name)) { return; }
+        if (self.ClassInScope(name)) { return; }
 
         if (self.sym.IsClass(name)) {
             let List[String] hints = new List[String]();
@@ -1082,8 +1081,7 @@ class TypeResolver {
         while (i < ps.Length()) {
             let Param p = ps.Get(i);
             if (!seen.AddNew(p.name)) {
-                self.diag.Error(Codes.DuplicateName(), ctx.file, p.span,
-                    "duplicate parameter '" + p.name + "'");
+                self.diag.Error(Codes.DuplicateName(), ctx.file, p.span, "duplicate parameter '" + p.name + "'");
             }
             self.CheckNotReservedLocal(p.name, p.span, "parameter", ctx);
             i = i + 1;
@@ -1103,8 +1101,7 @@ class TypeResolver {
             trimmed = trimmed.Substring(1, trimmed.Length() - 1);
         }
         hints.Add("one underscore is yours: '_" + trimmed + "'");
-        self.diag.Error(Codes.DuplicateName(), ctx.file, span,
-            "a " + what + " name cannot begin with '__'", hints);
+        self.diag.Error(Codes.DuplicateName(), ctx.file, span, "a " + what + " name cannot begin with '__'", hints);
     }
 
     /*
@@ -1436,8 +1433,7 @@ class TypeResolver {
                 let List[String] hints = new List[String]();
                 hints.Add("the declaration of '" + shown + "' takes over the name in its scope, so " +
                           wanted + " of that name outside it cannot be reached from here");
-                self.diag.Error(code, file, span,
-                    "'" + shown + "' is " + have + " here, not " + wanted, hints);
+                self.diag.Error(code, file, span, "'" + shown + "' is " + have + " here, not " + wanted, hints);
                 return true;
             }
         }
@@ -1510,7 +1506,7 @@ class TypeResolver {
      */
     Visibility func VisOf(Realm r) {
         if (r == Realm.Kernel) { return Visibility.Kernel; }
-        if (r == Realm.User)   { return Visibility.User; }
+        if (r == Realm.User) { return Visibility.User; }
         return Visibility.Shared;
     }
 
@@ -1581,8 +1577,7 @@ class TypeResolver {
      * IsComparison - True for the six relational and equality operators
      */
     bool func IsComparison(BinOp op) {
-        return op == BinOp.Eq || op == BinOp.Ne || op == BinOp.Lt ||
-               op == BinOp.Le || op == BinOp.Gt || op == BinOp.Ge;
+        return op == BinOp.Eq || op == BinOp.Ne || op == BinOp.Lt || op == BinOp.Le || op == BinOp.Gt || op == BinOp.Ge;
     }
 
     /*
@@ -1653,8 +1648,7 @@ class TypeResolver {
             case IrUnionField(x) {
                 match (b) {
                     case IrUnionField(y) {
-                        return x.field == y.field && x.variantIndex == y.variantIndex &&
-                               self.SameStorage(x.target, y.target);
+                        return x.field == y.field && x.variantIndex == y.variantIndex && self.SameStorage(x.target, y.target);
                     }
                     default { return false; }
                 }
@@ -1759,7 +1753,7 @@ class TypeResolver {
             case IrLitNull(n) {
                 match (to) {
                     case IrClassRef(c) { return; }
-                    case IrPtrType(p)  { return; }
+                    case IrPtrType(p) { return; }
                     default { }
                 }
             }
@@ -1787,7 +1781,7 @@ class TypeResolver {
      */
     bool func IsEnumIntCast(IrType from, IrType to) {
         match (from) { case IrEnumType(e) { if (self.IsInteger(to)) { return true; } } default { } }
-        match (to)   { case IrEnumType(e) { if (self.IsInteger(from)) { return true; } } default { } }
+        match (to) { case IrEnumType(e) { if (self.IsInteger(from)) { return true; } } default { } }
         return false;
     }
 
@@ -1798,7 +1792,7 @@ class TypeResolver {
     bool func IsPointerCast(IrType from, IrType to) {
         let bool eitherPtr = false;
         match (from) { case IrPtrType(p) { eitherPtr = true; } default { } }
-        match (to)   { case IrPtrType(p) { eitherPtr = true; } default { } }
+        match (to) { case IrPtrType(p) { eitherPtr = true; } default { } }
         return eitherPtr && self.IsPtrOrPrim(from) && self.IsPtrOrPrim(to);
     }
 
@@ -1807,7 +1801,7 @@ class TypeResolver {
      */
     bool func IsPtrOrPrim(IrType ty) {
         match (ty) {
-            case IrPtrType(p)  { return true; }
+            case IrPtrType(p) { return true; }
             case IrPrimType(p) { return true; }
             default { return false; }
         }
@@ -1916,8 +1910,7 @@ class TypeResolver {
                 return always && !self.HasLoopBreak(IrStmt.IrBlock(f.body));
             }
             case IrTryCatch(t) {
-                return self.DefinitelyReturns(IrStmt.IrBlock(t.tryBlock)) &&
-                       self.DefinitelyReturns(IrStmt.IrBlock(t.catchBlock));
+                return self.DefinitelyReturns(IrStmt.IrBlock(t.tryBlock)) && self.DefinitelyReturns(IrStmt.IrBlock(t.catchBlock));
             }
             case IrSwitch(sw) {
                 match (sw.otherwise) {
@@ -1988,8 +1981,7 @@ class TypeResolver {
                 }
             }
             case IrTryCatch(t) {
-                return self.HasLoopBreak(IrStmt.IrBlock(t.tryBlock)) ||
-                       self.HasLoopBreak(IrStmt.IrBlock(t.catchBlock));
+                return self.HasLoopBreak(IrStmt.IrBlock(t.tryBlock)) || self.HasLoopBreak(IrStmt.IrBlock(t.catchBlock));
             }
             case IrSwitch(sw) {
                 let int i = 0;
@@ -2191,14 +2183,12 @@ class TypeResolver {
                 match (i.otherwise) {
                     case None { return false; }
                     case Some(e) {
-                        return self.AssignsOrExits(IrStmt.IrBlock(i.then)) &&
-                               self.AssignsOrExits(IrStmt.IrBlock(e));
+                        return self.AssignsOrExits(IrStmt.IrBlock(i.then)) && self.AssignsOrExits(IrStmt.IrBlock(e));
                     }
                 }
             }
             case IrTryCatch(t) {
-                return self.AssignsOrExits(IrStmt.IrBlock(t.tryBlock)) &&
-                       self.AssignsOrExits(IrStmt.IrBlock(t.catchBlock));
+                return self.AssignsOrExits(IrStmt.IrBlock(t.tryBlock)) && self.AssignsOrExits(IrStmt.IrBlock(t.catchBlock));
             }
             case IrSwitch(sw) {
                 match (sw.otherwise) {
@@ -2435,7 +2425,7 @@ class TypeResolver {
     void func WarnIfNoEffect(Expr src, IrExpr e, ResolveCtx ctx) {
         match (src) {
             case CallExpr(x) { return; }
-            case NewExpr(x)  { return; }
+            case NewExpr(x) { return; }
             default { }
         }
         if (!self.IsPure(e)) { return; }
@@ -2584,7 +2574,7 @@ class TypeResolver {
     Optional[IrType] func NullPartner(IrType other) {
         match (other) {
             case IrClassRef(c) { return Optional.Some(other); }
-            case IrPtrType(p)  { return Optional.Some(other); }
+            case IrPtrType(p) { return Optional.Some(other); }
             default { return Optional[IrType].None(); }
         }
     }
@@ -2851,8 +2841,7 @@ class TypeResolver {
                 hints.Add("a fixed array is raw storage with no destructor, so whatever it still " +
                           "holds when it goes out of scope is leaked; stores into it are counted " +
                           "correctly, so nothing dangles");
-                hints.Add("use 'List[" + el + "]' for owned elements, or clear the slots by hand " +
-                          "before it dies");
+                hints.Add("use 'List[" + el + "]' for owned elements, or clear the slots by hand " + "before it dies");
                 self.diag.Warn(Codes.ManagedFixedArray(), ctx.file, span,
                     what + " is a fixed array of '" + el + "', whose elements are never released",
                     hints);
@@ -2963,7 +2952,7 @@ class TypeResolver {
      */
     void func WarnUnsafeManagedTemporary(IrBlock body, ResolveCtx ctx) {
         let UnsafeAlloc st = new UnsafeAlloc(self);
-        match (self.sym.IntrinsicOrNull(Roles.Retain()))  { case Some(n) { st.retain = n; } case None { } }
+        match (self.sym.IntrinsicOrNull(Roles.Retain())) { case Some(n) { st.retain = n; } case None { } }
         match (self.sym.IntrinsicOrNull(Roles.Release())) { case Some(n) { st.release = n; } case None { } }
         st.Run(body);
         if (st.handManaged) { return; }
@@ -3102,7 +3091,7 @@ class TypeResolver {
 
     /*
      * ResolvePostfix - 'x++' and 'x--'. On a class they dispatch to a zero-parameter overload that
-     * mutates in place and returns void; on anything else they need an lvalue.
+     * mutates in place and returns void. On anything else they need an lvalue.
      */
     IrExpr func ResolvePostfix(PostfixExpr pf, ResolveCtx ctx) {
         let IrExpr opnd = self.ResolveExpr(pf.operand, ctx);
@@ -3160,8 +3149,7 @@ class TypeResolver {
      */
     IrExpr func ResolveAddrOf(AddrOfExpr ao, ResolveCtx ctx) {
         if (!ctx.inUnsafe) {
-            self.diag.Error(Codes.UnsafeRequired(), ctx.file, ao.span,
-                "address-of '&' requires an 'unsafe' block");
+            self.diag.Error(Codes.UnsafeRequired(), ctx.file, ao.span, "address-of '&' requires an 'unsafe' block");
         }
         let IrExpr target = self.ResolveExpr(ao.target, ctx);
         if (Types.IsError(Exprs2.TypeOf(target))) { return self.Poison(ao.span); }
@@ -3183,8 +3171,7 @@ class TypeResolver {
      */
     IrExpr func ResolveDeref(DerefExpr dr, ResolveCtx ctx) {
         if (!ctx.inUnsafe) {
-            self.diag.Error(Codes.UnsafeRequired(), ctx.file, dr.span,
-                "pointer dereference '*' requires an 'unsafe' block");
+            self.diag.Error(Codes.UnsafeRequired(), ctx.file, dr.span, "pointer dereference '*' requires an 'unsafe' block");
         }
         let IrExpr ptr = self.ResolveExpr(dr.ptr, ctx);
         if (Types.IsError(Exprs2.TypeOf(ptr))) { return self.Poison(dr.span); }
@@ -3330,7 +3317,7 @@ class TypeResolver {
         }
 
         let bool eitherNull = false;
-        match (left)  { case IrLitNull(x) { eitherNull = true; } default { } }
+        match (left) { case IrLitNull(x) { eitherNull = true; } default { } }
         match (right) { case IrLitNull(x) { eitherNull = true; } default { } }
         if (isEq && eitherNull) {
             if (!self.ComparableEq(left, right)) { self.ReportNotComparable(sym, lt, rt, ctx, be.span); }
@@ -3447,7 +3434,7 @@ class TypeResolver {
             }
             self.CheckShiftCount(be.op, lt, right, ctx, Exprs.Span(be.right));
 
-            // A shift resolves at the LEFT operand's type; the count keeps its own
+            // A shift resolves at the LEFT operand's type. The count keeps its own
             if (be.op == BinOp.Shl || be.op == BinOp.Shr) {
                 return IrExpr.IrBinOp(new IrBinOp(be.op, self.InType(left, lt), right, lt));
             }
@@ -3494,7 +3481,7 @@ class TypeResolver {
     }
 
     /*
-     * WarnOnCharAddition - '+' on two chars adds codepoints; it does not join text, and that is
+     * WarnOnCharAddition - '+' on two chars adds codepoints. It does not join text, and that is
      * almost never what was meant
      */
     void func WarnOnCharAddition(BinOp op, IrType l, IrType r, ResolveCtx ctx, TextSpan span) {
@@ -3502,8 +3489,7 @@ class TypeResolver {
         let List[String] hints = new List[String]();
         hints.Add("the result is a 'char', so ''a' + 'b'' is codepoint 195, not \"ab\"");
         hints.Add("to build text, convert one side first: 'a as String + b'");
-        hints.Add("if the codepoint arithmetic is what you meant, say so with a cast: " +
-                  "'a as int + b as int'");
+        hints.Add("if the codepoint arithmetic is what you meant, say so with a cast: " + "'a as int + b as int'");
         self.diag.Warn(Codes.CharArithmetic(), ctx.file, span,
             "'+' on two 'char' values adds their codepoints; it does not join them into text", hints);
     }
@@ -3721,8 +3707,7 @@ class TypeResolver {
                     ps.Add(self.ResolveTypeSpec(g.params.Get(j).type));
                     j = j + 1;
                 }
-                return IrExpr.IrFuncRef(new IrFuncRef(f.cName,
-                    self.FnPtr(self.ResolveType(g.returnType), ps)));
+                return IrExpr.IrFuncRef(new IrFuncRef(f.cName, self.FnPtr(self.ResolveType(g.returnType), ps)));
             }
         }
     }
@@ -3821,8 +3806,7 @@ class TypeResolver {
                     let Param p = g.params.Get(i);
                     let IrType pt = self.ResolveTypeSpec(p.type);
                     args.Set(i, self.Coerce(args.Get(i), pt, ctx));
-                    self.CheckAssign(args.Get(i), pt, "parameter '" + p.name + "'", ctx,
-                                     Codes.ArgTypeMismatch());
+                    self.CheckAssign(args.Get(i), pt, "parameter '" + p.name + "'", ctx, Codes.ArgTypeMismatch());
 
                     if (i < astArgs.Length()) {
                         let bool argIsRef = false;
@@ -3842,8 +3826,7 @@ class TypeResolver {
                             let IrType at2 = Exprs2.TypeOf(args.Get(i));
                             if (!Types.Same(at2, pt) && !Types.IsError(at2)) {
                                 let List[String] hints = new List[String]();
-                                hints.Add("a 'ref' parameter takes the variable's address, so no " +
-                                          "conversion can apply");
+                                hints.Add("a 'ref' parameter takes the variable's address, so no " + "conversion can apply");
                                 self.diag.Error(Codes.RefArgMismatch(), ctx.file, at,
                                     "'ref' argument " + Int.ToString(i + 1) + " must be exactly '" +
                                     self.Describe(pt) + "', got '" + self.Describe(at2) + "'", hints);
@@ -3899,8 +3882,7 @@ class TypeResolver {
         let IrType it = Exprs2.TypeOf(idx);
         if (self.IsInteger(it)) { return; }
         match (it) { case IrEnumType(e) { return; } default { } }
-        self.diag.Error(Codes.TypeMismatch(), ctx.file, span,
-            "index must be an integer, got '" + self.Describe(it) + "'");
+        self.diag.Error(Codes.TypeMismatch(), ctx.file, span, "index must be an integer, got '" + self.Describe(it) + "'");
     }
 
     /*
@@ -4073,25 +4055,21 @@ class TypeResolver {
         let List[String] hints = new List[String]();
 
         if (self.sym.IsClass(typeName)) {
-            self.diag.Error(Codes.NewOnNonClass(), ctx.file, ne.span,
-                "'" + shown + "' is not in scope; import its module");
+            self.diag.Error(Codes.NewOnNonClass(), ctx.file, ne.span, "'" + shown + "' is not in scope; import its module");
             return;
         }
         if (PrimTypes.IsPrim(typeName)) {
-            self.diag.Error(Codes.NewOnNonClass(), ctx.file, ne.span,
-                "'" + shown + "' is a primitive; use 'let', not 'new'");
+            self.diag.Error(Codes.NewOnNonClass(), ctx.file, ne.span, "'" + shown + "' is a primitive; use 'let', not 'new'");
             return;
         }
         if (self.sym.IsUnion(typeName)) {
-            hints.Add("a union value is one of its variants; construct one by calling it, as '" +
-                      shown + ".Variant(...)'");
+            hints.Add("a union value is one of its variants; construct one by calling it, as '" + shown + ".Variant(...)'");
             self.diag.Error(Codes.NewOnNonClass(), ctx.file, ne.span,
                 "'" + shown + "' is a union and cannot be instantiated with 'new'", hints);
             return;
         }
         if (self.sym.IsEnum(typeName)) {
-            hints.Add("an enum value is one of its members; name one directly, as '" + shown +
-                      ".Member'");
+            hints.Add("an enum value is one of its members; name one directly, as '" + shown + ".Member'");
             self.diag.Error(Codes.NewOnNonClass(), ctx.file, ne.span,
                 "'" + shown + "' is an enum and cannot be instantiated with 'new'", hints);
             return;
@@ -4140,8 +4118,7 @@ class TypeResolver {
                         let List[IrExpr] inits = new List[IrExpr]();
                         let int i = 0;
                         while (i < ne.collectionInit.Length()) {
-                            let IrExpr r = self.Coerce(
-                                self.ResolveExpr(ne.collectionInit.Get(i), ctx), elemType, ctx);
+                            let IrExpr r = self.Coerce(self.ResolveExpr(ne.collectionInit.Get(i), ctx), elemType, ctx);
                             self.CheckAssign(r, elemType,
                                 "a '" + self.mangler.DisplayName(typeName) + "' element", ctx,
                                 Codes.ArgTypeMismatch());
@@ -4149,8 +4126,7 @@ class TypeResolver {
                             inits.Add(r);
                             i = i + 1;
                         }
-                        return IrExpr.IrNewInit(
-                            new IrNewInit(typeName, ctorArgs, add.cName, inits, cls));
+                        return IrExpr.IrNewInit(new IrNewInit(typeName, ctorArgs, add.cName, inits, cls));
                     }
                 }
             }
@@ -4158,13 +4134,12 @@ class TypeResolver {
     }
 
     /*
-     * ResolveArrayLit - '[1, 2, 3]'. The element type is the FIRST element's; the rest must be
+     * ResolveArrayLit - '[1, 2, 3]'. The element type is the FIRST element's. The rest must be
      * assignable to it, which is what makes '[]' with no elements an error rather than a guess.
      */
     IrExpr func ResolveArrayLit(ArrayLitExpr al, ResolveCtx ctx) {
         if (al.elems.Length() == 0) {
-            self.diag.Error(Codes.TypeMismatch(), ctx.file, al.span,
-                "empty array literal '[]' has no element type");
+            self.diag.Error(Codes.TypeMismatch(), ctx.file, al.span, "empty array literal '[]' has no element type");
             return IrExpr.IrArrayLit(new IrArrayLit(self.Arr(self.t.Int(), 0), new List[IrExpr]()));
         }
         let List[IrExpr] elems = new List[IrExpr]();
@@ -4191,8 +4166,7 @@ class TypeResolver {
         match (g.indexForm) {
             case Some(ixf) {
                 if (!namesType || IsSome(ctx.locals.Lookup(g.name))) {
-                    return self.ResolveIndex(
-                        new IndexExpr(Expr.IdentExpr(new IdentExpr(g.name, g.span)), ixf, g.span), ctx);
+                    return self.ResolveIndex(new IndexExpr(Expr.IdentExpr(new IdentExpr(g.name, g.span)), ixf, g.span), ctx);
                 }
             }
             case None { }
@@ -4206,8 +4180,7 @@ class TypeResolver {
         } else if (self.sym.IsUnion(g.name) || self.sym.IsClass(g.name) || self.sym.IsEnum(g.name)) {
             self.diag.Error(Codes.TypeMismatch(), ctx.file, g.span, "'" + g.name + "' is not generic, so it takes no type arguments");
         } else {
-            self.diag.Error(Codes.UndefinedType(), ctx.file, g.span,
-                "unknown generic type '" + g.name + "'");
+            self.diag.Error(Codes.UndefinedType(), ctx.file, g.span, "unknown generic type '" + g.name + "'");
         }
         return self.Poison(g.span);
     }
@@ -4437,8 +4410,7 @@ class TypeResolver {
                         match (self.ResolveTypeSpec(cbt)) {
                             case IrFuncPtrType(cbfp) {
                                 self.CheckMemberAccess(cls, ma.member, ctx, ce.span);
-                                let IrExpr load = IrExpr.IrFieldLoad(
-                                    new IrFieldLoad(recv, ma.member, self.ResolveTypeSpec(cbt)));
+                                let IrExpr load = IrExpr.IrFieldLoad(new IrFieldLoad(recv, ma.member, self.ResolveTypeSpec(cbt)));
                                 return self.ResolveIndirectCallArgs(load, cbfp, args, ctx, ce.span, ce.args);
                             }
                             default { }
@@ -4492,8 +4464,7 @@ class TypeResolver {
             case Some(lt) {
                 match (lt) {
                     case IrFuncPtrType(localFp) {
-                        let IrExpr v = IrExpr.IrVar(
-                            new IrVar(id.name, lt, ctx.locals.IsRef(id.name)));
+                        let IrExpr v = IrExpr.IrVar(new IrVar(id.name, lt, ctx.locals.IsRef(id.name)));
                         return self.ResolveIndirectCallArgs(v, localFp, args, ctx, ce.span, ce.args);
                     }
                     default { }
@@ -4611,8 +4582,7 @@ class TypeResolver {
                         case None { }
                     }
                     let IrExpr slf = IrExpr.IrSelfExpr(new IrSelfExpr(cls, self.t.ClassRef(cls)));
-                    return Optional.Some(IrExpr.IrInstanceCall(
-                        new IrInstanceCall(slf, cn, ret, args)));
+                    return Optional.Some(IrExpr.IrInstanceCall(new IrInstanceCall(slf, cn, ret, args)));
                 }
                 return Optional.Some(self.BuildCall(self.sym.MethodOverloads(cls, id.name),
                     Optional.Some(msym), args, display,
@@ -4633,8 +4603,7 @@ class TypeResolver {
             case Some(shadowing) {
                 let List[String] hints = new List[String]();
                 hints.Add("only a function, or a variable of function-pointer type, can be called");
-                hints.Add("a callable variable is declared as 'let func(<params>) -> <ret> " +
-                          id.name + " = ...;'");
+                hints.Add("a callable variable is declared as 'let func(<params>) -> <ret> " + id.name + " = ...;'");
                 self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span,
                     "'" + id.name + "' is a '" + self.Describe(shadowing) + "', which cannot be called",
                     hints);
@@ -4657,12 +4626,10 @@ class TypeResolver {
         }
 
         if (IsSome(self.sym.LookupFreeFunc(id.name))) {
-            self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span,
-                "'" + id.name + "' is not in scope; import its module");
+            self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span, "'" + id.name + "' is not in scope; import its module");
         } else if (!self.ReportNotVisible("function", id.name, ctx.file, ce.span) &&
                    !self.ReportWrongKind(Codes.UndefinedMethod(), "a function", id.name, ctx.file, ce.span)) {
-            self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span,
-                "call to undefined function '" + id.name + "'");
+            self.diag.Error(Codes.UndefinedMethod(), ctx.file, ce.span, "call to undefined function '" + id.name + "'");
         }
         return IrExpr.IrStaticCall(new IrStaticCall(fallback, self.t.Error(), args));
     }
@@ -4714,8 +4681,7 @@ class TypeResolver {
                 let bool itself = qualified == self.processStateCurrent;
                 let List[String] hints = new List[String]();
                 if (itself) {
-                    hints.Add("it holds nothing yet: the read happens as part of the store that " +
-                              "gives it a value");
+                    hints.Add("it holds nothing yet: the read happens as part of the store that " + "gives it a value");
                     hints.Add("give it a value that does not depend on itself");
                 } else {
                     hints.Add("a process's variables are initialised in declaration order, so only " +
@@ -4750,8 +4716,7 @@ class TypeResolver {
                 if (args.Length() != 1) {
                     self.diag.Error(Codes.WrongArgCount(), ctx.file, span,
                         "'" + name + "' expects 1 argument, got " + Int.ToString(args.Length()));
-                    return Optional.Some(IrExpr.IrLitInt(
-                        new IrLitInt(0L, self.t.Int(), Optional[String].None())));
+                    return Optional.Some(IrExpr.IrLitInt(new IrLitInt(0L, self.t.Int(), Optional[String].None())));
                 }
 
                 let IrExpr a = args.Get(0);
@@ -4768,8 +4733,7 @@ class TypeResolver {
                     }
                     default { }
                 }
-                return Optional.Some(IrExpr.IrStaticCall(
-                    new IrStaticCall(cname, isRetain ? at : self.t.Void(), self.OneArg(a))));
+                return Optional.Some(IrExpr.IrStaticCall(new IrStaticCall(cname, isRetain ? at : self.t.Void(), self.OneArg(a))));
             }
         }
     }
@@ -4803,8 +4767,7 @@ class TypeResolver {
         }
         if (imprecise.Length() > 0) {
             let List[String] hints = new List[String]();
-            hints.Add("values produced by different arithmetic rarely compare equal; compare with " +
-                      "a tolerance instead");
+            hints.Add("values produced by different arithmetic rarely compare equal; compare with " + "a tolerance instead");
             self.diag.Warn(Codes.ImprecisePayloadComparison(), ctx.file, span,
                 "comparing '" + unionName + "' compares " + self.DescribeFields(imprecise) +
                 " with floating-point '=='", hints);
@@ -5210,8 +5173,7 @@ class TypeResolver {
             self.CheckThrowsHandled(ctx, span);
             match (recv) {
                 case Some(r) {
-                    return IrExpr.IrThrowsInstanceCall(
-                        new IrThrowsInstanceCall(r, cname, ret, self.t.Result(ret), args));
+                    return IrExpr.IrThrowsInstanceCall(new IrThrowsInstanceCall(r, cname, ret, self.t.Result(ret), args));
                 }
                 case None {
                     return IrExpr.IrThrowsCall(new IrThrowsCall(cname, ret, self.t.Result(ret), args));
@@ -5248,13 +5210,12 @@ class TypeResolver {
             let IrStmt prev = stmts.Get(j - 1);
             let bool leaves = self.DefinitelyReturns(prev);
             match (prev) {
-                case IrBreak(x)    { leaves = true; }
+                case IrBreak(x) { leaves = true; }
                 case IrContinue(x) { leaves = true; }
                 default { }
             }
             if (leaves) {
-                self.diag.Warn(Codes.UnreachableCode(), ctx.file, Stmts2.SpanOf(stmts.Get(j)),
-                    "unreachable code");
+                self.diag.Warn(Codes.UnreachableCode(), ctx.file, Stmts2.SpanOf(stmts.Get(j)), "unreachable code");
                 break;
             }
             j = j + 1;
@@ -5347,23 +5308,19 @@ class TypeResolver {
 
             case BreakStmt(b) {
                 if (ctx.loopDepth == 0) {
-                    self.diag.Error(Codes.BreakOutsideLoop(), ctx.file, Stmts.Span(s),
-                        "'break' is only valid inside a loop");
+                    self.diag.Error(Codes.BreakOutsideLoop(), ctx.file, Stmts.Span(s), "'break' is only valid inside a loop");
                 }
                 if (ctx.inDefer) {
-                    self.diag.Error(Codes.DeferTransfer(), ctx.file, Stmts.Span(s),
-                        "a 'defer' body cannot 'break'");
+                    self.diag.Error(Codes.DeferTransfer(), ctx.file, Stmts.Span(s), "a 'defer' body cannot 'break'");
                 }
                 return IrStmt.IrBreak(new IrBreak());
             }
             case ContinueStmt(c) {
                 if (ctx.loopDepth == 0) {
-                    self.diag.Error(Codes.BreakOutsideLoop(), ctx.file, Stmts.Span(s),
-                        "'continue' is only valid inside a loop");
+                    self.diag.Error(Codes.BreakOutsideLoop(), ctx.file, Stmts.Span(s), "'continue' is only valid inside a loop");
                 }
                 if (ctx.inDefer) {
-                    self.diag.Error(Codes.DeferTransfer(), ctx.file, Stmts.Span(s),
-                        "a 'defer' body cannot 'continue'");
+                    self.diag.Error(Codes.DeferTransfer(), ctx.file, Stmts.Span(s), "a 'defer' body cannot 'continue'");
                 }
                 return IrStmt.IrContinue(new IrContinue());
             }
@@ -5372,14 +5329,12 @@ class TypeResolver {
 
             case DeferStmt(ds) {
                 if (ctx.inDefer) {
-                    self.diag.Error(Codes.DeferTransfer(), ctx.file, ds.span,
-                        "a 'defer' body cannot itself 'defer'");
+                    self.diag.Error(Codes.DeferTransfer(), ctx.file, ds.span, "a 'defer' body cannot itself 'defer'");
                 }
                 match (ds.action) {
                     case LetStmt(dlet) {
                         let List[String] hints = new List[String]();
-                        hints.Add("declare the variable before the 'defer' and use it in the " +
-                                  "deferred action");
+                        hints.Add("declare the variable before the 'defer' and use it in the " + "deferred action");
                         hints.Add("or wrap the action in a block: 'defer { ... }'");
                         self.diag.Error(Codes.NoEffect(), ctx.file, ds.span,
                             "a 'defer' body cannot be a declaration; '" + dlet.name +
@@ -5454,8 +5409,7 @@ class TypeResolver {
             return IrStmt.IrAssign(new IrAssign(target, AssignOp.Assign, v));
         }
 
-        self.ForbidThrowsInAssignForm(value, "a '" + Ops.AssignSym(asgn.op) +
-                                             "' compound assignment", ctx);
+        self.ForbidThrowsInAssignForm(value, "a '" + Ops.AssignSym(asgn.op) + "' compound assignment", ctx);
         let String baseOp = self.BaseOpSym(asgn.op);
         let String lhsClass = self.DirectClassNameOf(Exprs2.TypeOf(target));
         if (lhsClass.Length() > 0) {
@@ -5466,8 +5420,7 @@ class TypeResolver {
                     let List[IrExpr] cargs = new List[IrExpr]();
                     cargs.Add(target);
                     cargs.Add(arg);
-                    let IrExpr composed = IrExpr.IrStaticCall(
-                        new IrStaticCall(opSym.cName, self.ResolveType(opSym.type), cargs));
+                    let IrExpr composed = IrExpr.IrStaticCall(new IrStaticCall(opSym.cName, self.ResolveType(opSym.type), cargs));
                     self.CheckAssign(composed, Exprs2.TypeOf(target), "the assignment target", ctx, Codes.TypeMismatch());
                     self.ForbidNestedThrows(composed, ctx, false);
                     return IrStmt.IrAssign(new IrAssign(target, AssignOp.Assign, composed));
@@ -5477,8 +5430,7 @@ class TypeResolver {
         }
         self.CheckCompound(asgn.op, target, value, ctx);
         self.ForbidNestedThrows(value, ctx, false);
-        return IrStmt.IrAssign(new IrAssign(target, asgn.op,
-            self.CompoundValue(asgn, target, value, ctx)));
+        return IrStmt.IrAssign(new IrAssign(target, asgn.op, self.CompoundValue(asgn, target, value, ctx)));
     }
 
     /*
@@ -5685,8 +5637,7 @@ class TypeResolver {
             case Some(gs) {
                 match (gs.sig) {
                     case Some(g) {
-                        getOk = g.params.Length() == 1 &&
-                                self.IsInteger(self.ResolveTypeSpec(g.params.Get(0).type));
+                        getOk = g.params.Length() == 1 && self.IsInteger(self.ResolveTypeSpec(g.params.Get(0).type));
                     }
                     case None { }
                 }
@@ -5834,8 +5785,7 @@ class TypeResolver {
             if (idx < 0) {
                 self.diag.Error(Codes.UndefinedVariable(), ctx.file, c.span,
                     "union '" + uname + "' has no variant '" + c.variant + "'");
-                cases.Add(new IrMatchCase(0, new List[IrMatchBind](),
-                    self.ResolveBlock(c.body, ctx, retType)));
+                cases.Add(new IrMatchCase(0, new List[IrMatchBind](), self.ResolveBlock(c.body, ctx, retType)));
                 continue;
             }
             if (!covered.AddNew(Int.ToString(idx))) {
@@ -5873,8 +5823,7 @@ class TypeResolver {
         let int coveredCount = covered.ToList().Length();
         if (IsSome(def) && coveredCount == variants.Length() && variants.Length() > 0) {
             let List[String] hints = new List[String]();
-            hints.Add("remove the 'default' so a new variant becomes a compile error instead of " +
-                      "silently falling through");
+            hints.Add("remove the 'default' so a new variant becomes a compile error instead of " + "silently falling through");
             self.diag.Warn(Codes.UnreachableCase(), ctx.file, ms.span,
                 "this 'default' can never run: all " + Int.ToString(variants.Length()) +
                 " variant(s) of '" + uname + "' are already matched", hints);
@@ -5994,8 +5943,7 @@ class TypeResolver {
                         if (!self.AssignsOrExits(IrStmt.IrBlock(cc.handler))) {
                             let List[String] hints = new List[String]();
                             hints.Add("end every path with 'assign <value>;'");
-                            hints.Add("or leave the handler through 'return', 'throw', 'break', " +
-                                      "or 'continue'");
+                            hints.Add("or leave the handler through 'return', 'throw', 'break', " + "or 'continue'");
                             self.diag.Error(Codes.CatchHandlerNoAssign(), ctx.file, cc.handler.span,
                                 "this 'catch' handler can finish without supplying a value for '" +
                                 ls.name + "'", hints);
@@ -6065,8 +6013,7 @@ class TypeResolver {
         if (asgn.op == AssignOp.Assign) {
             let IrIndex tgt = new IrIndex(obj, idx, elem);
             tgt.span = ixt.span;
-            let IrExpr v = self.CheckRootThrowsValue(val, elem, "the assignment target", ctx,
-                                                     asgn.span);
+            let IrExpr v = self.CheckRootThrowsValue(val, elem, "the assignment target", ctx, asgn.span);
             return IrStmt.IrAssign(new IrAssign(IrExpr.IrIndex(tgt), AssignOp.Assign, v));
         }
 
@@ -6089,11 +6036,9 @@ class TypeResolver {
                     cargs.Add(arg);
                     let IrExpr composed = IrExpr.IrStaticCall(
                         new IrStaticCall(elemOp.cName, self.ResolveType(elemOp.type), cargs));
-                    self.CheckAssign(composed, elem, "the assignment target", ctx,
-                                     Codes.TypeMismatch());
+                    self.CheckAssign(composed, elem, "the assignment target", ctx, Codes.TypeMismatch());
                     self.ForbidNestedThrows(composed, ctx, false);
-                    stmts.Add(IrStmt.IrAssign(
-                        new IrAssign(IrExpr.IrIndex(writeT), AssignOp.Assign, composed)));
+                    stmts.Add(IrStmt.IrAssign(new IrAssign(IrExpr.IrIndex(writeT), AssignOp.Assign, composed)));
                     return self.Seq(stmts, asgn.span);
                 }
                 case None { }
@@ -6121,14 +6066,12 @@ class TypeResolver {
         if (asgn.op == AssignOp.Assign) {
             let IrExpr value = self.Coerce(self.ResolveExpr(asgn.value, ctx), valType, ctx);
             self.CheckAssign(value, valType, "the assignment target", ctx, Codes.TypeMismatch());
-            self.ForbidThrowsInAssignForm(value,
-                "an index assignment through a '[]=' operator", ctx);
+            self.ForbidThrowsInAssignForm(value, "an index assignment through a '[]=' operator", ctx);
             self.ForbidNestedThrows(value, ctx, false);
             let List[IrExpr] sargs = new List[IrExpr]();
             sargs.Add(ci);
             sargs.Add(value);
-            let IrExprStmt st = new IrExprStmt(IrExpr.IrInstanceCall(
-                new IrInstanceCall(obj, setOp.cName, self.t.Void(), sargs)));
+            let IrExprStmt st = new IrExprStmt(IrExpr.IrInstanceCall(new IrInstanceCall(obj, setOp.cName, self.t.Void(), sargs)));
             st.span = asgn.span;
             return IrStmt.IrExprStmt(st);
         }
@@ -6166,8 +6109,7 @@ class TypeResolver {
                     let List[IrExpr] cargs = new List[IrExpr]();
                     cargs.Add(current);
                     cargs.Add(arg);
-                    combined = IrExpr.IrStaticCall(
-                        new IrStaticCall(elemOp.cName, self.ResolveType(elemOp.type), cargs));
+                    combined = IrExpr.IrStaticCall(new IrStaticCall(elemOp.cName, self.ResolveType(elemOp.type), cargs));
                     viaOperator = true;
                 }
                 case None { }
@@ -6177,8 +6119,7 @@ class TypeResolver {
             self.CheckCompound(asgn.op, current, rhs, ctx);
             match (Ops.BaseOp(asgn.op)) {
                 case Some(bop) {
-                    combined = IrExpr.IrBinOp(
-                        new IrBinOp(bop, current, rhs, Exprs2.TypeOf(current)));
+                    combined = IrExpr.IrBinOp(new IrBinOp(bop, current, rhs, Exprs2.TypeOf(current)));
                 }
                 case None { }
             }
@@ -6214,8 +6155,7 @@ class TypeResolver {
                 self.diag.Error(Codes.CannotInfer(), ctx.file, span,
                     "generic '" + baseName + "' is never instantiated, so '" + baseName + "." +
                     variant + "' has no type", hints);
-                return Optional.Some(IrExpr.IrUnionConstruct(
-                    new IrUnionConstruct(self.t.UnionType(baseName), 0, args)));
+                return Optional.Some(IrExpr.IrUnionConstruct(new IrUnionConstruct(self.t.UnionType(baseName), 0, args)));
             }
             return Optional[IrExpr].None();
         }
@@ -6241,8 +6181,7 @@ class TypeResolver {
             self.diag.Error(Codes.UndefinedVariable(), ctx.file, span,
                 "no instantiation of generic union '" + baseName + "' has a variant '" + variant +
                 "' taking " + Int.ToString(args.Length()) + " argument(s)", hints);
-            return Optional.Some(IrExpr.IrUnionConstruct(
-                new IrUnionConstruct(self.t.UnionType(instances.Get(0)), 0, args)));
+            return Optional.Some(IrExpr.IrUnionConstruct(new IrUnionConstruct(self.t.UnionType(instances.Get(0)), 0, args)));
         }
 
         let List[String] accepting = new List[String]();
@@ -6250,13 +6189,11 @@ class TypeResolver {
         while (k < candidates.Length()) {
             match (self.sym.UnionDef(candidates.Get(k))) {
                 case Some(variants) {
-                    let List[Param] payload =
-                        variants.Get(self.VariantIndex(variants, variant)).variantFields;
+                    let List[Param] payload = variants.Get(self.VariantIndex(variants, variant)).variantFields;
                     let bool ok = true;
                     let int a = 0;
                     while (a < args.Length() && ok) {
-                        ok = self.Assignable(args.Get(a),
-                                             self.ResolveTypeSpec(payload.Get(a).type));
+                        ok = self.Assignable(args.Get(a), self.ResolveTypeSpec(payload.Get(a).type));
                         a = a + 1;
                     }
                     if (ok) { accepting.Add(candidates.Get(k)); }
@@ -6607,8 +6544,7 @@ class TypeResolver {
         if (ed.members.Length() == 0) {
             let List[String] hints = new List[String]();
             hints.Add("an enum needs at least one member, e.g. 'enum " + ed.name + " { First }'");
-            self.diag.Error(Codes.BadDeclHeader(), ctx.file, ed.span,
-                "enum '" + ed.name + "' declares no members", hints);
+            self.diag.Error(Codes.BadDeclHeader(), ctx.file, ed.span, "enum '" + ed.name + "' declares no members", hints);
         }
 
         let List[IrEnumMember] members = new List[IrEnumMember]();
@@ -6695,14 +6631,14 @@ class TypeResolver {
             case UnaryExpr(un) {
                 let int64 o = 0L;
                 if (!self.TryConstEval(un.operand, enumName, members, ref o)) { return false; }
-                if (un.op == UnOp.Neg)    { v = 0L - o; return true; }
+                if (un.op == UnOp.Neg) { v = 0L - o; return true; }
                 if (un.op == UnOp.BitNot) { v = ~o; return true; }
                 return false;
             }
             case BinExpr(be) {
                 let int64 l = 0L;
                 let int64 r = 0L;
-                if (!self.TryConstEval(be.left, enumName, members, ref l))  { return false; }
+                if (!self.TryConstEval(be.left, enumName, members, ref l)) { return false; }
                 if (!self.TryConstEval(be.right, enumName, members, ref r)) { return false; }
                 if (be.op == BinOp.Add) { v = l + r; return true; }
                 if (be.op == BinOp.Sub) { v = l - r; return true; }
@@ -6712,7 +6648,7 @@ class TypeResolver {
                 if (be.op == BinOp.Shl) { v = l << ((r & 63L) as int); return true; }
                 if (be.op == BinOp.Shr) { v = l >> ((r & 63L) as int); return true; }
                 if (be.op == BinOp.BitAnd) { v = l & r; return true; }
-                if (be.op == BinOp.BitOr)  { v = l | r; return true; }
+                if (be.op == BinOp.BitOr) { v = l | r; return true; }
                 if (be.op == BinOp.BitXor) { v = l ^ r; return true; }
                 return false;
             }
@@ -6763,8 +6699,7 @@ class TypeResolver {
         if (ud.variants.Length() == 0) {
             let List[String] hints = new List[String]();
             hints.Add("a union needs at least one variant, e.g. 'union " + ud.name + " { First }'");
-            self.diag.Error(Codes.BadDeclHeader(), ctx.file, ud.span,
-                "union '" + ud.name + "' declares no variants", hints);
+            self.diag.Error(Codes.BadDeclHeader(), ctx.file, ud.span, "union '" + ud.name + "' declares no variants", hints);
         }
 
         let List[IrUnionVariant] variants = new List[IrUnionVariant]();
@@ -6793,8 +6728,7 @@ class TypeResolver {
                     case IrClassRef(mcr) {
                         if (self.sym.modules.Has(mcr.className)) {
                             let List[String] hints = new List[String]();
-                            hints.Add("a module is a namespace for functions, not a value; it " +
-                                      "cannot be stored");
+                            hints.Add("a module is a namespace for functions, not a value; it " + "cannot be stored");
                             self.diag.Error(Codes.TypeMismatch(), ctx.file, f.span,
                                 "union variant field '" + f.name + "' has type '" +
                                 self.Describe(ft) + "', which is a module", hints);
@@ -6945,8 +6879,7 @@ class TypeResolver {
                     "thread '" + td.name + "' is already declared in process '" + pd.name + "'");
             }
             let String tFull = NameOfRealm(ctx.realmKind) + "_" + pd.name + "_" + td.name;
-            threads.Add(new IrThread(td.name, tFull,
-                Optional.Some(self.ResolveThreadEntry(tFull, td.entryFunc, ctx, vis))));
+            threads.Add(new IrThread(td.name, tFull, Optional.Some(self.ResolveThreadEntry(tFull, td.entryFunc, ctx, vis))));
         }
 
         let int j = 0;
@@ -7102,8 +7035,7 @@ class TypeResolver {
                             case Some(b) { bucket = b; }
                             case None { self.funcTemplates.Put(fd.name, bucket); }
                         }
-                        bucket.Add(new FuncTemplate(fd, file, r,
-                            Mods.Has(fd.modifiers, Modifiers.Private)));
+                        bucket.Add(new FuncTemplate(fd, file, r, Mods.Has(fd.modifiers, Modifiers.Private)));
                     }
                 }
                 case ContextDecl(cd) { self.CollectFuncTemplates(cd.items, cd.kind, file); }
@@ -7114,8 +7046,7 @@ class TypeResolver {
                         match (cls.members.Get(m)) {
                             case MethodDecl(md) {
                                 if (md.genericParams.Length() > 0) {
-                                    self.methodTemplates.Put(MemberKey(cls.name, md.name),
-                                        new MethodTemplate(md, file, r));
+                                    self.methodTemplates.Put(MemberKey(cls.name, md.name), new MethodTemplate(md, file, r));
                                 }
                             }
                             default { }
@@ -7134,7 +7065,7 @@ class TypeResolver {
      */
     void func ResolveTop(TopLevel item, ResolveCtx ctx, IrModule mod) {
         match (item) {
-            case ImportDecl(x)     { }
+            case ImportDecl(x) { }
             case ExternFuncDecl(x) { }
 
             case EnvironmentDecl(ed) {
@@ -7200,9 +7131,9 @@ class TypeResolver {
         let Visibility vis = self.VisOf(ctx.realmKind);
         if (preambles.Length() > 0) {
             let String target = preambles.Get(0).target;
-            if (target == "boot")        { section = NativeSection.Boot;     vis = Visibility.Kernel; }
+            if (target == "boot") { section = NativeSection.Boot; vis = Visibility.Kernel; }
             else if (target == "kernel") { section = NativeSection.Preamble; vis = Visibility.Kernel; }
-            else if (target == "user")   { section = NativeSection.Preamble; vis = Visibility.User; }
+            else if (target == "user") { section = NativeSection.Preamble; vis = Visibility.User; }
             else {
                 self.diag.Error(Codes.UnknownPreambleTarget(), ctx.file, nb.span,
                     "unknown @preamble target '" + target +
@@ -7415,7 +7346,7 @@ class ThrowsPlacement {
     public void func Check(IrBlock body) { self.WalkStmt(IrStmt.IrBlock(body)); }
 
     /*
-     * WalkStmt - Routes the three root-position slots through WalkRoot; everything else recurses
+     * WalkStmt - Routes the three root-position slots through WalkRoot. Everything else recurses
      * through the shared traversal, whose expression side is this class's WalkExpr
      */
     void func WalkStmt(IrStmt s) {
@@ -7824,8 +7755,7 @@ class UnsafeAlloc {
         if (sc.args.Length() != 1) { return false; }
         match (Exprs2.TypeOf(sc.args.Get(0))) {
             case IrUnionType(ut) {
-                return sc.cName == self.r.mangler.UnionRetain(ut.name) ||
-                       sc.cName == self.r.mangler.UnionRelease(ut.name);
+                return sc.cName == self.r.mangler.UnionRetain(ut.name) || sc.cName == self.r.mangler.UnionRelease(ut.name);
             }
             default { return false; }
         }
@@ -7862,7 +7792,7 @@ bool func UnsafeAllocStmt(IrWalk[UnsafeAlloc] w, IrStmt s) {
     match (s) { case IrUnsafeBlock(u) { return false; } default { } }
     match (s) {
         case IrDeclVar(d) { w.state.SetOwned(d.init); }
-        case IrReturn(r)  { w.state.SetOwned(r.value); }
+        case IrReturn(r) { w.state.SetOwned(r.value); }
         default { w.state.SetOwned(Optional[IrExpr].None()); }
     }
     return true;
