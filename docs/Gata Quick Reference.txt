@@ -2388,12 +2388,12 @@ toplevel       := import | environment | nativeblock | nativetype | externdecl
 
 import         := 'import' ( ident | strlit ) ';'
 environment    := '@environment'
-nativeblock    := preamble? 'native' '{' rawC '}'
+nativeblock    := ann* 'native' '{' rawC '}'
 nativetype     := ann* 'native' 'type' ident '{' rawC '}'
 externdecl     := ann* '@extern' type? 'func' ident '(' params ')' ';'
 
 enumdecl       := 'enum' ident '{' [ enummember (',' enummember)* ] '}'
-enummember     := ident [ '=' constexpr ]
+enummember     := ident [ '=' expr ]
 
 uniondecl      := ann* 'union' ident generics? '{' [ variant (',' variant)* ] '}'
 variant        := ident [ '(' param (',' param)* ')' ]
@@ -2403,25 +2403,28 @@ moduledecl     := ann* 'module' ident '{' member* '}'
 member         := fieldsblock | fielddecl | methoddecl | operatordecl
 fieldsblock    := 'fields' '{' rawC '}'
 fielddecl      := mods? ( type ident | ident ) [ '=' expr ] ';'
-methoddecl     := ann* mods? 'entry'? 'throws'? type? 'func' ident generics?
-                  '(' params ')' body
+methoddecl     := ann* mods? ( 'entry' 'throws'? | 'throws' 'entry'? )? type?
+                  'func' ident generics? '(' params ')' body
 operatordecl   := mods? 'operator' type? 'func' opsym '(' params ')' body
 opsym          := '+' | '-' | '*' | '/' | '%' | '<' | '>' | '==' | '!='
                 | '<=' | '>=' | '&' | '|' | '^' | '<<' | '>>' | '!' | '~'
                 | '++' | '--' | '[' ']' | '[' ']' '=' | 'as'
 
-funcdecl       := ann* mods? 'entry'? 'throws'? type? 'func' ident generics?
-                  '(' params ')' body
+funcdecl       := ann* mods? ( 'entry' 'throws'? | 'throws' 'entry'? )? type?
+                  'func' ident generics? '(' params ')' body
 body           := block | 'native' '{' rawC '}'
 
 realmdecl      := 'realm' ( 'kernel' | 'userspace' ) '{' realmitem* '}'
-realmitem      := toplevel-minus-import-minus-realm | processdecl
+realmitem      := declaration | processdecl
 processdecl    := ( 'foreground' | 'background' ) 'process' ident
                   '{' ( threaddecl | processitem )* '}'
-processitem    := realmitem-minus-process | processvar
+processitem    := declaration | processvar
 processvar     := 'let' type ident '=' expr ';'
 threaddecl     := 'thread' ident '{' entryfunc '}'
 entryfunc      := 'entry' 'func' ident? '(' ')' block
+
+declaration    := environment | nativeblock | nativetype | externdecl
+                | enumdecl | uniondecl | classdecl | moduledecl | funcdecl
 
 generics       := '[' ident (',' ident)* ']'
 params         := [ param (',' param)* ]
@@ -2432,9 +2435,12 @@ ann            := '@intrinsic' '(' ident ')' | '@preamble' '(' ident ')'
 
 type           := ( '[' intlit ']' )* ( functype | typename ) '*'*
 functype       := 'func' '(' [ type (',' type)* ] ')' '->' type
-typename       := scopequal? ident ('.' ident)* [ '[' type (',' type)* ']' ]
+typename       := scopequal? ident ('.' ident)* [ '[' typename (',' typename)* ']' ]
                 | primitive
 scopequal      := '::' | 'kernel' '.' | 'userspace' '.'
+primitive      := 'bool' | 'int' | 'char' | 'float' | 'double' | 'short' | 'void'
+                | 'int64' | 'uint' | 'uint64' | 'ushort' | 'byte' | 'sbyte'
+                | 'usize' | 'uintptr'
 
 block          := '{' stmt* '}'
 stmt           := block | letstmt | assignstmt | exprstmt | ifstmt | whilestmt
@@ -2444,13 +2450,16 @@ stmt           := block | letstmt | assignstmt | exprstmt | ifstmt | whilestmt
                 | panicstmt | nativestmt
 
 letstmt        := 'let' type? ident [ '=' expr ] ';'
+letstmt-nosemi := 'let' type? ident [ '=' expr ]
 assignstmt     := expr assignop expr ';'
 assignop       := '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^='
                 | '<<=' | '>>='
+exprstmt       := expr ';'
 ifstmt         := 'if' '(' expr ')' stmt [ 'else' stmt ]
 whilestmt      := 'while' '(' expr ')' stmt
 forstmt        := 'for' '(' [ letstmt-nosemi | forclause ] ';' [ expr ] ';'
                   [ forclause ] ')' block
+forclause      := expr [ assignop expr ]
 forinstmt      := 'for' ident 'in' expr block
 switchstmt     := 'switch' '(' expr ')' '{' ( case | default )* '}'
 case           := 'case' expr (',' expr)* block
@@ -2486,13 +2495,33 @@ args           := [ arg (',' arg)* ]
 arg            := 'ref'? expr
 primary        := intlit | floatlit | charlit | strlit | interpstr | boollit
                 | 'null' | ident | scopedname | '(' expr ')'
-                | '(' primtype ')' unary
+                | '(' primitive ')' unary
                 | 'new' type [ '(' args ')' ] [ collectioninit ]
                 | 'sizeof' '(' type ')' | 'default' '(' type ')'
                 | '[' [ expr (',' expr)* ] ']'
 collectioninit := '{' [ expr (',' expr)* ] '}' | '[' [ expr (',' expr)* ] ']'
 scopedname     := scopequal ident ('.' ident)*
+interpstr      := '$"' ( strfrag | '{' expr '}' )* '"'
 
+LEXICAL TERMINALS
+
+ident          : letter ( letter | digit | '_' )*
+intlit         : digit+ intsuffix?
+                | '0' ('x'|'X') hexdigit+ intsuffix?
+intsuffix      : ( 'u' | 'U' | 'l' | 'L' )+
+floatlit       : digit+ '.' digit+ exponent? 'f'?
+                | digit+ exponent 'f'?
+exponent       : ('e'|'E') ('+'|'-')? digit+
+charlit        : "'" ( escape | [^'\n\\] ) "'"
+strlit         : '"' ( escape | [^"\n\\] )* '"'
+boollit        : 'true' | 'false'
+escape         : '\\' ( 'n' | 't' | 'r' | '0' | "'" | '\\' | '"' )
+rawC           : balanced brace-delimited C text (comment- and literal-aware)
+strfrag        : run of non-brace characters inside an interpolated string
+letter         : 'a'-'z' | 'A'-'Z' | '_'
+digit          : '0'-'9'
+hexdigit       : digit | 'a'-'f' | 'A'-'F'
+comment        : '//' [^\n]* | '/*' .* '*/'
 
 26. A PROGRAM USING MOST OF THE LANGUAGE
 
