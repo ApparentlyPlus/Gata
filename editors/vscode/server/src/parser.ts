@@ -72,6 +72,8 @@ export class Parser {
   private pp = 0;
   private pe = 0;
   private depth = 0;
+  private castType = false;
+  private blockAfter = -1;
 
   constructor(tokens: Token[]) {
     this.tokens = tokens;
@@ -443,7 +445,19 @@ export class Parser {
     }
     if (this.at(TK.Func)) { this.parseFuncTypeSpec(); return; }
     this.parseTypeName();
-    while (this.atP('*')) this.advance();
+    while (this.atPtrStar()) this.advance();
+  }
+
+  private atPtrStar(): boolean {
+    if (!this.atP('*')) return false;
+    if (!this.castType) return true;
+    let i = 1;
+    while (this.peek(i).kind === TK.Punct && this.peek(i).value === '*') i++;
+    const t = this.peek(i);
+    const operand = [TK.Ident, TK.IntLit, TK.FloatLit, TK.StrLit, TK.BoolLit, TK.CharLit, TK.InterpStrStart,
+      TK.Null, TK.Sizeof, TK.Default, TK.New, TK.LParen, TK.ColonColon, TK.Kernel, TK.Userspace].includes(t.kind)
+      || (t.kind === TK.Punct && (t.value === '!' || t.value === '~'));
+    return !operand;
   }
 
   private parseFuncTypeSpec(): void {
@@ -456,7 +470,7 @@ export class Parser {
     this.expect(TK.RParen);
     this.expect(TK.Arrow);
     this.parseTypeSpec();
-    if (this.atP('*')) this.fail('pointer to a function type is not supported; use the function type directly', Codes.BadDeclHeader);
+    if (this.atPtrStar()) this.fail('pointer to a function type is not supported; use the function type directly', Codes.BadDeclHeader);
   }
 
   private isPrim(k: TK): boolean {
@@ -685,7 +699,9 @@ export class Parser {
         "a thread entry cannot be 'throws' - the runtime starts it, so there is no caller to receive the error",
         Codes.BadEntrySignature,
         ["handle failure inside the thread: 'let T x = f() catch { assign <fallback>; };'"]);
-    const hasRet = !(this.at(TK.Func) && this.peek().kind === TK.Ident);
+    const named = this.peek().kind === TK.Ident;
+    const bare = this.peek().kind === TK.LParen && !this.funcTypeAhead();
+    const hasRet = !(this.at(TK.Func) && (named || bare));
     if (hasRet) this.parseTypeSpec();
     this.expect(TK.Func);
     if (this.at(TK.Ident)) this.advance();
@@ -695,6 +711,17 @@ export class Parser {
     if (parms > 0)
       this.fail('a thread entry takes no parameters; pass state through fields or module data instead', Codes.BadEntrySignature);
     this.parseBlock();
+  }
+
+  // at 'func', true when the parens after it close onto '->', as in 'func(int) -> int'
+  private funcTypeAhead(): boolean {
+    let depth = 0;
+    for (let i = 1; this.peek(i).kind !== TK.EOF; i++) {
+      const k = this.peek(i).kind;
+      if (k === TK.LParen) depth++;
+      else if (k === TK.RParen && --depth === 0) return this.peek(i + 1).kind === TK.Arrow;
+    }
+    return false;
   }
 
   private parseParamList(): number {
@@ -870,7 +897,7 @@ export class Parser {
     if (this.at(TK.Ident) && this.peek().kind === TK.In) {
       this.advance();
       this.advance();
-      this.parseExpr();
+      this.parseExprBeforeBlock();
       this.parseBlock();
       return;
     }
@@ -994,7 +1021,11 @@ export class Parser {
   }
   private parseAs(): void {
     this.parseUnary();
-    while (this.at(TK.As)) { this.advance(); this.parseTypeSpec(); }
+    while (this.at(TK.As)) {
+      this.advance();
+      this.castType = true;
+      try { this.parseTypeSpec(); } finally { this.castType = false; }
+    }
   }
 
   private parseUnary(): void {
@@ -1169,8 +1200,26 @@ export class Parser {
       this.parseArgList();
       this.expect(TK.RParen);
     }
-    if (this.at(TK.LBrace)) { this.parseCollectionInit(TK.LBrace, TK.RBrace); return; }
+    if (this.at(TK.LBrace) && !this.braceOpensBlock()) { this.parseCollectionInit(TK.LBrace, TK.RBrace); return; }
     if (this.at(TK.LBrack)) { this.parseCollectionInit(TK.LBrack, TK.RBrack); return; }
+  }
+
+  private parseExprBeforeBlock(): void {
+    const saved = this.blockAfter;
+    this.blockAfter = this.pp;
+    try { this.parseExpr(); } finally { this.blockAfter = saved; }
+  }
+
+  private braceOpensBlock(): boolean {
+    if (this.blockAfter < 0) return false;
+    let depth = 0;
+    for (let i = this.blockAfter; i < this.pp; i++) {
+      switch (this.tokens[i].kind) {
+        case TK.LParen: case TK.LBrack: case TK.LBrace: case TK.InterpStrStart: depth++; break;
+        case TK.RParen: case TK.RBrack: case TK.RBrace: case TK.InterpStrEnd: depth--; break;
+      }
+    }
+    return depth === 0;
   }
 
   private parseCollectionInit(open: TK, close: TK): void {
@@ -1194,8 +1243,8 @@ export class Parser {
         continue;
       }
       this.expect(TK.Case);
-      this.parseExpr();
-      while (this.try_(TK.Comma)) this.parseExpr();
+      this.parseExprBeforeBlock();
+      while (this.try_(TK.Comma)) this.parseExprBeforeBlock();
       this.parseBlock();
     }
     this.expect(TK.RBrace);
