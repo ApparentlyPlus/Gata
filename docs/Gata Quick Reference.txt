@@ -375,7 +375,7 @@ Cannot infer:
   type      := arraypfx* ( funcptr | name genericargs? ) '*'*
   arraypfx  := '[' intlit ']'
   funcptr   := 'func' '(' type,* ')' '->' type
-  name      := scopequal? ident ( '.' ident )*  |  primitive
+  name      := scopequal ident ( '.' ident )*  |  ident  |  primitive
   scopequal := '::' | 'kernel' '.' | 'userspace' '.'
 
 Examples of every slot:
@@ -2402,8 +2402,8 @@ classdecl      := ann* 'class' ident generics? '{' member* '}'
 moduledecl     := ann* 'module' ident '{' member* '}'
 member         := fieldsblock | fielddecl | methoddecl | operatordecl
 fieldsblock    := 'fields' '{' rawC '}'
-fielddecl      := mods? ( type ident | ident ) [ '=' expr ] ';'
-methoddecl     := ann* mods? ( 'entry' 'throws'? | 'throws' 'entry'? )? type?
+fielddecl      := mods? ( type ident [ '=' expr ] | ident '=' expr ) ';'
+methoddecl     := ann* mods? 'throws'? type?
                   'func' ident generics? '(' params ')' body
 operatordecl   := mods? 'operator' type? 'func' opsym '(' params ')' body
 opsym          := '+' | '-' | '*' | '/' | '%' | '<' | '>' | '==' | '!='
@@ -2435,7 +2435,8 @@ ann            := '@intrinsic' '(' ident ')' | '@preamble' '(' ident ')'
 
 type           := ( '[' intlit ']' )* ( functype | typename ) '*'*
 functype       := 'func' '(' [ type (',' type)* ] ')' '->' type
-typename       := scopequal? ident ('.' ident)* [ '[' typename (',' typename)* ']' ]
+typename       := ( scopequal ident ('.' ident)* | ident )
+                  [ '[' typename (',' typename)* ']' ]
                 | primitive
 scopequal      := '::' | 'kernel' '.' | 'userspace' '.'
 primitive      := 'bool' | 'int' | 'char' | 'float' | 'double' | 'short' | 'void'
@@ -2495,7 +2496,7 @@ args           := [ arg (',' arg)* ]
 arg            := 'ref'? expr
 primary        := intlit | floatlit | charlit | strlit | interpstr | boollit
                 | 'null' | ident | scopedname | '(' expr ')'
-                | '(' primitive ')' unary
+                | '(' primitive '*'* ')' unary
                 | 'new' type [ '(' args ')' ] [ collectioninit ]
                 | 'sizeof' '(' type ')' | 'default' '(' type ')'
                 | '[' [ expr (',' expr)* ] ']'

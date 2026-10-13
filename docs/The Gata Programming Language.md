@@ -2282,16 +2282,16 @@ classdecl      := ann* 'class' ident generics? '{' member* '}'
 moduledecl     := ann* 'module' ident '{' member* '}'
 member         := fieldsblock | fielddecl | methoddecl | operatordecl
 fieldsblock    := 'fields' '{' rawC '}'
-fielddecl      := mods? ( type ident | ident ) [ '=' expr ] ';'
-methoddecl     := ann* mods? 'entry'? 'throws'? type? 'func' ident generics?
+fielddecl      := mods? ( type ident [ '=' expr ] | ident '=' expr ) ';'
+methoddecl     := ann* mods? 'throws'? type? 'func' ident generics?
                   '(' params ')' body
 operatordecl   := mods? 'operator' type? 'func' opsym '(' params ')' body
 opsym          := '+' | '-' | '*' | '/' | '%' | '<' | '>' | '==' | '!='
                 | '<=' | '>=' | '&' | '|' | '^' | '<<' | '>>' | '!' | '~'
                 | '++' | '--' | '[' ']' | '[' ']' '=' | 'as'
 
-funcdecl       := ann* mods? 'entry'? 'throws'? type? 'func' ident generics?
-                  '(' params ')' body
+funcdecl       := ann* mods? ( 'entry' 'throws'? | 'throws' 'entry'? )? type?
+                  'func' ident generics? '(' params ')' body
 body           := block | 'native' '{' rawC '}'
 
 realmdecl      := 'realm' ( 'kernel' | 'userspace' ) '{' realmitem* '}'
@@ -2312,9 +2312,13 @@ ann            := '@intrinsic' '(' ident ')' | '@preamble' '(' ident ')'
 
 type           := ( '[' intlit ']' )* ( functype | typename ) '*'*
 functype       := 'func' '(' [ type (',' type)* ] ')' '->' type
-typename       := scopequal? ident ('.' ident)* [ '[' type (',' type)* ']' ]
+typename       := ( scopequal ident ('.' ident)* | ident )
+                  [ '[' typename (',' typename)* ']' ]
                 | primitive
 scopequal      := '::' | 'kernel' '.' | 'userspace' '.'
+primitive      := 'bool' | 'int' | 'char' | 'float' | 'double' | 'short' | 'void'
+                | 'int64' | 'uint' | 'uint64' | 'ushort' | 'byte' | 'sbyte'
+                | 'usize' | 'uintptr'
 
 block          := '{' stmt* '}'
 stmt           := block | letstmt | assignstmt | exprstmt | ifstmt | whilestmt
@@ -2366,7 +2370,7 @@ args           := [ arg (',' arg)* ]
 arg            := 'ref'? expr
 primary        := intlit | floatlit | charlit | strlit | interpstr | boollit
                 | 'null' | ident | scopedname | '(' expr ')'
-                | '(' primtype ')' unary
+                | '(' primitive '*'* ')' unary
                 | 'new' type [ '(' args ')' ] [ collectioninit ]
                 | 'sizeof' '(' type ')' | 'default' '(' type ')'
                 | '[' [ expr (',' expr)* ] ']'
