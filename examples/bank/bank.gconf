@@ -1,0 +1,16 @@
+<!--
+  TargetBackend:        GatOS | Hosted
+  BuildMode:            Debug | Release
+  OutputType:           Framebuffer | Serial
+  KeyboardSupport:      Default (PS/2) | External (+ USB) | Hotplug (+ hotplug)
+  CapabilityDiscovery:  On (infer mem/input/threads from the program, default)
+                        | Off (assume all three - escape valve for a native blind spot)
+-->
+<appa>
+    <ProjectName>bank</ProjectName>
+    <TargetBackend>GatOS</TargetBackend>
+    <BuildMode>Debug</BuildMode>
+    <OutputType>Framebuffer</OutputType>
+    <KeyboardSupport>Default</KeyboardSupport>
+    <CapabilityDiscovery>On</CapabilityDiscovery>
+</appa>
