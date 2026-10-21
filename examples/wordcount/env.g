@@ -59,18 +59,20 @@
         if (kind == 3) return ksnprintf(buf, n, fmt, (const char*)(uintptr_t)bits);
         return ksnprintf(buf, n, fmt, (long long)(int64_t)bits);
     }
+    
     static inline void  _env_write(const char* d, int n) {
         if (!d || n <= 0) return;
-        #if defined(GATA_OUTPUT_SERIAL)
-        serial_write_len_port(SERIAL_COM1, d, (size_t)n);
-        #elif defined(GATA_CAP_THREADS)
+        #if defined(GATA_CAP_THREADS)
         tty_t* t = active_tty;
         if (sched_active()) {
             thread_t* cur = sched_current();
             if (cur && cur->process && cur->process->tty) t = cur->process->tty;
         }
-        if (t) tty_write(t, d, (size_t)n);
-        #else
+        if (t) { tty_write(t, d, (size_t)n); return; }
+        #endif
+        #if defined(GATA_OUTPUT_SERIAL)
+        serial_write_len_port(SERIAL_COM1, d, (size_t)n);
+        #elif !defined(GATA_CAP_THREADS)
         for (int i = 0; i < n; i++) con_crash_putc(d[i]);
         #endif
     }
@@ -110,8 +112,8 @@
 
     #if defined(GATA_OUTPUT_SERIAL)
 
-    static inline void  _env_tty_clear(void)   { serial_write_port(SERIAL_COM1, "\x1b[2J\x1b[H"); }
-    static inline void  _env_tty_cursor(int v) { serial_write_port(SERIAL_COM1, v ? "\x1b[?25h" : "\x1b[?25l"); }
+    static inline void  _env_tty_clear(void)   { _env_write("\x1b[2J\x1b[H", 7); }
+    static inline void  _env_tty_cursor(int v) { _env_write(v ? "\x1b[?25h" : "\x1b[?25l", 6); }
     static inline int64_t _env_tty_dims(void)  { return ((int64_t)24 << 32) | (int64_t)80; }
 
     static inline void  _env_tty_color(int fg, int bg) {
@@ -120,8 +122,7 @@
         int f = fg & 0xF, b = bg & 0xF;
         int fc = (f & 8) ? 90 + a[f & 7] : 30 + a[f & 7];
         int bc = (b & 8) ? 100 + a[b & 7] : 40 + a[b & 7];
-        ksnprintf(seq, sizeof(seq), "\x1b[%d;%dm", fc, bc);
-        serial_write_port(SERIAL_COM1, seq);
+        _env_write(seq, ksnprintf(seq, sizeof(seq), "\x1b[%d;%dm", fc, bc));
     }
 
     #else
