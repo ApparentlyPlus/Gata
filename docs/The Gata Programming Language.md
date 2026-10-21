@@ -2024,6 +2024,7 @@ Inside those blocks the environment defines a fixed set of plain C functions, th
 |---|---|
 | `_env_alloc`, `_env_free` | heap |
 | `_env_write`, `_env_read` | console I/O |
+| `_env_tty_mode`, `_env_key_read`, `_env_key_pending` | raw keys |
 | `_env_tty_clear`, `_env_tty_cursor`, `_env_tty_color`, `_env_tty_dims` | TTY control |
 | `_env_yield`, `_env_sleep`, `_env_exit` | scheduling and exit |
 | `_env_shutdown`, `_env_reboot` | machine power |
@@ -2036,7 +2037,7 @@ Missing one your program needs is a build error naming it, not a linker error.
 
 Not every environment needs all of them. `_env_panic` and the process/thread trio are kernel-only, so a hosted environment does not define them.
 
-These are also what capability discovery watches (Chapter 2): reaching `_env_alloc` pulls in memory management, `_env_read` the input stack, the process trio the scheduler, `_env_time_ns` the timers. Constructing a `new Random()` seeds from the clock, so it pulls in timers. That is the kind of connection the walk finds for you.
+These are also what capability discovery watches (Chapter 2): reaching `_env_alloc` pulls in memory management, `_env_read` or either key function the input stack, the process trio the scheduler, `_env_time_ns` the timers. Constructing a `new Random()` seeds from the clock, so it pulls in timers. That is the kind of connection the walk finds for you.
 
 ### The floor is also the ceiling
 

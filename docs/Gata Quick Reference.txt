@@ -1992,6 +1992,8 @@ The closed role vocabulary:
     env_proc_hide    (default _env_proc_hide)
     env_thread_spawn (default _env_thread_spawn)
     env_read         (default _env_read)
+    env_key_read     (default _env_key_read)
+    env_key_pending  (default _env_key_pending)
     env_alloc        (default _env_alloc)
     env_time         (default _env_time_ns)
 

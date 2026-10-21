@@ -79,6 +79,35 @@
         while (i < max - 1) { ch = _getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
         buf[i] = '\0'; return (i == 0 && ch < 0) ? -1 : i;
     }
+
+    #if defined(GATA_CAP_THREADS)
+    static inline tty_t* _env_key_tty(void) {
+        if (sched_active()) {
+            thread_t* cur = sched_current();
+            if (cur && cur->process && cur->process->tty) return cur->process->tty;
+        }
+        return kernel_tty;
+    }
+    static inline void  _env_tty_mode(int flags)  { tty_set_mode(_env_key_tty(), (flags & 1) != 0, (flags & 2) != 0); }
+    static inline int   _env_key_pending(void)    { return (int)tty_pending(_env_key_tty()); }
+    static inline int   _env_key_read(void) {
+        tty_t* t = _env_key_tty();
+        return t ? (unsigned char)tty_read_char(t) : -1;
+    }
+    #elif defined(GATA_CAP_INPUT)
+    static inline void  _env_tty_mode(int flags)  { input_set_mode((flags & 1) != 0, (flags & 2) != 0); }
+    static inline int   _env_key_pending(void)    { return (int)input_pending(); }
+    static inline int   _env_key_read(void) {
+        int ch;
+        while ((ch = input_getchar()) < 0) cpu_idle();
+        return ch;
+    }
+    #else
+    static inline void  _env_tty_mode(int flags)  { (void)flags; }
+    static inline int   _env_key_pending(void)    { return 0; }
+    static inline int   _env_key_read(void)       { return -1; }
+    #endif
+
     #if defined(GATA_OUTPUT_SERIAL)
 
     static inline void  _env_tty_clear(void)   { serial_write_port(SERIAL_COM1, "\x1b[2J\x1b[H"); }
@@ -163,6 +192,14 @@
         int i = 0, ch = -1;
         while (i < max - 1) { ch = u_getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
         buf[i] = '\0'; return (i == 0 && ch < 0) ? -1 : i;
+    }
+    static inline void  _env_tty_mode(int flags) {
+        syscall_tty_ctrl(TTY_CTRL_SET_MODE, ((flags & 1) ? TTY_MODE_RAW : 0) | ((flags & 2) ? TTY_MODE_ECHO : 0));
+    }
+    static inline int   _env_key_pending(void) { return (int)syscall_tty_ctrl(TTY_CTRL_PENDING, 0); }
+    static inline int   _env_key_read(void) {
+        char c;
+        return syscall_read(&c, 1) == 1 ? (unsigned char)c : -1;
     }
     static inline void  _env_tty_clear(void)   { syscall_tty_ctrl(TTY_CTRL_CLEAR, 0); }
     static inline void  _env_tty_cursor(int v) { syscall_tty_ctrl(TTY_CTRL_CURSOR, v ? 1 : 0); }

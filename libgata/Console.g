@@ -13,8 +13,15 @@ import Int;
 @extern void func _env_tty_cursor(int visible);
 @extern int64 func _env_tty_dims();
 @extern void func _env_tty_color(int fg, int bg);
+@extern void func _env_tty_mode(int flags);
 @intrinsic(env_read)
 @extern int func _env_read(char* buf, int max);
+@intrinsic(env_key_read)
+@extern int func _env_key_read();
+@intrinsic(env_key_pending)
+@extern int func _env_key_pending();
+
+union Key { Char(char c), Up, Down, Left, Right }
 
 module Console {
 
@@ -78,6 +85,38 @@ module Console {
             let n = _env_read(buf, 1024);
             if (n < 0) { throw; }
             return String.FromRaw(buf);
+        }
+    }
+
+    /*
+     * SetRaw - Raw mode hands each key to ReadKey as it's pressed, with no echo.
+     * Off again is the normal line mode InputLine needs
+     */
+    public void func SetRaw(bool raw) { _env_tty_mode(raw ? 1 : 2); }
+
+    /*
+     * KeyAvailable - Whether ReadKey would return right away. Only meaningful in raw mode
+     */
+    public bool func KeyAvailable() { return _env_key_pending() > 0; }
+
+    /*
+     * ReadKey - Block for the next key, decoding the ESC [ A..D arrow sequences. Throws at end of input
+     */
+    public throws Key func ReadKey() {
+        let c = _env_key_read();
+        if (c < 0) { throw; }
+        if (c != 27 || _env_key_pending() == 0) { return Key.Char(c as char); }
+
+        // ESC [ or ESC O, then the arrow's letter
+        let lead = _env_key_read();
+        let fin = _env_key_read();
+        if (lead < 0 || fin < 0) { throw; }
+        switch (fin) {
+            case 'A' { return Key.Up(); }
+            case 'B' { return Key.Down(); }
+            case 'C' { return Key.Right(); }
+            case 'D' { return Key.Left(); }
+            default { return Key.Char(fin as char); }
         }
     }
 }
