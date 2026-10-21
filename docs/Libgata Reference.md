@@ -80,7 +80,7 @@ Reaching these links the matching GatOS subsystem into the image. Everything els
 |---|---|
 | `alloc`, `new`, any container | memory management |
 | [console(3)](#console3) output | framebuffer or serial console |
-| `Console.InputLine` | keyboard driver and input stack |
+| `Console.InputLine`, `ReadKey`, `KeyAvailable` | keyboard driver and input stack |
 | [time(3)](#time3), `new Random()` | timers and interrupts |
 | a `process` or `thread` declaration | scheduler and threading |
 
@@ -479,6 +479,11 @@ public int  func Width()
 public int  func Height()
 public void func SetColor(int fg, int bg)
 public throws String func InputLine()
+public void func SetRaw(bool raw)
+public bool func KeyAvailable()
+public throws Key func ReadKey()
+
+union Key { Char(char c), Up, Down, Left, Right }
 ```
 
 ### DESCRIPTION
@@ -499,19 +504,27 @@ Output is batched: one `Print()` is one write through the floor.
 
 **`InputLine()`**: Read one line, without the trailing newline.
 
+**`SetRaw()`**: In raw mode each key reaches the program as soon as it is pressed, with no echo and no line editing. `SetRaw(false)` goes back to the line mode `InputLine()` needs.
+
+**`KeyAvailable()`**: Whether `ReadKey()` would return without blocking. Only useful in raw mode, since a line mode key isn't readable until Enter.
+
+**`ReadKey()`**: Block for the next key. Arrow keys come back as `Key.Up()` and friends, everything else as `Key.Char()`. Enter is `'\n'` and Backspace `'\b'`.
+
 ### RETURN VALUE
 
 `Print()` writes nothing for a null string.
 
 ### ERRORS
 
-`InputLine()` throws at end of input.
+`InputLine()` and `ReadKey()` throw at end of input.
 
 ### NOTES
 
 `InputLine()` reads through a 1024-byte buffer. A longer line gets truncated without an error, and the remainder is queued for the next call.
 
-Calling `InputLine()` links the keyboard driver and input stack into a GatOS image.
+Calling `InputLine()`, `ReadKey()` or `KeyAvailable()` links the keyboard driver and input stack into a GatOS image.
+
+The mode belongs to the TTY, so every thread of a process sees it. On GatOS the Esc key on its own sends nothing, so an ESC byte always starts an arrow. On a hosted terminal a lone Esc comes back as `Key.Char()` with value 27. A Windows console never echoes in raw mode.
 
 Building a line and printing it once is cheaper than printing its pieces.
 
@@ -519,6 +532,17 @@ Building a line and printing it once is cheaper than printing its pieces.
 
 ```go
 let name = Console.InputLine() catch { assign "anonymous"; };
+```
+
+```go
+Console.SetRaw(true);
+let k = Console.ReadKey() catch { return; };
+match (k) {
+    case Up { y--; }
+    case Down { y++; }
+    case Char(c) { if (c == 'q') { return; } }
+    default { }
+}
 ```
 
 ### SEE ALSO

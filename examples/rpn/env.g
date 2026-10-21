@@ -54,6 +54,7 @@
     #include <unistd.h>
     #include <errno.h>
     #include <sys/ioctl.h>
+    #include <termios.h>
     #endif
 
     #include <stdlib.h>
@@ -110,6 +111,71 @@
         buf[i] = '\0';
         return (i == 0 && ch < 0) ? -1 : i;
     }
+
+    #ifdef GATA_HOST_WINDOWS
+    #ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
+    #define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
+    #endif
+    static inline void _env_tty_mode(int flags) {
+        HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+        DWORD mode = 0;
+        if (h == INVALID_HANDLE_VALUE || !GetConsoleMode(h, &mode)) return;
+        mode &= ~(DWORD)(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_VIRTUAL_TERMINAL_INPUT);
+        if (flags & 1) mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+        else mode |= ENABLE_LINE_INPUT | ((flags & 2) ? ENABLE_ECHO_INPUT : 0);
+        SetConsoleMode(h, mode);
+    }
+
+    static inline int _env_key_pending(void) {
+        HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+        INPUT_RECORD r;
+        DWORD n = 0;
+        while (PeekConsoleInputA(h, &r, 1, &n) && n == 1) {
+            if (r.EventType == KEY_EVENT && r.Event.KeyEvent.bKeyDown && r.Event.KeyEvent.uChar.AsciiChar) return 1;
+            ReadConsoleInputA(h, &r, 1, &n);
+        }
+        return 0;
+    }
+
+    static inline int _env_key_read(void) {
+        unsigned char c;
+        DWORD n = 0;
+        return ReadFile(GetStdHandle(STD_INPUT_HANDLE), &c, 1, &n, NULL) && n == 1 ? c : -1;
+    }
+    #else
+    static struct termios gata_cooked;
+    static int gata_cooked_saved = 0;
+
+    static void gata_restore_tty(void) { tcsetattr(STDIN_FILENO, TCSANOW, &gata_cooked); }
+
+    static inline void _env_tty_mode(int flags) {
+        struct termios t;
+        if (!gata_cooked_saved) {
+            if (tcgetattr(STDIN_FILENO, &gata_cooked) != 0) return;
+            gata_cooked_saved = 1;
+            atexit(gata_restore_tty);
+        }
+        t = gata_cooked;
+        if (flags & 1) {
+            t.c_lflag &= ~(tcflag_t)ICANON;
+            t.c_cc[VMIN] = 1;
+            t.c_cc[VTIME] = 0;
+        }
+        if (flags & 2) t.c_lflag |= ECHO;
+        else t.c_lflag &= ~(tcflag_t)ECHO;
+        tcsetattr(STDIN_FILENO, TCSANOW, &t);
+    }
+
+    static inline int _env_key_pending(void) {
+        int n = 0;
+        return ioctl(STDIN_FILENO, FIONREAD, &n) == 0 ? n : 0;
+    }
+
+    static inline int _env_key_read(void) {
+        unsigned char c;
+        return read(STDIN_FILENO, &c, 1) == 1 ? c : -1;
+    }
+    #endif
 
     static inline void _env_tty_clear(void) {
         _gata_console_init();

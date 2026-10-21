@@ -1,0 +1,244 @@
+// The GatOS environment.
+//
+// This is the necessary GatOS environment for the build to compile and run.
+// Please DO NOT MODIFY THIS FILE unless you really know what you are doing.
+//
+// The realms a build emits are inferred from the @preamble targets present here:
+//   @preamble(kernel): kernel translation unit, before #include "shared.h"
+//   @preamble(user):   user translation unit, before #include "shared.h"
+//   @preamble(boot):   kernel translation unit, after all functions (kernel_main)
+@environment
+
+@preamble(kernel) native {
+    #define __GATOS_KERNEL__
+    #define GATOS_KERNEL
+    #include <kernel/caps.h>
+    #include <kernel/bootstrap.h>
+    #include <arch/x86_64/cpu/interrupts.h>
+    #include <arch/x86_64/cpu/gdt.h>
+    #include <arch/x86_64/memory/paging.h>
+    #include <arch/x86_64/multiboot2.h>
+    #include <arch/x86_64/cpu/cpu.h>
+    #include <kernel/sys/apic.h>
+    #include <kernel/drivers/console.h>
+    #include <kernel/drivers/serial.h>
+    #include <kernel/drivers/keyboard.h>
+    #include <kernel/sys/scheduler.h>
+    #include <kernel/sys/userspace.h>
+    #include <kernel/sys/panic.h>
+    #include <kernel/drivers/input.h>
+    #include <kernel/drivers/tty.h>
+    #include <kernel/drivers/pci.h>
+    #include <kernel/drivers/xhci.h>
+    #include <kernel/drivers/dashboard.h>
+    #include <kernel/memory/heap.h>
+    #include <kernel/memory/slab.h>
+    #include <kernel/sys/process.h>
+    #include <kernel/sys/syscall.h>
+    #include <kernel/memory/pmm.h>
+    #include <kernel/memory/vmm.h>
+    #include <kernel/sys/timers.h>
+    #include <kernel/sys/power.h>
+    #include <kernel/sys/acpi.h>
+    #include <kernel/debug.h>
+    #include <klibc/string.h>
+    #include <klibc/stdio.h>
+    #include "uproc.h"
+
+    #ifdef GATA_CAP_MEM
+    static inline void* _env_alloc(size_t n) { return kmalloc(n); }
+    static inline void  _env_free(void* p)   { kfree(p); }
+    #else
+    static inline void* _env_alloc(size_t n) { (void)n; return ((void*)0); }
+    static inline void  _env_free(void* p)   { (void)p; }
+    #endif
+    static inline int _env_format(char* buf, size_t n, char* fmt, int kind, uint64_t bits) {
+        union { uint64_t u; double d; } x; x.u = bits;
+        if (kind == 2) return ksnprintf(buf, n, fmt, x.d);
+        if (kind == 1) return ksnprintf(buf, n, fmt, (unsigned long long)bits);
+        if (kind == 3) return ksnprintf(buf, n, fmt, (const char*)(uintptr_t)bits);
+        return ksnprintf(buf, n, fmt, (long long)(int64_t)bits);
+    }
+    static inline void  _env_write(const char* d, int n) {
+        if (!d || n <= 0) return;
+        #if defined(GATA_OUTPUT_SERIAL)
+        serial_write_len_port(SERIAL_COM1, d, (size_t)n);
+        #elif defined(GATA_CAP_THREADS)
+        tty_t* t = active_tty;
+        if (sched_active()) {
+            thread_t* cur = sched_current();
+            if (cur && cur->process && cur->process->tty) t = cur->process->tty;
+        }
+        if (t) tty_write(t, d, (size_t)n);
+        #else
+        for (int i = 0; i < n; i++) con_crash_putc(d[i]);
+        #endif
+    }
+    static inline int   _env_read(char* buf, int max) {
+        int i = 0, ch = -1;
+        while (i < max - 1) { ch = _getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
+        buf[i] = '\0'; return (i == 0 && ch < 0) ? -1 : i;
+    }
+
+    // Raw keys come from the calling process's own TTY, the same one _env_write picks
+    #if defined(GATA_CAP_THREADS)
+    static inline tty_t* _env_key_tty(void) {
+        if (sched_active()) {
+            thread_t* cur = sched_current();
+            if (cur && cur->process && cur->process->tty) return cur->process->tty;
+        }
+        return kernel_tty;
+    }
+    static inline void  _env_tty_mode(int flags)  { tty_set_mode(_env_key_tty(), (flags & 1) != 0, (flags & 2) != 0); }
+    static inline int   _env_key_pending(void)    { return (int)tty_pending(_env_key_tty()); }
+    static inline int   _env_key_read(void) {
+        tty_t* t = _env_key_tty();
+        return t ? (unsigned char)tty_read_char(t) : -1;
+    }
+    #elif defined(GATA_CAP_INPUT)
+    static inline void  _env_tty_mode(int flags)  { input_set_mode((flags & 1) != 0, (flags & 2) != 0); }
+    static inline int   _env_key_pending(void)    { return (int)input_pending(); }
+    static inline int   _env_key_read(void) {
+        int ch;
+        while ((ch = input_getchar()) < 0) cpu_idle();
+        return ch;
+    }
+    #else
+    static inline void  _env_tty_mode(int flags)  { (void)flags; }
+    static inline int   _env_key_pending(void)    { return 0; }
+    static inline int   _env_key_read(void)       { return -1; }
+    #endif
+
+    #if defined(GATA_OUTPUT_SERIAL)
+
+    static inline void  _env_tty_clear(void)   { serial_write_port(SERIAL_COM1, "\x1b[2J\x1b[H"); }
+    static inline void  _env_tty_cursor(int v) { serial_write_port(SERIAL_COM1, v ? "\x1b[?25h" : "\x1b[?25l"); }
+    static inline int64_t _env_tty_dims(void)  { return ((int64_t)24 << 32) | (int64_t)80; }
+
+    static inline void  _env_tty_color(int fg, int bg) {
+        static const int a[8] = { 0, 4, 2, 6, 1, 5, 3, 7 };
+        char seq[24];
+        int f = fg & 0xF, b = bg & 0xF;
+        int fc = (f & 8) ? 90 + a[f & 7] : 30 + a[f & 7];
+        int bc = (b & 8) ? 100 + a[b & 7] : 40 + a[b & 7];
+        ksnprintf(seq, sizeof(seq), "\x1b[%d;%dm", fc, bc);
+        serial_write_port(SERIAL_COM1, seq);
+    }
+
+    #else
+
+    static inline void  _env_tty_clear(void)   { console_clear(CONSOLE_COLOR_BLACK); }
+    static inline void  _env_tty_cursor(int v) { console_enable_cursor(v); }
+    static inline int64_t _env_tty_dims(void) {
+        size_t header_rows = 0;
+        #ifdef GATA_CAP_THREADS
+        extern tty_t* volatile active_tty;
+        if (active_tty && active_tty->console) header_rows = active_tty->console->header_rows;
+        #endif
+        return ((int64_t)(console_get_height() - header_rows) << 32) | (int64_t)console_get_width();
+    }
+    static inline void  _env_tty_color(int fg, int bg) { console_set_color((uint8_t)fg, (uint8_t)bg); }
+
+    #endif
+    static inline void  _env_yield(void)       { sched_yield(); }
+    static inline void  _env_sleep(int ms)     { sched_sleep((uint64_t)(ms < 0 ? 0 : ms)); }
+    static inline void  _env_exit(void)        { }
+    static inline void  _env_shutdown(void)    { power_off(); }
+    static inline void  _env_reboot(void)      { reboot(); }
+    static inline void  _env_dbg(const char* m)   { QEMU_LOG("[DEBUG] %s", m); }
+    static inline void  _env_panic(const char* m) { panic(m); }
+    static inline int64_t _env_time_ns(void) {
+        #ifdef GATA_NEEDS_INTERRUPT_SUBSYS
+        return (int64_t)get_uptime_ns();
+        #else
+        return 0;
+        #endif
+    }
+
+
+    #ifdef GATA_CAP_THREADS
+    void* _env_proc_create(const char* name) { return process_create(name, NULL); }
+    void  _env_proc_hide(void* proc) { process_t* p = (process_t*)proc; if (p && p->tty) p->tty->hidden = true; }
+    void  _env_thread_spawn(void* proc, const char* name, void (*entry)(void*), int is_user) {
+        sched_add(thread_create((process_t*)proc, name, entry, NULL, is_user, 0));
+    }
+    #endif
+
+    #include "shared.h"
+}
+
+@preamble(user) native {
+    #define __GATOS_USER__
+    #define GATOS_USER
+    #include <ulibc/syscalls.h>
+    #include <ulibc/stdlib.h>
+    #include <ulibc/stdio.h>
+    #include <ulibc/string.h>
+    #include <ulibc/debug.h>
+    #include "uproc.h"
+
+    static inline void* _env_alloc(size_t n) { return malloc(n); }
+    static inline void  _env_free(void* p)   { free(p); }
+    static inline int _env_format(char* buf, size_t n, char* fmt, int kind, uint64_t bits) {
+        union { uint64_t u; double d; } x; x.u = bits;
+        if (kind == 2) return snprintf(buf, n, fmt, x.d);
+        if (kind == 1) return snprintf(buf, n, fmt, (unsigned long long)bits);
+        if (kind == 3) return snprintf(buf, n, fmt, (const char*)(uintptr_t)bits);
+        return snprintf(buf, n, fmt, (long long)(int64_t)bits);
+    }
+    static inline void  _env_write(const char* d, int n) {
+        if (d && n > 0) syscall_write(d, (size_t)n);
+    }
+    static inline int   _env_read(char* buf, int max) {
+        int i = 0, ch = -1;
+        while (i < max - 1) { ch = u_getchar(); if (ch < 0 || ch == '\n') break; buf[i++] = (char)ch; }
+        buf[i] = '\0'; return (i == 0 && ch < 0) ? -1 : i;
+    }
+    static inline void  _env_tty_mode(int flags) {
+        syscall_tty_ctrl(TTY_CTRL_SET_MODE, ((flags & 1) ? TTY_MODE_RAW : 0) | ((flags & 2) ? TTY_MODE_ECHO : 0));
+    }
+    static inline int   _env_key_pending(void) { return (int)syscall_tty_ctrl(TTY_CTRL_PENDING, 0); }
+    static inline int   _env_key_read(void) {
+        char c;
+        return syscall_read(&c, 1) == 1 ? (unsigned char)c : -1;
+    }
+    static inline void  _env_tty_clear(void)   { syscall_tty_ctrl(TTY_CTRL_CLEAR, 0); }
+    static inline void  _env_tty_cursor(int v) { syscall_tty_ctrl(TTY_CTRL_CURSOR, v ? 1 : 0); }
+    static inline int64_t _env_tty_dims(void)  { return (int64_t)syscall_tty_ctrl(TTY_CTRL_GET_DIMS, 0); }
+    static inline void  _env_tty_color(int fg, int bg) {
+        syscall_tty_ctrl(TTY_CTRL_SET_COLOR, ((uint64_t)(uint8_t)bg << 8) | (uint64_t)(uint8_t)fg);
+    }
+    static inline void  _env_yield(void)       { syscall_yield(); }
+    static inline void  _env_sleep(int ms)     { syscall_sleep((uint64_t)(ms < 0 ? 0 : ms)); }
+    static inline void  _env_exit(void)        { syscall_exit(); }
+    static inline void  _env_shutdown(void)    { syscall_poweroff(); }
+    static inline void  _env_reboot(void)      { syscall_reboot(); }
+    static inline void  _env_dbg(const char* m) {
+        char line[512];
+        size_t n = 0;
+        const char* p = "[USER DEBUG] ";
+        while (*p && n < sizeof(line) - 1) line[n++] = *p++;
+        while (*m && n < sizeof(line) - 1) line[n++] = *m++;
+        line[n++] = '\n';
+        u_debug_write(line, n);
+    }
+    static inline int64_t _env_time_ns(void) { return (int64_t)syscall_time_ns(); }
+
+    #include "shared.h"
+}
+
+@preamble(boot) native {
+    extern void uapps(void);
+    void kernel_main(void* mb_info) {
+        multiboot_parser_t multiboot = {0};
+        if (!kernel_bootstrap(mb_info, &multiboot, false)) return;
+        uapps();
+        gata_kernelspace_main();
+        QEMU_LOG("Reached kernel idle loop");
+
+        while (1) {
+            if (sched_active()) sched_sleep(60000);
+            else cpu_idle();
+        }
+    }
+}
