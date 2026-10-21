@@ -71,7 +71,7 @@
       "patterns": [
         {
           "comment": "@intrinsic binds a declaration to a compiler role. The role vocabulary is closed, so anything outside it is a G017.",
-          "match": "(@intrinsic)\\s*(\\()\\s*(alloc|retain|release|obj_header|obj_init|stringify_int|stringify_long|stringify_uint|stringify_float|stringify_char|env_debug|env_panic|env_proc_create|env_proc_hide|env_thread_spawn|env_read|env_alloc|env_time)\\s*(\\))",
+          "match": "(@intrinsic)\\s*(\\()\\s*(alloc|retain|release|obj_header|obj_init|stringify_int|stringify_long|stringify_uint|stringify_float|stringify_char|env_debug|env_panic|env_proc_create|env_proc_hide|env_thread_spawn|env_read|env_key_read|env_key_pending|env_alloc|env_time)\\s*(\\))",
           "captures": {
             "1": { "name": "keyword.other.annotation.gata" },
             "2": { "name": "punctuation.brackets.gata" },

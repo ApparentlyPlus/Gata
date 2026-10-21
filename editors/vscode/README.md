@@ -5,7 +5,7 @@
 <h1 align="center">Gata for VS Code</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/extension-v2.3.1-00e676" alt="Extension v2.3.1">
+  <img src="https://img.shields.io/badge/extension-v2.3.2-00e676" alt="Extension v2.3.2">
   <img src="https://img.shields.io/badge/vscode-%5E1.75.0-1263cf" alt="VS Code ^1.75.0">
   <img src="https://img.shields.io/badge/languages-.g%20%7C%20.gconf-e0b34d" alt="Languages">
 </p>
@@ -26,6 +26,7 @@ There is no build step to run before using it and nothing to configure. Open a `
 - [Project Manifests](#project-manifests)
 - [Repository Layout](#repository-layout)
 - [Known Limits](#known-limits)
+- [What Changed in v2.3.2](#what-changed-in-v232)
 - [What Changed in v2.3.1](#what-changed-in-v231)
 - [What Changed in v2.3.0](#what-changed-in-v230)
 - [What Changed in v2.2.0](#what-changed-in-v220)
@@ -50,7 +51,7 @@ There is no build step to run before using it and nothing to configure. Open a `
 If you have a `.vsix`:
 
 ```bash
-code --install-extension gata-highlighting-2.3.1.vsix
+code --install-extension gata-highlighting-2.3.2.vsix
 ```
 
 For development against a checkout, link it into your extensions folder and build the server once:
@@ -77,7 +78,7 @@ npm install
 npm run package
 ```
 
-That runs [`@vscode/vsce`](https://github.com/microsoft/vscode-vsce), which triggers `vscode:prepublish`, which installs the server's dependencies and bundles it with esbuild before packaging. The result is `gata-highlighting-2.3.1.vsix` in the same folder.
+That runs [`@vscode/vsce`](https://github.com/microsoft/vscode-vsce), which triggers `vscode:prepublish`, which installs the server's dependencies and bundles it with esbuild before packaging. The result is `gata-highlighting-2.3.2.vsix` in the same folder.
 
 To do it by hand, or to pin a version of `vsce`:
 
@@ -257,6 +258,12 @@ Both layers read one file at a time and neither is a type checker, so a few thin
 - The syntax layer reports the first error in a file, exactly as the compiler's parser does, rather than recovering and continuing.
 
 None of this affects the compiler. It is all cosmetic, or it is a diagnostic the real one repeats.
+
+## What Changed in v2.3.2
+
+- **Two new `@intrinsic` roles.** `env_key_read` and `env_key_pending` back libgata's new raw-key
+  API (`Console.ReadKey()`, `Console.KeyAvailable()`). The grammar's closed role list didn't have
+  them, so their bindings in `Console.g` were painted as illegal roles.
 
 ## What Changed in v2.3.1
 
